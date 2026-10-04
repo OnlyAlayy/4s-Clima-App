@@ -1,0 +1,214 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================
+   4S Clima - PWA Técnico - Premium Design System
+   ============================================ */
+
+@layer base {
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  html {
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    font-family: 'Outfit', system-ui, -apple-system, sans-serif;
+    overscroll-behavior: none;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    @apply bg-surface-dark bg-mesh-dark text-white min-h-screen;
+    background-attachment: fixed;
+  }
+
+  /* Soporte para safe areas del iPhone (notch) */
+  :root {
+    --sat: env(safe-area-inset-top);
+    --sab: env(safe-area-inset-bottom);
+    --sal: env(safe-area-inset-left);
+    --sar: env(safe-area-inset-right);
+  }
+
+  /* Selección de texto con color de marca */
+  ::selection {
+    background-color: rgba(14, 165, 233, 0.4);
+    color: white;
+  }
+
+  /* Scrollbar personalizado */
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.2);
+  }
+}
+
+@layer components {
+  /* Botón primario grande - para uso táctil */
+  .btn-primary {
+    @apply flex items-center justify-center gap-2
+           bg-gradient-to-r from-brand-600 to-brand-400 text-white font-semibold
+           rounded-2xl px-6 py-4 shadow-soft
+           hover:shadow-glow hover:scale-[1.02]
+           active:scale-[0.97] active:opacity-90
+           transition-all duration-200 ease-out
+           disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 disabled:hover:scale-100 disabled:hover:shadow-soft;
+  }
+
+  /* Botón secundario */
+  .btn-secondary {
+    @apply flex items-center justify-center gap-2
+           bg-surface-dark-secondary/80 backdrop-blur-md text-white font-medium
+           rounded-2xl px-6 py-4 border border-white/10
+           hover:bg-surface-dark-secondary hover:border-white/20
+           active:scale-[0.97] active:bg-surface-dark-tertiary
+           transition-all duration-200 ease-out
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  /* Botón de peligro */
+  .btn-danger {
+    @apply flex items-center justify-center gap-2
+           bg-red-500/10 text-red-400 font-semibold
+           rounded-2xl px-6 py-4 border border-red-500/20
+           hover:bg-red-500/20 hover:border-red-500/40
+           active:scale-[0.97]
+           transition-all duration-200 ease-out;
+  }
+
+  /* Botón de éxito */
+  .btn-success {
+    @apply flex items-center justify-center gap-2
+           bg-gradient-to-r from-emerald-600 to-emerald-400 text-white font-semibold
+           rounded-2xl px-6 py-4
+           hover:shadow-[0_0_20px_rgba(52,211,153,0.3)] hover:scale-[1.02]
+           active:scale-[0.97]
+           transition-all duration-200 ease-out
+           shadow-soft;
+  }
+
+  /* Card de contenido */
+  .card {
+    @apply bg-surface-dark-secondary/60 backdrop-blur-xl rounded-3xl border border-white/5
+           p-5 shadow-card relative overflow-hidden;
+  }
+
+  /* Card interactiva (pressable) */
+  .card-pressable {
+    @apply card cursor-pointer
+           hover:bg-surface-dark-secondary/80 hover:border-white/10 hover:-translate-y-1 hover:shadow-elevated
+           active:scale-[0.98] active:translate-y-0
+           transition-all duration-300 ease-out;
+  }
+
+  /* Input de texto */
+  .input {
+    @apply w-full bg-surface-dark-tertiary/50 text-white backdrop-blur-sm
+           rounded-2xl px-4 py-4 border border-white/10
+           placeholder:text-gray-500 font-medium
+           focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500 focus:bg-surface-dark-tertiary
+           transition-all duration-200;
+  }
+
+  /* Badge de estado */
+  .badge {
+    @apply inline-flex items-center gap-1.5 px-3 py-1.5
+           rounded-full text-xs font-bold tracking-wide uppercase;
+  }
+
+  /* Contenedor de página */
+  .page-container {
+    @apply min-h-screen pb-24 pt-[var(--sat)]
+           px-4 max-w-lg mx-auto;
+  }
+
+  /* Header de página */
+  .page-header {
+    @apply sticky top-0 z-30 pt-[var(--sat)]
+           bg-surface-dark/60 backdrop-blur-xl
+           border-b border-white/5
+           -mx-4 px-4 pb-4 pt-4 mb-6;
+  }
+
+  /* Bottom navigation bar */
+  .bottom-nav {
+    @apply fixed bottom-0 left-0 right-0 z-50
+           bg-surface-dark-secondary/80 backdrop-blur-2xl
+           border-t border-white/5 shadow-[0_-10px_40px_rgba(0,0,0,0.5)]
+           pb-[var(--sab)] px-4 pt-3 rounded-t-3xl;
+  }
+
+  /* Checklist item row */
+  .checklist-row {
+    @apply flex items-center justify-between gap-3
+           py-4 px-5 rounded-2xl
+           border border-white/5 bg-white/5 backdrop-blur-md
+           hover:bg-white/10
+           transition-all duration-300;
+  }
+
+  .checklist-row[data-status="ok"] {
+    @apply bg-emerald-500/10 border-emerald-500/30 shadow-[inset_0_0_20px_rgba(16,185,129,0.05)];
+  }
+  .checklist-row[data-status="warning"] {
+    @apply bg-amber-500/10 border-amber-500/30 shadow-[inset_0_0_20px_rgba(245,158,11,0.05)];
+  }
+  .checklist-row[data-status="fail"] {
+    @apply bg-red-500/10 border-red-500/30 shadow-[inset_0_0_20px_rgba(239,68,68,0.05)];
+  }
+
+  /* Offline indicator */
+  .offline-banner {
+    @apply fixed top-0 left-0 right-0 z-[100]
+           bg-amber-500/90 backdrop-blur-md text-amber-950 text-center
+           text-xs font-bold py-1.5 border-b border-amber-400
+           animate-pulse-soft;
+  }
+
+  /* Skeleton loader */
+  .skeleton {
+    @apply animate-pulse bg-white/5 rounded-2xl relative overflow-hidden;
+  }
+  .skeleton::after {
+    content: "";
+    @apply absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/5 to-transparent;
+    animation: shimmer 2s infinite;
+  }
+}
+
+@keyframes shimmer {
+  100% { transform: translateX(100%); }
+}
+
+@layer utilities {
+  /* Texto con gradiente premium */
+  .text-gradient {
+    @apply bg-gradient-to-br from-brand-300 via-brand-500 to-accent-500
+           bg-clip-text text-transparent drop-shadow-sm;
+  }
+
+  /* Fondo con glass premium */
+  .glass {
+    @apply bg-surface-dark-secondary/40 backdrop-blur-2xl border border-white/10 shadow-elevated;
+  }
+
+  /* Safe area padding */
+  .pb-safe {
+    padding-bottom: max(1.5rem, var(--sab));
+  }
+  .pt-safe {
+    padding-top: max(1.5rem, var(--sat));
+  }
+}

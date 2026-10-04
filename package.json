@@ -1,0 +1,30 @@
+{
+  "name": "4s-clima-ecosystem",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Ecosistema digital 4S Clima - PWA Técnico + Panel Administrativo",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "dev:tecnico": "turbo run dev --filter=@4s-clima/tecnico",
+    "dev:admin": "turbo run dev --filter=@4s-clima/admin",
+    "build": "turbo run build",
+    "build:tecnico": "turbo run build --filter=@4s-clima/tecnico",
+    "build:admin": "turbo run build --filter=@4s-clima/admin",
+    "lint": "turbo run lint",
+    "clean": "turbo run clean",
+    "db:migrate": "supabase db push",
+    "db:seed": "supabase db seed",
+    "db:reset": "supabase db reset"
+  },
+  "devDependencies": {
+    "turbo": "^2.1.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "packageManager": "npm@10.0.0"
+}
