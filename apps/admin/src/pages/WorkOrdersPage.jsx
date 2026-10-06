@@ -18,37 +18,58 @@ export default function WorkOrdersPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDownloading, setIsDownloading] = useState(null); // Guarda el id de la orden descargando
 
-  useEffect(() => {
-    loadOrders();
-  }, [statusFilter]);
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const PAGE_SIZE = 20;
 
-  async function loadOrders() {
+  useEffect(() => {
+    setPage(1); // Reset a pagina 1 cuando cambian filtros
+    loadOrders(1);
+  }, [statusFilter, search]);
+
+  useEffect(() => {
+    if (page > 1) {
+      loadOrders(page);
+    }
+  }, [page]);
+
+  async function loadOrders(pageNumber = 1) {
     setIsLoading(true);
     let query = supabase
       .from('work_orders')
       .select(`
         *,
-        client:clients(name),
+        client:clients!inner(name),
         plant:plants(name, address),
-        assigned:users!work_orders_assigned_to_fkey(name),
+        assigned:users!work_orders_assigned_to_fkey!inner(name),
         extras(id, billed)
-      `)
-      .order('scheduled_date', { ascending: false })
-      .limit(100);
+      `, { count: 'exact' })
+      .order('scheduled_date', { ascending: false });
 
     if (statusFilter !== 'all') {
       query = query.eq('status', statusFilter);
     }
 
-    const { data, error } = await query;
-    if (!error) setOrders(data || []);
+    if (search) {
+      // Búsqueda server-side en orden, cliente o técnico
+      query = query.or(`order_number.ilike.%${search}%,client.name.ilike.%${search}%,assigned.name.ilike.%${search}%`);
+    }
+
+    // Paginación
+    const from = (pageNumber - 1) * PAGE_SIZE;
+    const to = from + PAGE_SIZE - 1;
+    query = query.range(from, to);
+
+    const { data, count, error } = await query;
+    if (!error) {
+      setOrders(data || []);
+      if (count !== null) setTotalCount(count);
+    }
     setIsLoading(false);
   }
 
   const handleDownloadPDF = async (orderSummary) => {
     setIsDownloading(orderSummary.id);
-    
-    // Abrimos la pestaña sincrónicamente para evadir el bloqueador de pop-ups de Chrome
     const newTab = window.open('about:blank', '_blank');
     if (newTab) {
       newTab.document.title = "Generando PDF...";
@@ -56,7 +77,6 @@ export default function WorkOrdersPage() {
     }
 
     try {
-      // Buscar la orden completa con todas sus relaciones para el PDF
       const { data, error } = await supabase
         .from('work_orders')
         .select(`
@@ -73,13 +93,8 @@ export default function WorkOrdersPage() {
         .single();
 
       if (error) throw error;
-      
       const pdfBlobUrl = await generateWorkOrderPDF(data);
-      
-      // Mostrar el PDF en la pestaña que abrimos
-      if (newTab && pdfBlobUrl) {
-        newTab.location.href = pdfBlobUrl;
-      }
+      if (newTab && pdfBlobUrl) newTab.location.href = pdfBlobUrl;
     } catch (err) {
       console.error("Error al descargar PDF:", err);
       if (newTab) newTab.close();
@@ -89,19 +104,32 @@ export default function WorkOrdersPage() {
     }
   };
 
-  const handleExportExcel = () => {
-    if (filtered.length === 0) {
+  const handleExportExcel = async () => {
+    // Para exportar, traemos TODO lo que coincida con los filtros (sin paginación)
+    let query = supabase
+      .from('work_orders')
+      .select(`
+        *,
+        client:clients!inner(name),
+        plant:plants(name, address),
+        assigned:users!work_orders_assigned_to_fkey!inner(name),
+        extras(id, billed)
+      `)
+      .order('scheduled_date', { ascending: false });
+
+    if (statusFilter !== 'all') query = query.eq('status', statusFilter);
+    if (search) query = query.or(`order_number.ilike.%${search}%,client.name.ilike.%${search}%,assigned.name.ilike.%${search}%`);
+
+    const { data: allData, error } = await query;
+    if (error || !allData || allData.length === 0) {
       alert("No hay datos para exportar.");
       return;
     }
 
-    // Cabeceras del CSV
     const headers = ['Nro Orden', 'Cliente', 'Planta', 'Tecnico', 'Tipo Trabajo', 'Estado', 'Extras Sin Facturar', 'Fecha Programada'];
-    
-    // Convertir a CSV (usando punto y coma para compatibilidad con Excel en español)
     const csvContent = [
       headers.join(';'),
-      ...filtered.map(order => {
+      ...allData.map(order => {
         const unbilledExtras = (order.extras || []).filter((e) => !e.billed).length;
         return [
           order.order_number || order.id?.slice(0, 8),
@@ -114,19 +142,14 @@ export default function WorkOrdersPage() {
           formatDate(order.scheduled_date)
         ].map(value => {
           let strValue = String(value);
-          // Prevenir CSV Injection (Formula Injection)
-          if (/^[=\-+\@]/.test(strValue)) {
-            strValue = "'" + strValue;
-          }
+          if (/^[=\-+\@]/.test(strValue)) strValue = "'" + strValue;
           return `"${strValue.replace(/"/g, '""')}"`;
-        }).join(';'); // Escapar comillas y separar por ;
+        }).join(';');
       })
     ].join('\n');
 
-    // Añadir BOM para que Excel detecte correctamente el UTF-8 y los acentos
     const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
     const blob = new Blob([bom, csvContent], { type: 'text/csv;charset=utf-8;' });
-    
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
@@ -136,41 +159,26 @@ export default function WorkOrdersPage() {
     document.body.removeChild(link);
   };
 
-  const filtered = orders.filter((o) => {
-    if (!search) return true;
-    const s = search.toLowerCase();
-    return (
-      o.order_number?.toLowerCase().includes(s) ||
-      o.client?.name?.toLowerCase().includes(s) ||
-      o.assigned?.name?.toLowerCase().includes(s)
-    );
-  });
+  const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Órdenes de Trabajo</h1>
-          <p className="text-gray-500 text-sm mt-1">{filtered.length} registros</p>
+          <p className="text-gray-500 text-sm mt-1">{totalCount} registros en total</p>
         </div>
         <div className="flex gap-3">
-          <button 
-            onClick={handleExportExcel}
-            className="btn-secondary"
-          >
+          <button onClick={handleExportExcel} className="btn-secondary">
             Exportar Excel
           </button>
-          <button 
-            onClick={() => setIsModalOpen(true)}
-            className="btn-primary"
-          >
+          <button onClick={() => setIsModalOpen(true)} className="btn-primary">
             <Plus size={18} />
             Nueva Orden
           </button>
         </div>
       </div>
 
-      {/* Filtros */}
       <div className="flex flex-wrap items-center gap-3 mb-6">
         <div className="relative flex-1 min-w-[250px]">
           <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -195,7 +203,6 @@ export default function WorkOrdersPage() {
         </select>
       </div>
 
-      {/* Tabla */}
       <div className="card p-0">
         {isLoading ? (
           <div className="p-8 space-y-3">
@@ -203,95 +210,109 @@ export default function WorkOrdersPage() {
               <div key={i} className="h-12 bg-gray-100 rounded-lg animate-pulse" />
             ))}
           </div>
-        ) : filtered.length === 0 ? (
+        ) : orders.length === 0 ? (
           <div className="p-12 text-center">
             <FileText size={40} className="text-gray-300 mx-auto mb-3" />
             <p className="text-gray-400">No se encontraron órdenes de trabajo.</p>
           </div>
         ) : (
-          <div className="table-container border-0">
-            <table>
-              <thead>
-                <tr>
-                  <th>N° Orden</th>
-                  <th>Cliente</th>
-                  <th>Planta</th>
-                  <th>Técnico</th>
-                  <th>Tipo</th>
-                  <th>Estado</th>
-                  <th>Extras</th>
-                  <th>Fecha</th>
-                  <th className="text-right">Acciones</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((order) => {
-                  const sc = getStatusColor(order.status);
-                  const unbilledExtras = (order.extras || []).filter((e) => !e.billed).length;
-
-                  return (
-                    <tr key={order.id}>
-                      <td className="font-mono text-xs text-gray-600">
-                        {order.order_number || order.id?.slice(0, 8)}
-                      </td>
-                      <td className="font-medium text-gray-900">
-                        {order.client?.name || '-'}
-                      </td>
-                      <td className="text-gray-600 text-xs">
-                        {order.plant?.name || '-'}
-                      </td>
-                      <td className="text-gray-600">
-                        {order.assigned?.name || '-'}
-                      </td>
-                      <td className="text-xs text-gray-500">
-                        {WORK_ORDER_TYPE_LABELS[order.type] || order.type}
-                      </td>
-                      <td>
-                        <span className={`badge ${sc.bg} ${sc.text}`}>
-                          <span className={`w-1.5 h-1.5 rounded-full ${sc.dot}`} />
-                          {getStatusLabel(order.status)}
-                        </span>
-                      </td>
-                      <td>
-                        {unbilledExtras > 0 ? (
-                          <span className="badge bg-red-100 text-red-700">
-                            {unbilledExtras} sin facturar
+          <>
+            <div className="table-container border-0 border-b border-gray-100">
+              <table>
+                <thead>
+                  <tr>
+                    <th>N° Orden</th>
+                    <th>Cliente</th>
+                    <th>Planta</th>
+                    <th>Técnico</th>
+                    <th>Tipo</th>
+                    <th>Estado</th>
+                    <th>Extras</th>
+                    <th>Fecha</th>
+                    <th className="text-right">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {orders.map((order) => {
+                    const sc = getStatusColor(order.status);
+                    const unbilledExtras = (order.extras || []).filter((e) => !e.billed).length;
+                    return (
+                      <tr key={order.id}>
+                        <td className="font-mono text-xs text-gray-600">
+                          {order.order_number || order.id?.slice(0, 8)}
+                        </td>
+                        <td className="font-medium text-gray-900">{order.client?.name || '-'}</td>
+                        <td className="text-gray-600 text-xs">{order.plant?.name || '-'}</td>
+                        <td className="text-gray-600">{order.assigned?.name || '-'}</td>
+                        <td className="text-xs text-gray-500">{WORK_ORDER_TYPE_LABELS[order.type] || order.type}</td>
+                        <td>
+                          <span className={`badge ${sc.bg} ${sc.text}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${sc.dot}`} />
+                            {getStatusLabel(order.status)}
                           </span>
-                        ) : (
-                          <span className="text-gray-400 text-xs">—</span>
-                        )}
-                      </td>
-                      <td className="text-gray-500 text-xs">
-                        <div className="flex flex-col">
-                          <span>{formatDate(order.scheduled_date)}</span>
-                          {order.scheduled_time && (
-                            <span className="text-gray-400 font-mono mt-0.5">{order.scheduled_time.slice(0, 5)} hs</span>
+                        </td>
+                        <td>
+                          {unbilledExtras > 0 ? (
+                            <span className="badge bg-red-100 text-red-700">{unbilledExtras} sin facturar</span>
+                          ) : (
+                            <span className="text-gray-400 text-xs">—</span>
                           )}
-                        </div>
-                      </td>
-                      <td className="text-right">
-                        {order.status === WORK_ORDER_STATUS.COMPLETED && (
-                          <button
-                            onClick={() => handleDownloadPDF(order)}
-                            disabled={isDownloading === order.id}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-brand-50 hover:bg-brand-100 text-brand-600 text-xs font-semibold rounded-lg transition-colors border border-brand-200"
-                            title="Descargar Remito PDF"
-                          >
-                            {isDownloading === order.id ? (
-                              <div className="w-4 h-4 border-2 border-brand-600 border-t-transparent rounded-full animate-spin" />
-                            ) : (
-                              <Download size={14} />
-                            )}
-                            PDF
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                        </td>
+                        <td className="text-gray-500 text-xs">
+                          <div className="flex flex-col">
+                            <span>{formatDate(order.scheduled_date)}</span>
+                            {order.scheduled_time && <span className="text-gray-400 font-mono mt-0.5">{order.scheduled_time.slice(0, 5)} hs</span>}
+                          </div>
+                        </td>
+                        <td className="text-right">
+                          {order.status === WORK_ORDER_STATUS.COMPLETED && (
+                            <button
+                              onClick={() => handleDownloadPDF(order)}
+                              disabled={isDownloading === order.id}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-brand-50 hover:bg-brand-100 text-brand-600 text-xs font-semibold rounded-lg transition-colors border border-brand-200"
+                              title="Descargar Remito PDF"
+                            >
+                              {isDownloading === order.id ? (
+                                <div className="w-4 h-4 border-2 border-brand-600 border-t-transparent rounded-full animate-spin" />
+                              ) : (
+                                <Download size={14} />
+                              )}
+                              PDF
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            
+            {/* Controles de Paginación */}
+            {totalPages > 1 && (
+              <div className="px-6 py-4 flex items-center justify-between bg-gray-50/50 rounded-b-2xl">
+                <span className="text-sm text-gray-500">
+                  Mostrando {(page - 1) * PAGE_SIZE + 1} a {Math.min(page * PAGE_SIZE, totalCount)} de {totalCount}
+                </span>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={() => setPage(p => Math.max(1, p - 1))}
+                    disabled={page === 1}
+                    className="px-3 py-1.5 text-sm font-medium bg-white border border-gray-200 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Anterior
+                  </button>
+                  <button 
+                    onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                    disabled={page === totalPages}
+                    className="px-3 py-1.5 text-sm font-medium bg-white border border-gray-200 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Siguiente
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
 
