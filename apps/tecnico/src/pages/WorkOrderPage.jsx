@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, MapPin, Phone, Clock, Wrench, Building2,
-  ClipboardCheck, Play, ChevronRight, Thermometer, Hash, Package, Check
+  ClipboardCheck, Play, ChevronRight, Thermometer, Hash, Package, Check, Navigation
 } from 'lucide-react';
 import { useWorkOrderStore } from '../stores/workOrderStore';
 import { formatDate, getStatusLabel, getStatusColor } from '@4s-clima/shared/utils';
@@ -128,6 +128,17 @@ export default function WorkOrderPage() {
                 >
                   <Phone size={16} />
                   <span>{wo.plant.contact_name || 'Contacto'}: {wo.plant.contact_phone}</span>
+                </a>
+              )}
+              {wo.plant.address && (
+                <a 
+                  href={`https://maps.google.com/?q=${encodeURIComponent(wo.plant.address)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-2 flex items-center justify-center gap-2 w-full py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-sm font-semibold transition-colors border border-blue-200"
+                >
+                  <Navigation size={16} />
+                  Abrir en Google Maps
                 </a>
               )}
             </div>

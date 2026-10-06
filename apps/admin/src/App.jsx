@@ -9,6 +9,7 @@ import AdminLayout from './components/layout/AdminLayout';
 // Pages
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
+import CalendarPage from './pages/CalendarPage';
 import WorkOrdersPage from './pages/WorkOrdersPage';
 import ClientsPage from './pages/ClientsPage';
 import ClientDetailsPage from './pages/ClientDetailsPage';
@@ -128,6 +129,7 @@ export default function App() {
         }
       >
         <Route index element={<DashboardPage />} />
+        <Route path="calendario" element={<CalendarPage />} />
         <Route path="ordenes" element={<WorkOrdersPage />} />
         <Route path="clientes" element={<ClientsPage />} />
         <Route path="clientes/:id" element={<ClientDetailsPage />} />

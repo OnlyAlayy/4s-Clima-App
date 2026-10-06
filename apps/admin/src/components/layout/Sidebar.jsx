@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, ClipboardList, Building2, Users, DollarSign,
-  LogOut, Snowflake, Settings,
+  LogOut, Snowflake, Settings, CalendarDays
 } from 'lucide-react';
 import { useAdminAuth } from '../../App';
 
@@ -14,6 +14,7 @@ export default function Sidebar() {
 
   const navItems = [
     { to: '/', icon: LayoutDashboard, label: 'Dashboard', end: true },
+    { to: '/calendario', icon: CalendarDays, label: 'Calendario' },
     { to: '/ordenes', icon: ClipboardList, label: 'Órdenes de Trabajo' },
     { to: '/clientes', icon: Building2, label: 'Clientes' },
     { to: '/tecnicos', icon: Users, label: 'Técnicos' },

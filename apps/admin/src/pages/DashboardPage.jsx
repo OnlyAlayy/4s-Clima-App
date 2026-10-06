@@ -3,15 +3,19 @@ import {
   ClipboardList, Users, Building2, DollarSign,
   TrendingUp, Clock, CheckCircle2, AlertCircle,
 } from 'lucide-react';
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, Legend
+} from 'recharts';
 import { supabase } from '@4s-clima/shared/supabase';
 import { WORK_ORDER_STATUS } from '@4s-clima/shared/constants';
 import { formatDate, formatCurrency, getStatusLabel, getStatusColor } from '@4s-clima/shared/utils';
 
 /**
  * Dashboard administrativo.
- * Vista general con KPIs, trabajos recientes y extras pendientes de facturar.
+ * Vista general con KPIs, trabajos recientes, extras pendientes de facturar, y gráficos de rendimiento.
  */
 export default function DashboardPage() {
+  const [chartData, setChartData] = useState([]);
   const [stats, setStats] = useState({
     totalOrders: 0,
     completedToday: 0,
@@ -53,6 +57,10 @@ export default function DashboardPage() {
       startOfLocalDay.setHours(0, 0, 0, 0);
       const startOfLocalDayUTC = startOfLocalDay.toISOString();
 
+      const lastWeek = new Date();
+      lastWeek.setDate(lastWeek.getDate() - 7);
+      const lastWeekUTC = lastWeek.toISOString();
+
       // Contar OTs
       const [
         { count: totalOrders },
@@ -62,6 +70,7 @@ export default function DashboardPage() {
         { count: totalClients },
         { count: totalTechnicians },
         { data: recent },
+        { data: lastWeekOrders },
       ] = await Promise.all([
         supabase.from('work_orders').select('*', { count: 'exact', head: true }),
         supabase.from('work_orders').select('*', { count: 'exact', head: true })
@@ -82,12 +91,40 @@ export default function DashboardPage() {
           `)
           .order('created_at', { ascending: false })
           .limit(8),
+        supabase.from('work_orders')
+          .select('completed_at, status')
+          .eq('status', WORK_ORDER_STATUS.COMPLETED)
+          .gte('completed_at', lastWeekUTC)
       ]);
 
+      // Calculate unbilled extras total
       const unbilledTotal = (unbilledExtrasData || []).reduce(
         (sum, e) => sum + (e.quantity || 0) * (e.unit_price || 0),
         0
       );
+
+      // Generate chart data for the last 7 days
+      const days = [];
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        days.push({
+          name: d.toLocaleDateString('es-AR', { weekday: 'short' }),
+          dateString: d.toISOString().split('T')[0],
+          Completadas: 0,
+        });
+      }
+
+      (lastWeekOrders || []).forEach(order => {
+        if (order.completed_at) {
+          const orderDate = order.completed_at.split('T')[0];
+          const dayIndex = days.findIndex(d => d.dateString === orderDate);
+          if (dayIndex !== -1) {
+            days[dayIndex].Completadas++;
+          }
+        }
+      });
+      setChartData(days);
 
       setStats({
         totalOrders: totalOrders || 0,
@@ -169,24 +206,50 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Secondary stats */}
-      <div className="grid grid-cols-2 gap-4 mb-8">
-        <div className="stat-card">
-          <div className="stat-icon bg-purple-50">
-            <Building2 size={22} className="text-purple-500" />
+      {/* Charts and Secondary Stats */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+        
+        {/* Gráfico de Rendimiento */}
+        <div className="card lg:col-span-2 shadow-sm border border-gray-100 flex flex-col">
+          <div className="mb-4">
+            <h2 className="text-lg font-semibold text-gray-900">Rendimiento Semanal</h2>
+            <p className="text-xs text-gray-500">Órdenes completadas en los últimos 7 días</p>
           </div>
-          <div>
-            <div className="stat-value">{stats.totalClients}</div>
-            <div className="stat-label">Clientes Activos</div>
+          <div className="flex-1 min-h-[250px] -ml-6">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} allowDecimals={false} />
+                <Tooltip 
+                  cursor={{ fill: '#f8fafc' }}
+                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                />
+                <Bar dataKey="Completadas" fill="#3b82f6" radius={[4, 4, 0, 0]} maxBarSize={40} />
+              </BarChart>
+            </ResponsiveContainer>
           </div>
         </div>
-        <div className="stat-card">
-          <div className="stat-icon bg-cyan-50">
-            <Users size={22} className="text-cyan-500" />
+
+        {/* Secondary stats */}
+        <div className="flex flex-col gap-4">
+          <div className="stat-card shadow-sm border border-gray-100 flex-1">
+            <div className="stat-icon bg-purple-50">
+              <Building2 size={22} className="text-purple-500" />
+            </div>
+            <div>
+              <div className="stat-value text-2xl">{stats.totalClients}</div>
+              <div className="stat-label">Clientes Activos</div>
+            </div>
           </div>
-          <div>
-            <div className="stat-value">{stats.totalTechnicians}</div>
-            <div className="stat-label">Técnicos</div>
+          <div className="stat-card shadow-sm border border-gray-100 flex-1">
+            <div className="stat-icon bg-cyan-50">
+              <Users size={22} className="text-cyan-500" />
+            </div>
+            <div>
+              <div className="stat-value text-2xl">{stats.totalTechnicians}</div>
+              <div className="stat-label">Técnicos Registrados</div>
+            </div>
           </div>
         </div>
       </div>

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Camera, ArrowLeft, Image as ImageIcon, ChevronRight, X, Upload } from 'lucide-react';
+import imageCompression from 'browser-image-compression';
 import { supabase } from '@4s-clima/shared/supabase';
 import { db } from '../services/offlineDb';
 
@@ -43,45 +44,22 @@ export default function PhotosPage() {
     setPreviews(prev => ({ ...prev, [type]: previewUrl }));
   };
 
-  // Helper de compresión usando Canvas
-  const compressImage = (file, maxWidth) => {
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = (event) => {
-        const img = new Image();
-        img.src = event.target.result;
-        img.onload = () => {
-          let width = img.width;
-          let height = img.height;
-
-          if (width > maxWidth) {
-            height = Math.round((height * maxWidth) / width);
-            width = maxWidth;
-          }
-
-          const canvas = document.createElement('canvas');
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0, width, height);
-
-          // Comprimir a JPEG con 80% de calidad
-          canvas.toBlob(
-            (blob) => {
-              // Convertir el Blob de nuevo a un objeto File
-              const newFile = new File([blob], file.name, {
-                type: 'image/jpeg',
-                lastModified: Date.now(),
-              });
-              resolve(newFile);
-            },
-            'image/jpeg',
-            0.8
-          );
-        };
-      };
-    });
+  // Helper de compresión usando browser-image-compression
+  const compressImage = async (file) => {
+    const options = {
+      maxSizeMB: 0.5, // Max 500KB per photo
+      maxWidthOrHeight: 1200,
+      useWebWorker: true,
+      fileType: 'image/jpeg',
+      initialQuality: 0.8,
+    };
+    try {
+      const compressedFile = await imageCompression(file, options);
+      return compressedFile;
+    } catch (error) {
+      console.error('Error comprimiendo imagen:', error);
+      return file; // Si falla, devolvemos el original
+    }
   };
 
   const removePhoto = (type) => {
