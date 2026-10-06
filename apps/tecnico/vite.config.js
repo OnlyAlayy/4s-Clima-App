@@ -8,9 +8,6 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      workbox: {
-        importScripts: ['/push-sw.js']
-      },
       includeAssets: ['favicon.svg', 'icons/*.png'],
       manifest: {
         name: '4S Clima - Técnico',
@@ -42,6 +39,7 @@ export default defineConfig({
         ],
       },
       workbox: {
+        importScripts: ['/push-sw.js'],
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         runtimeCaching: [
           {
