@@ -47,6 +47,14 @@ export default function WorkOrdersPage() {
 
   const handleDownloadPDF = async (orderSummary) => {
     setIsDownloading(orderSummary.id);
+    
+    // Abrimos la pestaña sincrónicamente para evadir el bloqueador de pop-ups de Chrome
+    const newTab = window.open('about:blank', '_blank');
+    if (newTab) {
+      newTab.document.title = "Generando PDF...";
+      newTab.document.body.innerHTML = "<div style='font-family: sans-serif; padding: 2rem;'>Generando PDF de 4S Clima...</div>";
+    }
+
     try {
       // Buscar la orden completa con todas sus relaciones para el PDF
       const { data, error } = await supabase
@@ -66,9 +74,15 @@ export default function WorkOrdersPage() {
 
       if (error) throw error;
       
-      await generateWorkOrderPDF(data);
+      const pdfBlobUrl = await generateWorkOrderPDF(data);
+      
+      // Mostrar el PDF en la pestaña que abrimos
+      if (newTab && pdfBlobUrl) {
+        newTab.location.href = pdfBlobUrl;
+      }
     } catch (err) {
       console.error("Error al descargar PDF:", err);
+      if (newTab) newTab.close();
       alert("Hubo un error al generar el PDF.");
     } finally {
       setIsDownloading(null);

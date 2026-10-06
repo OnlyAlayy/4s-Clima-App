@@ -40,7 +40,9 @@ const getLogoForPDF = async (imageUrl) => {
 const getBase64ImageFromUrl = async (imageUrl) => {
   return new Promise((resolve, reject) => {
     const img = new Image();
-    img.crossOrigin = 'Anonymous';
+    if (!imageUrl.startsWith('data:')) {
+      img.crossOrigin = 'Anonymous';
+    }
     img.onload = () => {
       try {
         const canvas = document.createElement('canvas');
@@ -48,7 +50,10 @@ const getBase64ImageFromUrl = async (imageUrl) => {
         canvas.height = img.height;
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0);
-        resolve(canvas.toDataURL('image/png'));
+        resolve({
+          dataUrl: canvas.toDataURL('image/png'),
+          ratio: img.width / img.height
+        });
       } catch (e) {
         console.error("CORS Error in signature/photo canvas:", e);
         resolve(null); // Prevents hanging if tainted canvas
@@ -229,7 +234,20 @@ export const generateWorkOrderPDF = async (wo) => {
     const photoHeight = 40;
     let photoX = 15;
 
-    for (const photo of wo.photos) {
+    // Desduplicar fotos por tipo (por si hubo re-sincronizaciones offline u otro bug que las duplicó)
+    const uniquePhotos = [];
+    const seenTypes = new Set();
+    
+    // Recorrer al revés para quedarnos con las más recientes (último id/fecha insertada)
+    for (let i = wo.photos.length - 1; i >= 0; i--) {
+      const p = wo.photos[i];
+      if (!seenTypes.has(p.type)) {
+        seenTypes.add(p.type);
+        uniquePhotos.unshift(p); // Agregarlas al principio para mantener orden
+      }
+    }
+
+    for (const photo of uniquePhotos) {
       if (photoX + photoWidth > pageWidth - 15) {
         photoX = 15;
         currentY += photoHeight + 10;
@@ -241,8 +259,22 @@ export const generateWorkOrderPDF = async (wo) => {
 
       try {
         const base64Img = await getBase64ImageFromUrl(photo.url);
-        if (base64Img) {
-          doc.addImage(base64Img, 'JPEG', photoX, currentY, photoWidth, photoHeight);
+        if (base64Img && base64Img.dataUrl) {
+          // Ajustar height usando el ratio para no estirar la foto
+          let finalWidth = photoWidth;
+          let finalHeight = photoWidth / base64Img.ratio;
+          
+          // Si el height resultante es más alto de lo que permitimos (foto vertical muy alta), limitamos por height
+          if (finalHeight > photoHeight) {
+            finalHeight = photoHeight;
+            finalWidth = finalHeight * base64Img.ratio;
+          }
+          
+          // Centrar la imagen en su caja asignada (photoWidth x photoHeight)
+          const offsetX = photoX + (photoWidth - finalWidth) / 2;
+          const offsetY = currentY + (photoHeight - finalHeight) / 2;
+
+          doc.addImage(base64Img.dataUrl, 'JPEG', offsetX, offsetY, finalWidth, finalHeight);
           
           doc.setFontSize(8);
           doc.setFont("helvetica", "normal");
@@ -280,9 +312,16 @@ export const generateWorkOrderPDF = async (wo) => {
 
     try {
       const sigBase64 = await getBase64ImageFromUrl(signature.signature_url);
-      if (sigBase64) {
-        // La firma suele ser transparente, la dibujamos
-        doc.addImage(sigBase64, 'PNG', 15, currentY, 60, 30);
+      if (sigBase64 && sigBase64.dataUrl) {
+        // Ajustar el tamaño según el ratio para no deformar la firma
+        let sigWidth = 60;
+        let sigHeight = sigWidth / sigBase64.ratio;
+        if (sigHeight > 30) {
+          sigHeight = 30;
+          sigWidth = sigHeight * sigBase64.ratio;
+        }
+        
+        doc.addImage(sigBase64.dataUrl, 'PNG', 15, currentY, sigWidth, sigHeight);
       }
     } catch (e) {
       console.error("No se pudo cargar la firma para el PDF", e);
@@ -317,7 +356,7 @@ export const generateWorkOrderPDF = async (wo) => {
   const fileName = `Remito_${wo.order_number || wo.id.slice(0,5)}_${clientName.replace(/\s+/g, '_')}.pdf`;
   doc.save(fileName); // Descarga el archivo
   
-  // Además abrimos el PDF en una pestaña nueva para visualizarlo rápido
+  // Devolvemos el Blob URL para que quien llamó a la función pueda abrirlo en la pestaña segura
   const pdfBlob = doc.output('bloburl');
-  window.open(pdfBlob, '_blank');
+  return pdfBlob;
 };
