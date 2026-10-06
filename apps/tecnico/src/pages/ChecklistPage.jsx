@@ -75,6 +75,34 @@ export default function ChecklistPage() {
 
   // Guardar y avanzar a firma
   const handleSave = async () => {
+    // Validación: buscar ítems sin responder
+    const unanswered = items.filter(item => item.status === null);
+    
+    if (unanswered.length > 0) {
+      const firstMissing = unanswered[0];
+      
+      // Hacer scroll hacia el primer elemento faltante
+      const el = document.getElementById(`checklist-item-${firstMissing.id}`);
+      if (el) {
+        // Obtenemos la barra superior para restarle al scroll
+        const yOffset = -100; 
+        const y = el.getBoundingClientRect().top + window.pageYOffset + yOffset;
+        
+        window.scrollTo({ top: y, behavior: 'smooth' });
+        
+        // Agregar una clase temporal para resaltarlo (usamos estilos inline para asegurar el efecto)
+        el.style.transition = 'all 0.3s ease';
+        el.style.boxShadow = '0 0 0 2px rgba(239, 68, 68, 1), 0 4px 6px -1px rgba(0, 0, 0, 0.1)';
+        
+        setTimeout(() => {
+          el.style.boxShadow = '';
+        }, 2000);
+      }
+      
+      alert('Por favor, completá todos los ítems del checklist antes de continuar.');
+      return;
+    }
+
     setIsSaving(true);
 
     const checklistData = items.map((item) => ({
@@ -193,7 +221,7 @@ export default function ChecklistPage() {
             </h2>
             <div className="space-y-2.5">
               {catItems.map((item) => (
-                <div key={item.id}>
+                <div key={item.id} id={`checklist-item-${item.id}`}>
                   <div
                     className="checklist-row shadow-sm"
                     data-status={item.status}
