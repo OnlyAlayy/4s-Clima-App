@@ -84,21 +84,15 @@ export default function ChecklistPage() {
 
     try {
       if (navigator.onLine) {
-        // Si son items nuevos (temp-*), insertar. Si existentes, actualizar.
-        const isNew = items[0]?.id?.toString().startsWith('temp-');
-
-        if (isNew) {
+        if (checklistData.length > 0) {
+          // Primero borramos los anteriores para evitar duplicados si el usuario va y vuelve de página
+          await supabase.from('checklist_items').delete().eq('work_order_id', id);
+          
+          // Insertamos la versión actual
           const toInsert = checklistData.map(({ id: _id, ...rest }) => rest);
           const { error } = await supabase.from('checklist_items').insert(toInsert);
+          
           if (error) throw error;
-        } else {
-          for (const item of checklistData) {
-            const { error } = await supabase
-              .from('checklist_items')
-              .update({ status: item.status, notes: item.notes })
-              .eq('id', item.id);
-            if (error) throw error;
-          }
         }
       } else {
         // Guardar en IndexedDB para sync posterior
