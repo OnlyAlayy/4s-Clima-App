@@ -1,16 +1,18 @@
 import { useEffect, useState } from 'react';
-import { Search, Plus, FileText, Download } from 'lucide-react';
+import { Search, Plus, FileText, Download, LayoutList, LayoutGrid } from 'lucide-react';
 import { supabase } from '@4s-clima/shared/supabase';
 import { formatDate, getStatusLabel, getStatusColor } from '@4s-clima/shared/utils';
 import { WORK_ORDER_STATUS, WORK_ORDER_TYPE_LABELS } from '@4s-clima/shared/constants';
 import CreateWorkOrderModal from '../components/CreateWorkOrderModal';
 import { generateWorkOrderPDF } from '../services/pdfService';
+import WorkOrdersKanban from '../components/WorkOrdersKanban';
 
 /**
  * Página de listado de Órdenes de Trabajo.
- * Filtrable por estado, tipo y búsqueda.
+ * Filtrable por estado, tipo y búsqueda. Soporta vista de Lista y Tablero Kanban.
  */
 export default function WorkOrdersPage() {
+  const [viewMode, setViewMode] = useState('list'); // 'list' | 'kanban'
   const [orders, setOrders] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -180,6 +182,23 @@ export default function WorkOrdersPage() {
       </div>
 
       <div className="flex flex-wrap items-center gap-3 mb-6">
+        <div className="bg-white border border-gray-200 rounded-lg p-1 flex items-center gap-1 shadow-sm">
+          <button
+            onClick={() => setViewMode('list')}
+            className={`p-1.5 rounded-md transition-colors ${viewMode === 'list' ? 'bg-brand-50 text-brand-600' : 'text-gray-400 hover:text-gray-600'}`}
+            title="Vista de Lista"
+          >
+            <LayoutList size={18} />
+          </button>
+          <button
+            onClick={() => setViewMode('kanban')}
+            className={`p-1.5 rounded-md transition-colors ${viewMode === 'kanban' ? 'bg-brand-50 text-brand-600' : 'text-gray-400 hover:text-gray-600'}`}
+            title="Vista de Tablero (Kanban)"
+          >
+            <LayoutGrid size={18} />
+          </button>
+        </div>
+        
         <div className="relative flex-1 min-w-[250px]">
           <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
@@ -203,20 +222,21 @@ export default function WorkOrdersPage() {
         </select>
       </div>
 
-      <div className="card p-0">
         {isLoading ? (
-          <div className="p-8 space-y-3">
+          <div className="p-8 space-y-3 card">
             {[1, 2, 3, 4, 5].map((i) => (
               <div key={i} className="h-12 bg-gray-100 rounded-lg animate-pulse" />
             ))}
           </div>
         ) : orders.length === 0 ? (
-          <div className="p-12 text-center">
+          <div className="p-12 text-center card">
             <FileText size={40} className="text-gray-300 mx-auto mb-3" />
             <p className="text-gray-400">No se encontraron órdenes de trabajo.</p>
           </div>
+        ) : viewMode === 'kanban' ? (
+          <WorkOrdersKanban initialOrders={orders} onOrderUpdated={() => loadOrders(page)} />
         ) : (
-          <>
+          <div className="card p-0">
             <div className="table-container border-0 border-b border-gray-100">
               <table>
                 <thead>
@@ -312,9 +332,8 @@ export default function WorkOrdersPage() {
                 </div>
               </div>
             )}
-          </>
+          </div>
         )}
-      </div>
 
       <CreateWorkOrderModal 
         isOpen={isModalOpen} 

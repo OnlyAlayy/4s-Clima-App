@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@4s-clima/shared": "*",
+    "@hello-pangea/dnd": "^18.0.1",
     "date-fns": "^4.4.0",
     "html2canvas": "^1.4.1",
     "jspdf": "^2.5.2",
