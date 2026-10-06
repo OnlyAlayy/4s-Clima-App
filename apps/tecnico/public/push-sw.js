@@ -3,6 +3,8 @@ self.addEventListener('push', function (event) {
   let title = 'Nueva Notificación';
   let options = {
     body: 'Tienes una actualización en 4S Clima.',
+    icon: '/icons/icon-192.png',
+    badge: '/icons/icon-192.png',
     vibrate: [200, 100, 200, 100, 200],
   };
 
