@@ -1,20 +1,25 @@
 // custom-sw.js
 self.addEventListener('push', function (event) {
+  let title = 'Nueva Notificación';
+  let options = {
+    body: 'Tienes una actualización en 4S Clima.',
+    vibrate: [200, 100, 200, 100, 200],
+  };
+
   if (event.data) {
     try {
       const data = event.data.json();
-      
-      const options = {
-        body: data.body,
-        vibrate: [200, 100, 200, 100, 200],
-        data: data.url
-      };
-
-      event.waitUntil(self.registration.showNotification(data.title, options));
+      title = data.title || title;
+      options.body = data.body || options.body;
+      options.data = data.url;
     } catch (e) {
-      console.error('Error parsing push data', e);
+      options.body = 'Recibimos una actualización de fondo.';
     }
+  } else {
+    options.body = 'El servidor envió una alerta vacía.';
   }
+
+  event.waitUntil(self.registration.showNotification(title, options));
 });
 
 self.addEventListener('notificationclick', function (event) {
