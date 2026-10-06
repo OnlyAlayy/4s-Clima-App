@@ -48,8 +48,13 @@ export function useRealtimeNotifications(profile) {
             }, { onConflict: 'endpoint' });
             
             console.log("Web Push Subscription registrada en DB");
+            toast.success("📱 ¡Tu celular ya está listo para recibir notificaciones de fondo!", {
+              icon: '🔔',
+              duration: 4000
+            });
           } catch (err) {
             console.error('Error registrando Web Push:', err);
+            toast.error("Error registrando notificaciones: " + err.message);
           }
         }
       });
