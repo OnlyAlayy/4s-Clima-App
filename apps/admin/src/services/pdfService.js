@@ -1,5 +1,5 @@
 import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import autoTable from 'jspdf-autotable';
 import { formatDate } from '@4s-clima/shared/utils';
 import { EQUIPMENT_TYPE_LABELS, WORK_ORDER_TYPE_LABELS } from '@4s-clima/shared/constants';
 
@@ -192,7 +192,7 @@ export const generateWorkOrderPDF = async (wo) => {
       return [item.item_name, statusStr, item.notes || '-'];
     });
 
-    doc.autoTable({
+    autoTable(doc, {
       startY: currentY,
       head: [['Tarea', 'Estado', 'Observaciones']],
       body: checklistData,
