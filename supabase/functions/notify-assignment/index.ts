@@ -11,40 +11,48 @@ webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
 
 serve(async (req) => {
   try {
-    // 1. Leer el payload del Webhook de Supabase
     const payload = await req.json();
-    const workOrder = payload.record; // El registro insertado/actualizado en la DB
+    console.log("1. Recibido webhook payload:", JSON.stringify(payload));
+    
+    const workOrder = payload.record;
 
     if (!workOrder || !workOrder.assigned_to) {
+      console.log("2. Orden sin tecnico asignado, cancelando.");
       return new Response("No asignado a nadie o payload invalido", { status: 200 });
     }
 
-    // 2. Conectar a Supabase usando la clave de servicio
+    console.log("3. Buscando suscripciones para el tecnico:", workOrder.assigned_to);
+
     const supabaseClient = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    // 3. Buscar suscripciones activas del técnico
     const { data: subscriptions, error } = await supabaseClient
       .from("push_subscriptions")
       .select("*")
       .eq("user_id", workOrder.assigned_to);
 
-    if (error) throw error;
+    if (error) {
+      console.error("4. Error consultando DB:", error);
+      throw error;
+    }
+
     if (!subscriptions || subscriptions.length === 0) {
+      console.log("5. El tecnico no tiene suscripciones push guardadas en la DB.");
       return new Response("El tecnico no tiene suscripciones push", { status: 200 });
     }
 
-    // 4. Armar el mensaje
+    console.log(`6. Se encontraron ${subscriptions.length} suscripciones para este tecnico. Armando payload...`);
+
     const notificationPayload = JSON.stringify({
       title: "🚀 Nueva Asignación",
       body: `Te han asignado la OT ${workOrder.order_number || "Pendiente"}. ¡Revisala!`,
       url: `/orden/${workOrder.id}`
     });
 
-    // 5. Enviar a todos los dispositivos registrados de ese técnico
     const pushPromises = subscriptions.map((sub) => {
+      console.log("7. Enviando push a endpoint:", sub.endpoint.substring(0, 50) + "...");
       const pushSubscription = {
         endpoint: sub.endpoint,
         keys: {
@@ -53,18 +61,19 @@ serve(async (req) => {
         }
       };
       
-      return webpush.sendNotification(pushSubscription, notificationPayload).catch(async (err) => {
-        // Si el endpoint expiró o fue desuscrito desde el navegador, lo borramos
+      return webpush.sendNotification(pushSubscription, notificationPayload).then(() => {
+         console.log("8. ¡Push enviado con exito a endpoint:", sub.endpoint.substring(0, 50) + "...");
+      }).catch(async (err) => {
+        console.error("8. Error enviando push a endpoint:", err);
         if (err.statusCode === 404 || err.statusCode === 410) {
           console.log(`Borrando suscripcion expirada: ${sub.id}`);
           await supabaseClient.from("push_subscriptions").delete().eq("id", sub.id);
-        } else {
-          console.error("Error enviando push:", err);
         }
       });
     });
 
     await Promise.all(pushPromises);
+    console.log("9. Finalizado el proceso de notificaciones.");
     
     return new Response(JSON.stringify({ success: true, sentCount: pushPromises.length }), {
       headers: { "Content-Type": "application/json" },

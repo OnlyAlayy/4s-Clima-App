@@ -40,13 +40,15 @@ export function useRealtimeNotifications(profile) {
             // Parsear la suscripción y guardarla en Supabase
             const subJSON = subscription.toJSON();
             
-            await supabase.from('push_subscriptions').upsert({
+            const { error: upsertError } = await supabase.from('push_subscriptions').upsert({
               user_id: userId,
               endpoint: subJSON.endpoint,
               p256dh: subJSON.keys.p256dh,
               auth: subJSON.keys.auth
             }, { onConflict: 'endpoint' });
             
+            if (upsertError) throw upsertError;
+
             console.log("Web Push Subscription registrada en DB");
             toast.success("📱 ¡Tu celular ya está listo para recibir notificaciones de fondo!", {
               icon: '🔔',
