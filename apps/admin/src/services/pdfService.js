@@ -11,25 +11,28 @@ const getLogoForPDF = async (imageUrl) => {
     const img = new Image();
     img.crossOrigin = 'Anonymous';
     img.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext('2d');
-      
-      // Pintar el fondo del mismo azul oscuro del header
-      ctx.fillStyle = '#1E293B';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      
-      // Aplicar filtro para volver el logo completamente blanco
-      ctx.filter = 'brightness(0) invert(1)';
-      ctx.drawImage(img, 0, 0);
-      
-      resolve({
-        dataUrl: canvas.toDataURL('image/jpeg', 0.95),
-        ratio: img.width / img.height
-      });
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        
+        ctx.fillStyle = '#1E293B';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        ctx.filter = 'brightness(0) invert(1)';
+        ctx.drawImage(img, 0, 0);
+        
+        resolve({
+          dataUrl: canvas.toDataURL('image/jpeg', 0.95),
+          ratio: img.width / img.height
+        });
+      } catch (e) {
+        console.error("CORS Error in logo canvas:", e);
+        resolve(null); // Fallback so PDF generation doesn't hang
+      }
     };
-    img.onerror = reject;
+    img.onerror = () => resolve(null);
     img.src = imageUrl;
   });
 };
@@ -39,13 +42,17 @@ const getBase64ImageFromUrl = async (imageUrl) => {
     const img = new Image();
     img.crossOrigin = 'Anonymous';
     img.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0);
-      // Las firmas necesitan PNG para no perder transparencia si tienen, las fotos da igual
-      resolve(canvas.toDataURL('image/png'));
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        resolve(canvas.toDataURL('image/png'));
+      } catch (e) {
+        console.error("CORS Error in signature/photo canvas:", e);
+        resolve(null); // Prevents hanging if tainted canvas
+      }
     };
     img.onerror = () => resolve(null);
     img.src = imageUrl;

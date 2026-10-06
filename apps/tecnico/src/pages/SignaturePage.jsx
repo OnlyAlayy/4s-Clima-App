@@ -23,27 +23,7 @@ export default function SignaturePage() {
   const [isEmpty, setIsEmpty] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Validación: Prevenir que firmen si el checklist no está completo
-  useEffect(() => {
-    if (!currentOrder) return;
-
-    let totalRequired = 0;
-    const template = getChecklistByEquipmentType(currentOrder.equipment?.type);
-    if (template) {
-      template.categories.forEach((cat) => {
-        totalRequired += cat.items.length;
-      });
-    }
-
-    const items = currentOrder.checklist_items || [];
-    const completedItems = items.filter((i) => i.status !== null).length;
-
-    // Si el checklist tiene template pero no está 100% completo, rebotamos al técnico
-    if (totalRequired > 0 && completedItems < totalRequired) {
-      alert('Error de seguridad: No podés completar la orden sin haber terminado el checklist obligatorio.');
-      navigate(`/orden/${id}`, { replace: true });
-    }
-  }, [currentOrder, id, navigate]);
+  // Validación estricta de checklist eliminada por pedido del usuario (para permitir errores humanos o items omitidos)
 
   const handleClear = () => {
     sigRef.current?.clear();
