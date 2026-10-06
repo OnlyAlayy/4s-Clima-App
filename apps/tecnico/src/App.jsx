@@ -4,6 +4,7 @@ import { Toaster } from 'react-hot-toast';
 import { useAuthStore } from './stores/authStore';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
 import { useRealtimeNotifications } from './hooks/useRealtimeNotifications';
+import { WifiOff } from 'lucide-react';
 
 // Layout
 import AppLayout from './components/layout/AppLayout';
@@ -62,8 +63,9 @@ export default function App() {
       
       {/* Banner de offline */}
       {!isOnline && (
-        <div className="offline-banner">
-          ⚡ Sin conexión — Los datos se guardarán localmente
+        <div className="offline-banner flex items-center justify-center gap-2">
+          <WifiOff size={14} />
+          <span>Sin conexión — Los datos se guardarán localmente</span>
         </div>
       )}
 

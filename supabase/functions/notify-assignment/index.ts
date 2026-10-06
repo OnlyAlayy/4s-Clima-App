@@ -45,9 +45,26 @@ serve(async (req) => {
 
     console.log(`6. Se encontraron ${subscriptions.length} suscripciones para este tecnico. Armando payload...`);
 
+    let clientName = "";
+    if (workOrder.client_id) {
+      const { data: clientData } = await supabaseClient
+        .from('clients')
+        .select('name')
+        .eq('id', workOrder.client_id)
+        .single();
+      if (clientData) {
+        clientName = clientData.name;
+      }
+    }
+
+    const orderNumber = workOrder.order_number || "Pendiente";
+    const bodyText = clientName 
+      ? `Se te asignó un trabajo para ${clientName} (Orden: ${orderNumber}). Toca aquí para ver los detalles.`
+      : `Se te asignó el trabajo ${orderNumber}. Toca aquí para revisarlo.`;
+
     const notificationPayload = JSON.stringify({
-      title: "🚀 Nueva Asignación",
-      body: `Te han asignado la OT ${workOrder.order_number || "Pendiente"}. ¡Revisala!`,
+      title: "Nueva Asignación",
+      body: bodyText,
       url: `/orden/${workOrder.id}`
     });
 

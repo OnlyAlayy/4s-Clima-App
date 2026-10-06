@@ -5,7 +5,7 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 if (!supabaseUrl || !supabaseAnonKey) {
   console.error(
-    '⚠️ Supabase no está configurado. Copiá .env.example como .env y completá las credenciales.'
+    'Supabase no está configurado. Copiá .env.example como .env y completá las credenciales.'
   );
 }
 

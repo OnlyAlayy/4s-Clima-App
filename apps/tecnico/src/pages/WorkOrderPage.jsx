@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, MapPin, Phone, Clock, Wrench, Building2,
-  ClipboardCheck, Play, ChevronRight, Thermometer, Hash, Package
+  ClipboardCheck, Play, ChevronRight, Thermometer, Hash, Package, Check
 } from 'lucide-react';
 import { useWorkOrderStore } from '../stores/workOrderStore';
 import { formatDate, getStatusLabel, getStatusColor } from '@4s-clima/shared/utils';
@@ -176,7 +176,7 @@ export default function WorkOrderPage() {
               )}
               {wo.equipment.location_description && (
                 <div className="mt-3 bg-blue-50/50 p-3 rounded-xl border border-blue-100 flex items-start gap-2">
-                  <span className="text-lg">📍</span>
+                  <MapPin size={18} className="text-blue-500 flex-shrink-0 mt-0.5" />
                   <p className="text-blue-800 text-xs font-semibold leading-relaxed mt-0.5">
                     {wo.equipment.location_description}
                   </p>
@@ -246,7 +246,9 @@ export default function WorkOrderPage() {
           {isCompleted && (
             <div className="bg-emerald-50 border border-emerald-200 rounded-2xl px-4 py-4 text-center shadow-sm">
               <p className="text-emerald-700 font-bold flex items-center justify-center gap-2">
-                <span className="w-5 h-5 rounded-full bg-emerald-500 text-white flex items-center justify-center text-xs">✓</span> 
+                <span className="w-5 h-5 rounded-full bg-emerald-500 text-white flex items-center justify-center">
+                  <Check size={14} />
+                </span> 
                 Trabajo Finalizado
               </p>
               <p className="text-emerald-600/80 font-medium text-xs mt-1.5">

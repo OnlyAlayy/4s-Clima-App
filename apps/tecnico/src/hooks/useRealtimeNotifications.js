@@ -50,10 +50,6 @@ export function useRealtimeNotifications(profile) {
             if (upsertError) throw upsertError;
 
             console.log("Web Push Subscription registrada en DB");
-            toast.success("📱 ¡Tu celular ya está listo para recibir notificaciones de fondo!", {
-              icon: '🔔',
-              duration: 4000
-            });
           } catch (err) {
             console.error('Error registrando Web Push:', err);
             toast.error("Error registrando notificaciones: " + err.message);
@@ -82,7 +78,6 @@ export function useRealtimeNotifications(profile) {
             `¡Nueva asignación!\nOT: ${newOrder.order_number || 'Pendiente'}`, 
             { 
               duration: 5000,
-              icon: '🚀',
               style: {
                 borderRadius: '16px',
                 background: '#fff',
