@@ -1,7 +1,9 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useEffect } from 'react';
+import { Toaster } from 'react-hot-toast';
 import { useAuthStore } from './stores/authStore';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
+import { useRealtimeNotifications } from './hooks/useRealtimeNotifications';
 
 // Layout
 import AppLayout from './components/layout/AppLayout';
@@ -25,10 +27,10 @@ function ProtectedRoute({ children }) {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-surface-dark">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="flex flex-col items-center gap-4">
           <div className="w-12 h-12 border-4 border-brand-500 border-t-transparent rounded-full animate-spin" />
-          <p className="text-gray-400 text-sm">Cargando...</p>
+          <p className="text-gray-500 text-sm font-semibold">Cargando...</p>
         </div>
       </div>
     );
@@ -44,14 +46,20 @@ function ProtectedRoute({ children }) {
 export default function App() {
   const isOnline = useOnlineStatus();
   const initialize = useAuthStore((s) => s.initialize);
+  const profile = useAuthStore((s) => s.profile);
 
   // Inicializar auth al montar la app
   useEffect(() => {
     initialize();
   }, [initialize]);
 
+  // Hook para notificaciones push en tiempo real
+  useRealtimeNotifications(profile);
+
   return (
     <>
+      <Toaster position="top-center" reverseOrder={false} />
+      
       {/* Banner de offline */}
       {!isOnline && (
         <div className="offline-banner">
