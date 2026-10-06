@@ -18,6 +18,13 @@ export default function DashboardPage() {
   useEffect(() => {
     if (profile?.id) {
       fetchWorkOrders(profile.id);
+
+      const handleUpdate = () => {
+        fetchWorkOrders(profile.id);
+      };
+
+      window.addEventListener('work_orders_updated', handleUpdate);
+      return () => window.removeEventListener('work_orders_updated', handleUpdate);
     }
   }, [profile?.id, fetchWorkOrders]);
 

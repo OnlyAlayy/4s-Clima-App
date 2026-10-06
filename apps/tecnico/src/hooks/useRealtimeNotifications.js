@@ -108,6 +108,9 @@ export function useRealtimeNotifications(profile) {
               notification.close();
             };
           }
+          
+          // Disparar evento para que Dashboard recargue la lista
+          window.dispatchEvent(new CustomEvent('work_orders_updated'));
         }
       )
       .subscribe();
