@@ -2,17 +2,58 @@ import { useEffect } from 'react';
 import { supabase } from '@4s-clima/shared/supabase';
 import toast from 'react-hot-toast';
 
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
 export function useRealtimeNotifications(profile) {
   useEffect(() => {
-    // Si no hay perfil logueado, no suscribir
     if (!profile || !profile.id) return;
-
-    // Solicitar permiso para notificaciones del navegador (si el navegador lo soporta)
-    if ('Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission();
-    }
-
     const userId = profile.id;
+
+    // Solicitar permiso para notificaciones
+    if ('Notification' in window && Notification.permission !== 'denied') {
+      Notification.requestPermission().then(async (permission) => {
+        if (permission === 'granted' && 'serviceWorker' in navigator) {
+          try {
+            const registration = await navigator.serviceWorker.ready;
+            
+            // Suscribirse al Push Service del navegador (FCM/Apple)
+            const vapidPublicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY;
+            if (!vapidPublicKey) {
+               console.warn("Falta VITE_VAPID_PUBLIC_KEY en .env");
+               return;
+            }
+
+            const subscription = await registration.pushManager.subscribe({
+              userVisibleOnly: true,
+              applicationServerKey: urlBase64ToUint8Array(vapidPublicKey)
+            });
+
+            // Parsear la suscripción y guardarla en Supabase
+            const subJSON = subscription.toJSON();
+            
+            await supabase.from('push_subscriptions').upsert({
+              user_id: userId,
+              endpoint: subJSON.endpoint,
+              p256dh: subJSON.keys.p256dh,
+              auth: subJSON.keys.auth
+            }, { onConflict: 'endpoint' });
+            
+            console.log("Web Push Subscription registrada en DB");
+          } catch (err) {
+            console.error('Error registrando Web Push:', err);
+          }
+        }
+      });
+    }
 
     // Canal de Realtime exclusivo para este usuario
     const channel = supabase
