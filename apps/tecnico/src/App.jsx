@@ -18,6 +18,7 @@ import PhotosPage from './pages/PhotosPage';
 import SignaturePage from './pages/SignaturePage';
 import ProfilePage from './pages/ProfilePage';
 import ExtrasPage from './pages/ExtrasPage';
+import ScannerPage from './pages/ScannerPage';
 
 /**
  * Componente de ruta protegida.
@@ -87,6 +88,7 @@ export default function App() {
           <Route path="orden/:id/checklist" element={<ChecklistPage />} />
           <Route path="orden/:id/fotos" element={<PhotosPage />} />
           <Route path="orden/:id/firma" element={<SignaturePage />} />
+          <Route path="escaner" element={<ScannerPage />} />
           <Route path="perfil" element={<ProfilePage />} />
         </Route>
 

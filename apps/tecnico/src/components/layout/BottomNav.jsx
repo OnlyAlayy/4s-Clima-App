@@ -1,14 +1,15 @@
 import { NavLink } from 'react-router-dom';
-import { ClipboardList, User, Home } from 'lucide-react';
+import { ClipboardList, User, Home, QrCode } from 'lucide-react';
 
 /**
  * Barra de navegación inferior para la PWA del técnico.
- * 3 tabs: Inicio, Órdenes de trabajo, Perfil.
+ * 3 tabs: Inicio, Escáner, Perfil.
  * Diseñada con botones grandes para uso con guantes / dedos sucios.
  */
 export default function BottomNav() {
   const navItems = [
     { to: '/', icon: Home, label: 'Inicio' },
+    { to: '/escaner', icon: QrCode, label: 'Escáner' },
     { to: '/perfil', icon: User, label: 'Perfil' },
   ];
 

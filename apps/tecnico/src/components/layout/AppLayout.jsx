@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import { useAuthStore } from '../../stores/authStore';
 import { useBackgroundSync } from '../../hooks/useBackgroundSync';
 import BottomNav from './BottomNav';
+import SyncStatusUI from '../SyncStatusUI';
 
 /**
  * Layout principal de la app del técnico.
@@ -32,6 +33,7 @@ export default function AppLayout() {
       </main>
 
       {/* Navegación inferior fija */}
+      <SyncStatusUI />
       <BottomNav />
     </div>
   );
