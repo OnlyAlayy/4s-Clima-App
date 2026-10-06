@@ -139,63 +139,66 @@ export default function ChecklistPage() {
   return (
     <div className="page-container">
       {/* Header */}
-      <div className="page-header">
-        <div className="flex items-center gap-3 mb-3">
+      <div className="page-header bg-white/90 backdrop-blur-xl border-b border-gray-200">
+        <div className="flex items-center gap-3 mb-4 mt-2">
           <button
             onClick={() => navigate(-1)}
-            className="w-10 h-10 rounded-xl bg-surface-dark-secondary flex items-center justify-center active:bg-surface-dark-tertiary transition-colors"
+            className="w-10 h-10 rounded-xl bg-white border border-gray-200 flex items-center justify-center active:bg-gray-100 hover:bg-gray-50 transition-colors shadow-sm"
             aria-label="Volver"
           >
-            <ArrowLeft size={20} />
+            <ArrowLeft size={20} className="text-gray-700" />
           </button>
           <div className="flex-1">
-            <h1 className="text-lg font-bold text-white">Checklist</h1>
-            <p className="text-xs text-gray-500">
+            <h1 className="text-xl font-bold text-slate-900 tracking-tight">Checklist</h1>
+            <p className="text-xs font-semibold text-gray-500">
               {currentOrder?.client?.name} — {currentOrder?.equipment?.type}
             </p>
           </div>
-          <span className="text-sm font-mono text-brand-400">{completed}/{total}</span>
+          <span className="text-sm font-bold bg-brand-50 text-brand-700 px-3 py-1.5 rounded-lg border border-brand-200 shadow-sm">
+            {completed}/{total}
+          </span>
         </div>
         {/* Barra de progreso */}
-        <div className="h-1.5 bg-surface-dark-tertiary rounded-full overflow-hidden">
+        <div className="h-2 bg-gray-100 rounded-full overflow-hidden shadow-inner">
           <div
-            className="h-full bg-gradient-to-r from-brand-500 to-accent-500 rounded-full transition-all duration-500 ease-out"
+            className="h-full bg-brand-500 rounded-full transition-all duration-500 ease-out"
             style={{ width: `${progress}%` }}
           />
         </div>
       </div>
 
       {/* Leyenda rápida */}
-      <div className="flex items-center justify-center gap-4 mb-4 text-[10px] text-gray-500">
-        <span className="flex items-center gap-1">
-          <span className="w-3 h-3 rounded bg-emerald-500/30 border border-emerald-500/50" /> OK
+      <div className="flex items-center justify-center gap-4 mb-6 mt-4 text-[11px] font-semibold text-gray-600">
+        <span className="flex items-center gap-1.5">
+          <span className="w-3.5 h-3.5 rounded bg-emerald-100 border border-emerald-300 shadow-sm" /> OK
         </span>
-        <span className="flex items-center gap-1">
-          <span className="w-3 h-3 rounded bg-amber-500/30 border border-amber-500/50" /> Atención
+        <span className="flex items-center gap-1.5">
+          <span className="w-3.5 h-3.5 rounded bg-amber-100 border border-amber-300 shadow-sm" /> Atención
         </span>
-        <span className="flex items-center gap-1">
-          <span className="w-3 h-3 rounded bg-red-500/30 border border-red-500/50" /> Falla
+        <span className="flex items-center gap-1.5">
+          <span className="w-3.5 h-3.5 rounded bg-red-100 border border-red-300 shadow-sm" /> Falla
         </span>
-        <span className="flex items-center gap-1">
-          <span className="w-3 h-3 rounded bg-gray-500/30 border border-gray-500/50" /> N/A
+        <span className="flex items-center gap-1.5">
+          <span className="w-3.5 h-3.5 rounded bg-gray-100 border border-gray-300 shadow-sm" /> N/A
         </span>
       </div>
 
       {/* Checklist por categorías */}
-      <div className="space-y-6 animate-slide-up">
+      <div className="space-y-6 animate-slide-up pb-10">
         {Object.entries(categories).map(([catName, catItems]) => (
           <section key={catName}>
-            <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 px-1">
+            <h2 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3 px-2 flex items-center gap-2">
+              <div className="w-1 h-3 bg-brand-500 rounded-full"></div>
               {catName}
             </h2>
-            <div className="space-y-2">
+            <div className="space-y-2.5">
               {catItems.map((item) => (
                 <div key={item.id}>
                   <div
-                    className="checklist-row"
+                    className="checklist-row shadow-sm"
                     data-status={item.status}
                   >
-                    <span className="text-sm text-white flex-1 leading-tight">
+                    <span className="text-sm font-medium text-slate-800 flex-1 leading-snug">
                       {item.item_name}
                     </span>
 
@@ -232,21 +235,21 @@ export default function ChecklistPage() {
                       {/* Nota */}
                       <button
                         onClick={() => setExpandedNote(expandedNote === item.id ? null : item.id)}
-                        className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors
+                        className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all shadow-sm border
                           ${notes[item.id]
-                            ? 'bg-brand-500/20 text-brand-400'
-                            : 'bg-surface-dark-tertiary text-gray-600 active:text-gray-400'
+                            ? 'bg-brand-50 text-brand-600 border-brand-200'
+                            : 'bg-white text-gray-400 border-gray-200 active:bg-gray-50'
                           }`}
                         aria-label="Agregar nota"
                       >
-                        <MessageSquare size={14} />
+                        <MessageSquare size={16} />
                       </button>
                     </div>
                   </div>
 
                   {/* Campo de nota expandible */}
                   {expandedNote === item.id && (
-                    <div className="mt-1 ml-2 animate-fade-in">
+                    <div className="mt-2 ml-4 animate-fade-in pr-2">
                       <textarea
                         placeholder="Agregar observación..."
                         value={notes[item.id] || ''}
@@ -296,10 +299,10 @@ export default function ChecklistPage() {
  */
 function StatusButton({ icon, active, onClick, color }) {
   const colorClasses = {
-    emerald: active ? 'bg-emerald-500 text-white' : 'bg-emerald-500/10 text-emerald-500/50',
-    amber: active ? 'bg-amber-500 text-white' : 'bg-amber-500/10 text-amber-500/50',
-    red: active ? 'bg-red-500 text-white' : 'bg-red-500/10 text-red-500/50',
-    gray: active ? 'bg-gray-500 text-white' : 'bg-gray-500/10 text-gray-500/50',
+    emerald: active ? 'bg-emerald-500 text-slate-900' : 'bg-emerald-500/10 text-emerald-500/50',
+    amber: active ? 'bg-amber-500 text-slate-900' : 'bg-amber-500/10 text-amber-500/50',
+    red: active ? 'bg-red-500 text-slate-900' : 'bg-red-500/10 text-red-500/50',
+    gray: active ? 'bg-gray-500 text-slate-900' : 'bg-gray-500/10 text-gray-500/50',
   };
 
   return (

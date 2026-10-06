@@ -104,12 +104,12 @@ export default function ExtrasPage() {
         <div className="flex items-center gap-3">
           <button
             onClick={() => navigate(-1)}
-            className="w-10 h-10 rounded-xl bg-surface-dark-secondary flex items-center justify-center active:bg-surface-dark-tertiary transition-colors"
+            className="w-10 h-10 rounded-xl bg-white flex items-center justify-center active:bg-surface-dark-tertiary transition-colors"
           >
             <ArrowLeft size={20} />
           </button>
           <div className="flex-1">
-            <h1 className="text-lg font-bold text-white">Materiales Extra</h1>
+            <h1 className="text-lg font-bold text-slate-900">Materiales Extra</h1>
             <p className="text-xs text-gray-500">Registrar repuestos o insumos</p>
           </div>
         </div>
@@ -119,7 +119,7 @@ export default function ExtrasPage() {
         <div className="card">
           <form onSubmit={handleAddExtra} className="space-y-4">
             <div>
-              <label className="block text-xs font-medium text-gray-400 mb-1">Descripción del repuesto/material</label>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Descripción del repuesto/material</label>
               <input 
                 type="text" 
                 className="input" 
@@ -131,7 +131,7 @@ export default function ExtrasPage() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">Cantidad</label>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Cantidad</label>
                 <input 
                   type="number" 
                   step="0.01"
@@ -144,7 +144,7 @@ export default function ExtrasPage() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">Unidad</label>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Unidad</label>
                 <select 
                   className="select"
                   value={unit}
@@ -168,7 +168,7 @@ export default function ExtrasPage() {
         </div>
 
         <div>
-          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3 px-1">
+          <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3 px-1">
             Cargados ({extras.length})
           </h2>
           {extras.length === 0 ? (
@@ -181,7 +181,7 @@ export default function ExtrasPage() {
               {extras.map((extra) => (
                 <div key={extra.id} className="card py-3 px-4 flex items-center justify-between">
                   <div>
-                    <p className="text-white font-medium text-sm">{extra.description}</p>
+                    <p className="text-slate-900 font-medium text-sm">{extra.description}</p>
                     <p className="text-brand-400 text-xs font-mono mt-0.5">
                       {extra.quantity} {UNIT_OPTIONS.find(u => u.value === extra.unit)?.label || extra.unit}
                     </p>

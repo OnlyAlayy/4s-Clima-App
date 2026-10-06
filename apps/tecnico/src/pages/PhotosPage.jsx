@@ -187,12 +187,12 @@ export default function PhotosPage() {
         <div className="flex items-center gap-3">
           <button
             onClick={() => navigate(-1)}
-            className="w-10 h-10 rounded-xl bg-surface-dark-secondary flex items-center justify-center active:bg-surface-dark-tertiary transition-colors"
+            className="w-10 h-10 rounded-xl bg-white flex items-center justify-center active:bg-surface-dark-tertiary transition-colors"
           >
             <ArrowLeft size={20} />
           </button>
           <div>
-            <h1 className="text-lg font-bold text-white">Evidencia</h1>
+            <h1 className="text-lg font-bold text-slate-900">Evidencia</h1>
             <p className="text-xs text-gray-500">Documentá el trabajo realizado</p>
           </div>
         </div>
@@ -262,7 +262,7 @@ function PhotoUploader({ title, description, type, preview, onCapture, onRemove 
   return (
     <div className="card overflow-hidden">
       <div className="mb-3">
-        <h3 className="text-sm font-semibold text-gray-300">{title}</h3>
+        <h3 className="text-sm font-semibold text-gray-600">{title}</h3>
         <p className="text-xs text-gray-500">{description}</p>
       </div>
 
@@ -275,13 +275,13 @@ function PhotoUploader({ title, description, type, preview, onCapture, onRemove 
           />
           <button 
             onClick={() => onRemove(type)}
-            className="absolute top-2 right-2 w-8 h-8 bg-black/60 backdrop-blur-md rounded-full flex items-center justify-center text-white active:scale-95 transition-transform"
+            className="absolute top-2 right-2 w-8 h-8 bg-black/60 backdrop-blur-md rounded-full flex items-center justify-center text-slate-900 active:scale-95 transition-transform"
           >
             <X size={16} />
           </button>
         </div>
       ) : (
-        <div className="relative h-32 rounded-xl border-2 border-dashed border-gray-700 hover:border-brand-500/50 bg-surface-dark-secondary transition-colors group">
+        <div className="relative h-32 rounded-xl border-2 border-dashed border-gray-700 hover:border-brand-500/50 bg-white transition-colors group">
           {/* El input file invisible superpuesto */}
           <input 
             type="file" 
@@ -291,7 +291,7 @@ function PhotoUploader({ title, description, type, preview, onCapture, onRemove 
             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
           />
           
-          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-gray-400 group-hover:text-brand-400 transition-colors">
+          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-gray-500 group-hover:text-brand-400 transition-colors">
             <Camera size={28} className="mb-2" />
             <span className="text-sm font-medium">Tocar para abrir cámara</span>
           </div>

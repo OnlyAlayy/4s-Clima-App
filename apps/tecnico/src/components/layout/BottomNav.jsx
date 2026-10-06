@@ -24,24 +24,24 @@ export default function BottomNav() {
               `flex flex-col items-center gap-1 py-2 px-4 rounded-xl
                transition-all duration-200 min-w-[72px]
                ${isActive
-                 ? 'text-brand-400'
-                 : 'text-gray-500 active:text-gray-300'
+                 ? 'text-brand-600'
+                 : 'text-gray-400 active:text-gray-600 hover:text-gray-500'
                }`
             }
           >
             {({ isActive }) => (
               <>
-                <div className={`relative ${isActive ? '' : ''}`}>
+                <div className="relative">
                   {isActive && (
-                    <div className="absolute -inset-2 bg-brand-500/10 rounded-full" />
+                    <div className="absolute -inset-2 bg-brand-50 rounded-full" />
                   )}
                   <Icon
                     size={24}
-                    strokeWidth={isActive ? 2.5 : 1.5}
+                    strokeWidth={isActive ? 2.5 : 2}
                     className="relative z-10"
                   />
                 </div>
-                <span className={`text-[10px] font-medium ${isActive ? 'font-semibold' : ''}`}>
+                <span className={`text-[10px] font-medium ${isActive ? 'font-bold' : ''}`}>
                   {label}
                 </span>
               </>

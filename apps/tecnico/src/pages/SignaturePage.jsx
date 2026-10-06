@@ -135,13 +135,13 @@ export default function SignaturePage() {
         <div className="flex items-center gap-3">
           <button
             onClick={() => navigate(-1)}
-            className="w-10 h-10 rounded-xl bg-surface-dark-secondary flex items-center justify-center active:bg-surface-dark-tertiary transition-colors"
+            className="w-10 h-10 rounded-xl bg-white flex items-center justify-center active:bg-surface-dark-tertiary transition-colors"
             aria-label="Volver"
           >
             <ArrowLeft size={20} />
           </button>
           <div>
-            <h1 className="text-lg font-bold text-white">Firma del Cliente</h1>
+            <h1 className="text-lg font-bold text-slate-900">Firma del Cliente</h1>
             <p className="text-xs text-gray-500">Confirmación del trabajo realizado</p>
           </div>
         </div>
@@ -151,7 +151,7 @@ export default function SignaturePage() {
         {/* Datos del firmante */}
         <div className="card space-y-3">
           <div>
-            <label htmlFor="signer-name" className="text-xs text-gray-400 mb-1 block">
+            <label htmlFor="signer-name" className="text-xs text-gray-500 mb-1 block">
               Nombre completo *
             </label>
             <input
@@ -165,7 +165,7 @@ export default function SignaturePage() {
             />
           </div>
           <div>
-            <label htmlFor="signer-role" className="text-xs text-gray-400 mb-1 block">
+            <label htmlFor="signer-role" className="text-xs text-gray-500 mb-1 block">
               Cargo (opcional)
             </label>
             <input
@@ -184,11 +184,11 @@ export default function SignaturePage() {
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <PenTool size={16} className="text-brand-400" />
-              <span className="text-sm font-semibold text-gray-300">Firma</span>
+              <span className="text-sm font-semibold text-gray-600">Firma</span>
             </div>
             <button
               onClick={handleClear}
-              className="flex items-center gap-1 text-xs text-gray-500 active:text-gray-300 transition-colors"
+              className="flex items-center gap-1 text-xs text-gray-500 active:text-gray-600 transition-colors"
             >
               <RotateCcw size={14} />
               Limpiar
@@ -208,7 +208,7 @@ export default function SignaturePage() {
             />
             {isEmpty && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <p className="text-gray-400 text-sm">Firme aquí con el dedo</p>
+                <p className="text-gray-500 text-sm">Firme aquí con el dedo</p>
               </div>
             )}
           </div>

@@ -42,41 +42,41 @@ export default function DashboardPage() {
       <div className="page-header">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-gray-400 text-sm">{greeting()}</p>
-            <h1 className="text-xl font-bold text-white">
+            <p className="text-gray-500 text-sm font-medium">{greeting()}</p>
+            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
               {profile?.name || 'Técnico'}
             </h1>
           </div>
-          <div className="flex items-center gap-2 bg-surface-dark-secondary rounded-full px-3 py-1.5 border border-white/10">
-            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse-soft" />
-            <span className="text-xs text-gray-400">En línea</span>
+          <div className="flex items-center gap-2 bg-white rounded-full px-3 py-1.5 border border-gray-200 shadow-sm">
+            <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="text-xs font-semibold text-slate-700">En línea</span>
           </div>
         </div>
       </div>
 
       {/* Resumen del día */}
-      <div className="grid grid-cols-2 gap-3 mb-6">
-        <div className="card flex flex-col items-center py-4">
-          <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center mb-2">
-            <ClipboardList size={20} className="text-blue-400" />
+      <div className="grid grid-cols-2 gap-4 mb-8">
+        <div className="card flex flex-col items-center py-5">
+          <div className="w-12 h-12 rounded-2xl bg-brand-50 flex items-center justify-center mb-3">
+            <ClipboardList size={24} className="text-brand-600" />
           </div>
-          <span className="text-2xl font-bold text-white">{workOrders.length}</span>
-          <span className="text-xs text-gray-500">Asignadas</span>
+          <span className="text-3xl font-extrabold text-slate-900">{workOrders.length}</span>
+          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider mt-1">Asignadas</span>
         </div>
-        <div className="card flex flex-col items-center py-4">
-          <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center mb-2">
-            <Clock size={20} className="text-amber-400" />
+        <div className="card flex flex-col items-center py-5">
+          <div className="w-12 h-12 rounded-2xl bg-amber-50 flex items-center justify-center mb-3">
+            <Clock size={24} className="text-amber-600" />
           </div>
-          <span className="text-2xl font-bold text-white">{inProgress.length}</span>
-          <span className="text-xs text-gray-500">En Progreso</span>
+          <span className="text-3xl font-extrabold text-slate-900">{inProgress.length}</span>
+          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider mt-1">En Progreso</span>
         </div>
       </div>
 
       {/* Loading skeleton */}
       {isLoading && (
-        <div className="space-y-3">
+        <div className="space-y-4">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="skeleton h-24 rounded-2xl" />
+            <div key={i} className="skeleton h-32 rounded-3xl" />
           ))}
         </div>
       )}
@@ -84,11 +84,11 @@ export default function DashboardPage() {
       {/* Sin órdenes */}
       {!isLoading && workOrders.length === 0 && (
         <div className="flex flex-col items-center py-16 text-center">
-          <div className="w-16 h-16 rounded-2xl bg-surface-dark-secondary flex items-center justify-center mb-4">
-            <ClipboardList size={32} className="text-gray-600" />
+          <div className="w-20 h-20 rounded-full bg-gray-100 flex items-center justify-center mb-5">
+            <ClipboardList size={36} className="text-gray-500" />
           </div>
-          <h3 className="text-lg font-semibold text-gray-400">Sin trabajos pendientes</h3>
-          <p className="text-sm text-gray-600 mt-1">
+          <h3 className="text-xl font-bold text-slate-900 mb-1">Sin trabajos pendientes</h3>
+          <p className="text-sm text-gray-500">
             No tenés órdenes de trabajo asignadas por ahora.
           </p>
         </div>
@@ -96,12 +96,12 @@ export default function DashboardPage() {
 
       {/* Órdenes en progreso */}
       {inProgress.length > 0 && (
-        <section className="mb-6">
-          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-            <AlertCircle size={14} className="text-blue-400" />
+        <section className="mb-8">
+          <h2 className="text-sm font-bold text-brand-600 uppercase tracking-wider mb-4 flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-brand-500 animate-pulse"></div>
             En Progreso
           </h2>
-          <div className="space-y-3">
+          <div className="space-y-4">
             {inProgress.map((wo) => (
               <WorkOrderCard key={wo.id} order={wo} onClick={() => navigate(`/orden/${wo.id}`)} />
             ))}
@@ -112,11 +112,11 @@ export default function DashboardPage() {
       {/* Órdenes pendientes */}
       {pending.length > 0 && (
         <section>
-          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-            <Clock size={14} className="text-amber-400" />
+          <h2 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-4 flex items-center gap-2">
+            <Clock size={16} className="text-amber-500" />
             Pendientes
           </h2>
-          <div className="space-y-3">
+          <div className="space-y-4">
             {pending.map((wo) => (
               <WorkOrderCard key={wo.id} order={wo} onClick={() => navigate(`/orden/${wo.id}`)} />
             ))}
@@ -131,55 +131,59 @@ export default function DashboardPage() {
  * Card de orden de trabajo.
  */
 function WorkOrderCard({ order, onClick }) {
-  const statusColors = getStatusColor(order.status);
-
+  const isProgress = order.status === WORK_ORDER_STATUS.IN_PROGRESS;
   return (
     <button
       onClick={onClick}
-      className="card-pressable w-full text-left animate-fade-in"
+      className="card-pressable w-full text-left flex flex-col"
     >
-      <div className="flex items-start justify-between mb-2">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
-            <span className={`badge ${statusColors.bg} ${statusColors.text}`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${statusColors.dot}`} />
+      <div className="flex items-start justify-between mb-3">
+        <div className="flex-1 min-w-0 pr-4">
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className={`badge ${isProgress ? 'bg-brand-50 text-brand-700 border border-brand-200' : 'bg-gray-100 text-gray-600 border border-gray-200'}`}>
               {getStatusLabel(order.status)}
             </span>
-            <span className="text-xs text-gray-500">
+            <span className="text-xs font-semibold text-gray-500">
               {WORK_ORDER_TYPE_LABELS[order.type] || order.type}
             </span>
           </div>
-          <h3 className="font-semibold text-white truncate">
-            {order.client?.name || 'Cliente'}
+          <h3 className="font-bold text-lg text-slate-900 truncate">
+            {order.client?.name || 'Cliente sin nombre'}
           </h3>
-        </div>
-        <ChevronRight size={20} className="text-gray-600 mt-1 flex-shrink-0" />
-      </div>
-
-      <div className="flex items-center gap-4 text-xs text-gray-500">
-        <div className="flex items-center gap-1">
-          <MapPin size={12} />
-          <span className="truncate">{order.plant?.name || order.plant?.address || '-'}</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <Clock size={12} />
-          <span>
-            {formatDate(order.scheduled_date)}{order.scheduled_time ? ` a las ${order.scheduled_time.slice(0, 5)} hs` : ''}
+          <span className="text-xs font-mono font-medium text-gray-500 mt-0.5 block">
+            {order.order_number}
           </span>
         </div>
       </div>
 
-      {order.equipment && (
-        <div className="flex items-center gap-1 mt-2 text-xs text-gray-500">
-          <Wrench size={12} />
-          <span>{order.equipment.brand} {order.equipment.model}</span>
+      <div className="space-y-2 mb-4 mt-1">
+        <div className="flex items-start gap-2 text-sm text-gray-600">
+          <MapPin size={16} className="text-gray-500 mt-0.5 flex-shrink-0" />
+          <span className="line-clamp-1">{order.plant?.name || order.plant?.address || '-'}</span>
         </div>
-      )}
+        {order.equipment && (
+          <div className="flex items-start gap-2 text-sm text-gray-600">
+            <Wrench size={16} className="text-gray-500 mt-0.5 flex-shrink-0" />
+            <span>{order.equipment.brand} {order.equipment.model}</span>
+          </div>
+        )}
+      </div>
 
-      {/* Indicador de no sincronizado */}
+      <div className="flex items-center justify-between pt-4 border-t border-gray-100/80">
+        <div className="flex items-center gap-2 text-sm font-medium text-gray-600">
+          <Clock size={16} className={isProgress ? "text-brand-500" : "text-gray-500"} />
+          <span>
+            {formatDate(order.scheduled_date)}{order.scheduled_time ? ` • ${order.scheduled_time.slice(0, 5)} hs` : ''}
+          </span>
+        </div>
+        <div className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center group-hover:bg-brand-50 group-hover:text-brand-600 transition-colors">
+          <ChevronRight size={18} className="text-gray-500 group-hover:text-brand-600" />
+        </div>
+      </div>
+
       {order.synced === false && (
-        <div className="mt-2 flex items-center gap-1 text-xs text-amber-500">
-          <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse-soft" />
+        <div className="mt-4 pt-3 border-t border-amber-100 flex items-center gap-2 text-xs font-semibold text-amber-600 bg-amber-50 -mx-5 -mb-5 px-5 pb-4">
+          <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
           Pendiente de sincronización
         </div>
       )}
