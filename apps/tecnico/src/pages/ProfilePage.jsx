@@ -1,9 +1,10 @@
 import { useNavigate } from 'react-router-dom';
-import { LogOut, User, Wifi, WifiOff, HardDrive, RefreshCw } from 'lucide-react';
+import { LogOut, User, Wifi, WifiOff, HardDrive, RefreshCw, Sun, Moon } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { useWorkOrderStore } from '../stores/workOrderStore';
 import { clearLocalDatabase, getPendingSyncCount } from '../services/offlineDb';
+import { useDarkMode } from '../hooks/useDarkMode';
 import { useState, useEffect } from 'react';
 
 /**
@@ -15,6 +16,7 @@ export default function ProfilePage() {
   const { profile, logout } = useAuthStore();
   const { syncPendingData, isSyncing } = useWorkOrderStore();
   const isOnline = useOnlineStatus();
+  const { isDark, toggleDarkMode } = useDarkMode();
   const [pendingCount, setPendingCount] = useState(0);
 
   useEffect(() => {
@@ -110,6 +112,28 @@ export default function ProfilePage() {
               )}
             </button>
           )}
+        </div>
+
+        {/* Apariencia */}
+        <div className="card">
+          <h3 className="text-sm font-semibold text-gray-600 mb-3">Apariencia</h3>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm">
+              {isDark ? (
+                <Moon size={16} className="text-brand-500" />
+              ) : (
+                <Sun size={16} className="text-amber-500" />
+              )}
+              <span className="text-gray-600">Modo Oscuro</span>
+            </div>
+            
+            <button
+              onClick={toggleDarkMode}
+              className={`w-12 h-6 rounded-full p-1 transition-colors duration-200 ease-in-out flex ${isDark ? 'bg-brand-500 justify-end' : 'bg-gray-200 justify-start'}`}
+            >
+              <div className="w-4 h-4 bg-white rounded-full shadow-sm" />
+            </button>
+          </div>
         </div>
 
         {/* Cerrar sesión */}

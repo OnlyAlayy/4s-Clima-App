@@ -1,9 +1,10 @@
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, ClipboardList, Building2, Users, DollarSign,
-  LogOut, Snowflake, Settings, CalendarDays
+  LogOut, Snowflake, Settings, CalendarDays, Sun, Moon
 } from 'lucide-react';
 import { useAdminAuth } from '../../App';
+import { useDarkMode } from '../../hooks/useDarkMode';
 
 /**
  * Sidebar de navegación del panel administrativo.
@@ -11,6 +12,7 @@ import { useAdminAuth } from '../../App';
  */
 export default function Sidebar() {
   const { profile, logout } = useAdminAuth();
+  const { isDark, toggleDarkMode } = useDarkMode();
 
   const navItems = [
     { to: '/', icon: LayoutDashboard, label: 'Dashboard', end: true },
@@ -67,6 +69,15 @@ export default function Sidebar() {
             <p className="text-blue-200 text-[10px] truncate font-medium">Administrador</p>
           </div>
         </div>
+        
+        <button
+          onClick={toggleDarkMode}
+          className="sidebar-link w-full text-blue-100 mb-1"
+        >
+          {isDark ? <Sun size={18} /> : <Moon size={18} />}
+          <span>{isDark ? 'Modo Claro' : 'Modo Oscuro'}</span>
+        </button>
+
         <button
           onClick={logout}
           className="sidebar-link w-full text-blue-100 hover:text-white hover:bg-red-500"

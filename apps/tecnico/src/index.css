@@ -9,13 +9,13 @@
 
 @layer base {
   body {
-    @apply bg-gray-50 text-slate-900 font-sans antialiased overflow-x-hidden;
+    @apply bg-gray-50 text-slate-900 font-sans antialiased overflow-x-hidden transition-colors duration-200 dark:bg-slate-950 dark:text-gray-100;
     -webkit-tap-highlight-color: transparent;
   }
 }
 
 @layer components {
-  /* Botón primario */
+  /* Boton primario */
   .btn-primary {
     @apply inline-flex items-center justify-center gap-2
            bg-brand-600 text-white font-semibold
@@ -26,19 +26,21 @@
            disabled:opacity-50 disabled:cursor-not-allowed;
   }
 
-  /* Botón secundario */
+  /* Boton secundario */
   .btn-secondary {
     @apply inline-flex items-center justify-center gap-2
            bg-white text-slate-700 font-semibold
            rounded-2xl px-6 py-4 text-base
            border border-gray-200
            hover:bg-gray-50 active:bg-gray-100
+           dark:bg-slate-900 dark:text-gray-200 dark:border-slate-800
+           dark:hover:bg-slate-800 dark:active:bg-slate-700
            transition-all duration-200 ease-out
            shadow-sm
            disabled:opacity-50 disabled:cursor-not-allowed;
   }
 
-  /* Botón de éxito */
+  /* Boton de exito */
   .btn-success {
     @apply inline-flex items-center justify-center gap-2
            bg-emerald-500 text-white font-semibold
@@ -52,12 +54,14 @@
   .card {
     @apply bg-white rounded-3xl border border-gray-100/80
            p-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)]
+           dark:bg-slate-900 dark:border-slate-800 dark:shadow-none
            relative overflow-hidden;
   }
 
   .card-pressable {
     @apply card cursor-pointer
            hover:border-brand-200 hover:shadow-[0_8px_30px_rgba(37,99,235,0.08)]
+           dark:hover:border-slate-700
            hover:-translate-y-0.5
            active:scale-[0.98] active:translate-y-0
            transition-all duration-300 ease-out;
@@ -69,7 +73,8 @@
            rounded-2xl px-4 py-4 text-base
            border border-gray-200
            placeholder:text-gray-400 font-medium
-           focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 focus:bg-white
+           dark:bg-slate-900 dark:text-gray-100 dark:border-slate-800 dark:placeholder:text-slate-500
+           focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 focus:bg-white dark:focus:bg-slate-800
            transition-all duration-200;
   }
 
@@ -87,14 +92,14 @@
 
   .page-header {
     @apply sticky top-0 z-30
-           bg-gray-50/80 backdrop-blur-xl
+           bg-gray-50/80 dark:bg-slate-950/80 backdrop-blur-xl
            -mx-4 px-4 pb-4 pt-4 mb-6;
   }
 
   .bottom-nav {
     @apply fixed bottom-0 left-0 right-0 z-50
-           bg-white/90 backdrop-blur-2xl
-           border-t border-gray-100 shadow-[0_-10px_40px_rgba(0,0,0,0.05)]
+           bg-white/90 dark:bg-slate-900/90 backdrop-blur-2xl
+           border-t border-gray-100 dark:border-slate-800 shadow-[0_-10px_40px_rgba(0,0,0,0.05)]
            pb-[max(1rem,var(--sab))] px-6 pt-4 rounded-t-[2.5rem];
   }
 
@@ -103,18 +108,19 @@
     @apply flex items-center justify-between gap-3
            py-4 px-5 rounded-2xl
            border border-gray-100 bg-white
-           hover:border-brand-200 hover:shadow-sm
+           dark:border-slate-800 dark:bg-slate-900
+           hover:border-brand-200 hover:shadow-sm dark:hover:border-slate-700
            transition-all duration-300;
   }
 
   .checklist-row[data-status="ok"] {
-    @apply bg-emerald-50/50 border-emerald-200 shadow-[inset_4px_0_0_rgba(16,185,129,1)];
+    @apply bg-emerald-50/50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800 shadow-[inset_4px_0_0_rgba(16,185,129,1)];
   }
   .checklist-row[data-status="warning"] {
-    @apply bg-amber-50/50 border-amber-200 shadow-[inset_4px_0_0_rgba(245,158,11,1)];
+    @apply bg-amber-50/50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 shadow-[inset_4px_0_0_rgba(245,158,11,1)];
   }
   .checklist-row[data-status="fail"] {
-    @apply bg-red-50/50 border-red-200 shadow-[inset_4px_0_0_rgba(239,68,68,1)];
+    @apply bg-red-50/50 dark:bg-red-900/20 border-red-200 dark:border-red-800 shadow-[inset_4px_0_0_rgba(239,68,68,1)];
   }
 
   /* Offline indicator */
@@ -126,6 +132,6 @@
 
   /* Skeletons */
   .skeleton {
-    @apply animate-pulse bg-gray-200 rounded-2xl;
+    @apply animate-pulse bg-gray-200 dark:bg-slate-800 rounded-2xl;
   }
 }
