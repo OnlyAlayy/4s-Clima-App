@@ -6,10 +6,8 @@ self.addEventListener('push', function (event) {
       
       const options = {
         body: data.body,
-        icon: '/icons/icon-192.png',
-        badge: '/icons/icon-192.png',
         vibrate: [200, 100, 200, 100, 200],
-        data: data.url // guardamos la url para abrirla al hacer click
+        data: data.url
       };
 
       event.waitUntil(self.registration.showNotification(data.title, options));
