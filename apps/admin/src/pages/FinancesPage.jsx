@@ -5,6 +5,7 @@ import { formatCurrency, formatDate } from '@4s-clima/shared/utils';
 
 export default function FinancesPage() {
   const [orders, setOrders] = useState([]);
+  const [allCompletedOrders, setAllCompletedOrders] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [filter, setFilter] = useState('unbilled'); // 'unbilled' | 'pending' | 'paid' | 'all'
 
@@ -19,6 +20,15 @@ export default function FinancesPage() {
 
   async function loadFinances() {
     setIsLoading(true);
+
+    // Load ALL completed orders for the global KPIs
+    const { data: allData } = await supabase
+      .from('work_orders')
+      .select('payment_status, total_amount')
+      .eq('status', 'completed');
+      
+    if (allData) setAllCompletedOrders(allData);
+
     let query = supabase
       .from('work_orders')
       .select(`
@@ -31,7 +41,8 @@ export default function FinancesPage() {
       .order('completed_at', { ascending: false });
 
     if (filter === 'unbilled') {
-      query = query.eq('payment_status', 'unbilled');
+      // En supabase si no hay payment_status es null o 'unbilled'
+      query = query.or('payment_status.is.null,payment_status.eq.unbilled');
     } else if (filter === 'pending') {
       query = query.eq('payment_status', 'pending');
     } else if (filter === 'paid') {
@@ -98,9 +109,17 @@ export default function FinancesPage() {
     }
   };
 
-  const moneyInStreet = orders
+  const moneyInStreet = allCompletedOrders
     .filter(o => o.payment_status === 'pending')
     .reduce((sum, o) => sum + (Number(o.total_amount) || 0), 0);
+
+  const totalPaid = allCompletedOrders
+    .filter(o => o.payment_status === 'paid')
+    .length;
+    
+  const totalUnbilled = allCompletedOrders
+    .filter(o => !o.payment_status || o.payment_status === 'unbilled')
+    .length;
 
   const getStatusBadge = (status) => {
     switch(status) {
@@ -129,7 +148,7 @@ export default function FinancesPage() {
             <div>
               <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Trabajos sin facturar</p>
               <h3 className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
-                {filter === 'all' || filter === 'unbilled' ? orders.filter(o => o.payment_status === 'unbilled').length : '?'}
+                {totalUnbilled}
               </h3>
             </div>
             <div className="p-3 bg-amber-50 dark:bg-amber-900/30 rounded-xl">
@@ -157,7 +176,7 @@ export default function FinancesPage() {
             <div>
               <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Facturas Pagadas</p>
               <h3 className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
-                {filter === 'all' || filter === 'paid' ? orders.filter(o => o.payment_status === 'paid').length : '?'}
+                {totalPaid}
               </h3>
             </div>
             <div className="p-3 bg-emerald-50 dark:bg-emerald-900/30 rounded-xl">
