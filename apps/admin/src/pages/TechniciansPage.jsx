@@ -158,24 +158,24 @@ export default function TechniciansPage() {
                   )}
                 </div>
 
-                <div className="pt-3 border-t border-gray-100 flex flex-col gap-3">
+                <div className="pt-3 border-t border-gray-100 dark:border-slate-700 flex flex-col gap-3">
                   <div className="flex gap-3">
                     <div className="flex items-center gap-1.5 text-sm flex-1">
                       <Wrench size={14} className="text-amber-500" />
-                      <span className="font-semibold text-gray-900">{tech.activeOrders}</span>
-                      <span className="text-xs text-gray-500">activas</span>
+                      <span className="font-semibold text-gray-900 dark:text-white">{tech.activeOrders}</span>
+                      <span className="text-xs text-gray-500 dark:text-gray-400">activas</span>
                     </div>
                     <div className="flex items-center gap-1.5 text-sm flex-1">
                       <Wrench size={14} className="text-emerald-500" />
-                      <span className="font-semibold text-gray-900">{tech.completedOrders}</span>
-                      <span className="text-xs text-gray-500">listas</span>
+                      <span className="font-semibold text-gray-900 dark:text-white">{tech.completedOrders}</span>
+                      <span className="text-xs text-gray-500 dark:text-gray-400">listas</span>
                     </div>
                   </div>
 
                   <div className="flex gap-2">
                     <button 
                       onClick={() => setPasswordModalUser(tech)}
-                      className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 bg-gray-50 hover:bg-gray-100 text-gray-600 text-xs font-medium rounded-lg transition-colors border border-gray-200"
+                      className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 bg-gray-50 dark:bg-slate-700/50 hover:bg-gray-100 dark:hover:bg-slate-700 text-gray-600 dark:text-gray-300 text-xs font-medium rounded-lg transition-colors border border-gray-200 dark:border-slate-600"
                     >
                       <KeyRound size={14} />
                       Cambiar Clave
@@ -183,7 +183,7 @@ export default function TechniciansPage() {
                     
                     <button 
                       onClick={() => toggleActiveStatus(tech)}
-                      className={`flex-none p-1.5 rounded-lg border transition-colors ${tech.active ? 'bg-red-50 hover:bg-red-100 text-red-600 border-red-200' : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-600 border-emerald-200'}`}
+                      className={`flex-none p-1.5 rounded-lg border transition-colors ${tech.active ? 'bg-red-50 hover:bg-red-100 text-red-600 border-red-200 dark:bg-red-900/30 dark:hover:bg-red-900/50 dark:text-red-400 dark:border-red-800/30' : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-600 border-emerald-200 dark:bg-emerald-900/30 dark:hover:bg-emerald-900/50 dark:text-emerald-400 dark:border-emerald-800/30'}`}
                       title={tech.active ? "Desactivar técnico" : "Activar técnico"}
                     >
                       {tech.active ? <PowerOff size={16} /> : <Power size={16} />}
