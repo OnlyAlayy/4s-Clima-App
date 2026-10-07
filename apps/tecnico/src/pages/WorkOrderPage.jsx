@@ -46,7 +46,7 @@ export default function WorkOrderPage() {
   const wo = currentOrder;
   const statusColors = getStatusColor(wo.status);
   const isInProgress = wo.status === WORK_ORDER_STATUS.IN_PROGRESS;
-  const isPending = wo.status === WORK_ORDER_STATUS.PENDING;
+  const isPending = !wo.status || wo.status === WORK_ORDER_STATUS.PENDING || wo.status === 'unassigned';
   const isCompleted = wo.status === WORK_ORDER_STATUS.COMPLETED;
 
   return (

@@ -72,43 +72,79 @@ export function useRealtimeNotifications(profile) {
         (payload) => {
           console.log('Nueva orden recibida por realtime:', payload);
           const newOrder = payload.new;
-
-          // 1. Mostrar Toast en la app
-          toast.success(
-            `¡Nueva asignación!\nOT: ${newOrder.order_number || 'Pendiente'}`, 
-            { 
-              duration: 5000,
-              style: {
-                borderRadius: '16px',
-                background: '#fff',
-                color: '#1e293b',
-                boxShadow: '0 8px 30px rgba(0,0,0,0.1)',
-                padding: '16px',
-                fontWeight: '600'
-              }
-            }
+          showNotification(
+            'Nueva Orden de Trabajo',
+            `¡Nueva asignación! OT: ${newOrder.order_number || 'Pendiente'}`
           );
-
-          // 2. Si tiene permisos, mostrar Notificación Nativa (sirve si minimizó la PWA pero el tab sigue abierto)
-          if ('Notification' in window && Notification.permission === 'granted') {
-            const notification = new Notification('Nueva Orden de Trabajo', {
-              body: `Te han asignado la OT ${newOrder.order_number || 'Pendiente'}.`,
-              icon: '/icons/icon-192.png',
-              badge: '/icons/icon-192.png',
-              vibrate: [200, 100, 200]
-            });
-
-            notification.onclick = () => {
-              window.focus();
-              notification.close();
-            };
-          }
-          
-          // Disparar evento para que Dashboard recargue la lista
           window.dispatchEvent(new CustomEvent('work_orders_updated'));
         }
       )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'work_orders',
+          filter: `assigned_to=eq.${userId}`
+        },
+        (payload) => {
+          console.log('Orden actualizada por realtime:', payload);
+          const newOrder = payload.new;
+          const oldOrder = payload.old;
+          
+          if (!oldOrder) return; // Si no hay old (a veces supabase no manda old si no hay REPLICA IDENTITY FULL, pero por defecto envia el id)
+          
+          let title = '';
+          let body = '';
+
+          // Detectar cancelación
+          if (newOrder.status === 'cancelled' && oldOrder.status !== 'cancelled') {
+            title = 'Orden Cancelada';
+            body = `La orden ${newOrder.order_number || 'N/D'} fue cancelada.`;
+          }
+          // Detectar cambio de fecha/hora
+          else if (
+            (newOrder.scheduled_date && newOrder.scheduled_date !== oldOrder.scheduled_date) ||
+            (newOrder.scheduled_time && newOrder.scheduled_time !== oldOrder.scheduled_time)
+          ) {
+            title = 'Reprogramación';
+            body = `La orden ${newOrder.order_number || 'N/D'} fue reprogramada.`;
+          }
+
+          if (title) {
+            showNotification(title, body);
+            window.dispatchEvent(new CustomEvent('work_orders_updated'));
+          }
+        }
+      )
       .subscribe();
+
+    function showNotification(title, body) {
+      toast.success(`${title}\n${body}`, { 
+        duration: 5000,
+        style: {
+          borderRadius: '16px',
+          background: '#fff',
+          color: '#1e293b',
+          boxShadow: '0 8px 30px rgba(0,0,0,0.1)',
+          padding: '16px',
+          fontWeight: '600'
+        }
+      });
+
+      if ('Notification' in window && Notification.permission === 'granted') {
+        const notification = new Notification(title, {
+          body,
+          icon: '/icons/icon-192.png',
+          badge: '/icons/icon-192.png',
+          vibrate: [200, 100, 200]
+        });
+        notification.onclick = () => {
+          window.focus();
+          notification.close();
+        };
+      }
+    }
 
     return () => {
       supabase.removeChannel(channel);
