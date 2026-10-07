@@ -104,13 +104,13 @@ export default function ExtrasPage() {
         <div className="flex items-center gap-3">
           <button
             onClick={() => navigate(-1)}
-            className="w-10 h-10 rounded-xl bg-white flex items-center justify-center active:bg-surface-dark-tertiary transition-colors"
+            className="w-10 h-10 rounded-xl bg-white dark:bg-slate-900 flex items-center justify-center border border-gray-200 dark:border-slate-700 active:bg-gray-50 dark:active:bg-slate-800 transition-colors shadow-sm"
           >
-            <ArrowLeft size={20} />
+            <ArrowLeft size={20} className="text-gray-700 dark:text-gray-300" />
           </button>
           <div className="flex-1">
-            <h1 className="text-lg font-bold text-slate-900">Materiales Extra</h1>
-            <p className="text-xs text-gray-500">Registrar repuestos o insumos</p>
+            <h1 className="text-lg font-bold text-slate-900 dark:text-white">Materiales Extra</h1>
+            <p className="text-xs text-gray-500 dark:text-gray-400">Registrar repuestos o insumos</p>
           </div>
         </div>
       </div>
@@ -181,7 +181,7 @@ export default function ExtrasPage() {
               {extras.map((extra) => (
                 <div key={extra.id} className="card py-3 px-4 flex items-center justify-between">
                   <div>
-                    <p className="text-slate-900 font-medium text-sm">{extra.description}</p>
+                    <p className="text-slate-900 dark:text-white font-medium text-sm">{extra.description}</p>
                     <p className="text-brand-400 text-xs font-mono mt-0.5">
                       {extra.quantity} {UNIT_OPTIONS.find(u => u.value === extra.unit)?.label || extra.unit}
                     </p>

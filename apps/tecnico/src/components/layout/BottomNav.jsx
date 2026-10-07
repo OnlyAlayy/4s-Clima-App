@@ -34,7 +34,7 @@ export default function BottomNav() {
               <>
                 <div className="relative">
                   {isActive && (
-                    <div className="absolute -inset-2 bg-brand-50 rounded-full" />
+                    <div className="absolute -inset-2 bg-brand-50 dark:bg-brand-900/30 rounded-full" />
                   )}
                   <Icon
                     size={24}

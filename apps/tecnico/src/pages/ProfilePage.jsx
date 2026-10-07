@@ -43,17 +43,17 @@ export default function ProfilePage() {
   return (
     <div className="page-container">
       <div className="page-header">
-        <h1 className="text-lg font-bold text-slate-900">Mi Perfil</h1>
+        <h1 className="text-lg font-bold text-slate-900 dark:text-white">Mi Perfil</h1>
       </div>
 
       <div className="space-y-4 animate-slide-up">
         {/* Avatar y datos */}
         <div className="card flex items-center gap-4">
           <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center flex-shrink-0">
-            <User size={28} className="text-slate-900" />
+            <User size={28} className="text-white" />
           </div>
           <div className="flex-1 min-w-0">
-            <h2 className="text-slate-900 font-semibold text-lg truncate">
+            <h2 className="text-slate-900 dark:text-white font-semibold text-lg truncate">
               {profile?.name || 'Técnico'}
             </h2>
             <p className="text-gray-500 text-sm truncate">{profile?.email || ''}</p>
@@ -65,16 +65,16 @@ export default function ProfilePage() {
 
         {/* Estado de conexión */}
         <div className="card">
-          <h3 className="text-sm font-semibold text-gray-600 mb-3">Estado del Sistema</h3>
+          <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 mb-3">Estado del Sistema</h3>
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-sm">
                 {isOnline ? (
-                  <Wifi size={16} className="text-emerald-400" />
+                  <Wifi size={16} className="text-emerald-400 dark:text-emerald-500" />
                 ) : (
-                  <WifiOff size={16} className="text-red-400" />
+                  <WifiOff size={16} className="text-red-400 dark:text-red-500" />
                 )}
-                <span className="text-gray-500">Conexión</span>
+                <span className="text-gray-500 dark:text-gray-300">Conexión</span>
               </div>
               <span className={`text-sm font-medium ${isOnline ? 'text-emerald-400' : 'text-red-400'}`}>
                 {isOnline ? 'En línea' : 'Sin conexión'}
@@ -83,8 +83,8 @@ export default function ProfilePage() {
 
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-sm">
-                <HardDrive size={16} className="text-brand-400" />
-                <span className="text-gray-500">Datos pendientes</span>
+                <HardDrive size={16} className="text-brand-400 dark:text-brand-500" />
+                <span className="text-gray-500 dark:text-gray-300">Datos pendientes</span>
               </div>
               <span className={`text-sm font-medium ${pendingCount > 0 ? 'text-amber-400' : 'text-gray-500'}`}>
                 {pendingCount} {pendingCount === 1 ? 'operación' : 'operaciones'}
@@ -116,7 +116,7 @@ export default function ProfilePage() {
 
         {/* Apariencia */}
         <div className="card">
-          <h3 className="text-sm font-semibold text-gray-600 mb-3">Apariencia</h3>
+          <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 mb-3">Apariencia</h3>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-sm">
               {isDark ? (
@@ -124,7 +124,7 @@ export default function ProfilePage() {
               ) : (
                 <Sun size={16} className="text-amber-500" />
               )}
-              <span className="text-gray-600">Modo Oscuro</span>
+              <span className="text-gray-600 dark:text-gray-300">Modo Oscuro</span>
             </div>
             
             <button

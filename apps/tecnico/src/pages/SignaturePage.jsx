@@ -135,14 +135,14 @@ export default function SignaturePage() {
         <div className="flex items-center gap-3">
           <button
             onClick={() => navigate(-1)}
-            className="w-10 h-10 rounded-xl bg-white flex items-center justify-center active:bg-surface-dark-tertiary transition-colors"
+            className="w-10 h-10 rounded-xl bg-white dark:bg-slate-900 flex items-center justify-center border border-gray-200 dark:border-slate-700 active:bg-gray-50 dark:active:bg-slate-800 transition-colors shadow-sm"
             aria-label="Volver"
           >
-            <ArrowLeft size={20} />
+            <ArrowLeft size={20} className="text-gray-700 dark:text-gray-300" />
           </button>
           <div>
-            <h1 className="text-lg font-bold text-slate-900">Firma del Cliente</h1>
-            <p className="text-xs text-gray-500">Confirmación del trabajo realizado</p>
+            <h1 className="text-lg font-bold text-slate-900 dark:text-white">Firma del Cliente</h1>
+            <p className="text-xs text-gray-500 dark:text-gray-400">Confirmación del trabajo realizado</p>
           </div>
         </div>
       </div>
@@ -222,8 +222,8 @@ export default function SignaturePage() {
       </div>
 
       {/* Botón confirmar */}
-      <div className="fixed bottom-20 left-0 right-0 px-4 pb-4 pt-2 bg-gradient-to-t from-surface-dark via-surface-dark to-transparent z-20">
-        <div className="max-w-lg mx-auto">
+      <div className="fixed bottom-20 left-0 right-0 px-4 pb-4 pt-2 bg-gradient-to-t from-gray-50 via-gray-50 dark:from-slate-950 dark:via-slate-950 to-transparent z-20 pointer-events-none">
+        <div className="max-w-lg mx-auto pointer-events-auto">
           <button
             onClick={handleSave}
             disabled={isEmpty || !signerName.trim() || isSaving}

@@ -84,11 +84,11 @@ export default function WorkOrdersKanban({ initialOrders, onOrderUpdated }) {
     <DragDropContext onDragEnd={onDragEnd}>
       <div className="flex flex-col md:flex-row gap-6 min-h-[600px] overflow-x-auto pb-4">
         {COLUMNS.map((col) => (
-          <div key={col.id} className="flex-1 min-w-[300px] flex flex-col bg-gray-50 rounded-xl border border-gray-200">
-            <div className={`p-4 border-t-4 ${col.color.split(' ')[0]} rounded-t-xl bg-white border-b border-gray-200`}>
-              <h3 className="font-bold text-gray-800 flex justify-between items-center">
+          <div key={col.id} className="flex-1 min-w-[300px] flex flex-col bg-gray-50 dark:bg-slate-900/40 rounded-xl border border-gray-200 dark:border-slate-700">
+            <div className={`p-4 border-t-4 ${col.color.split(' ')[0]} rounded-t-xl bg-white dark:bg-slate-800 border-b border-gray-200 dark:border-slate-700`}>
+              <h3 className="font-bold text-gray-800 dark:text-white flex justify-between items-center">
                 {col.title}
-                <span className="bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded-full">
+                <span className="bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-gray-300 text-xs px-2 py-1 rounded-full">
                   {columns[col.id]?.length || 0}
                 </span>
               </h3>
@@ -104,20 +104,20 @@ export default function WorkOrdersKanban({ initialOrders, onOrderUpdated }) {
                   {columns[col.id]?.map((order, index) => (
                     <Draggable key={order.id} draggableId={order.id} index={index}>
                       {(provided, snapshot) => (
-                        <div
-                          ref={provided.innerRef}
-                          {...provided.draggableProps}
-                          {...provided.dragHandleProps}
-                          className={`bg-white p-4 mb-3 rounded-lg shadow-sm border border-gray-200 cursor-grab active:cursor-grabbing transition-shadow ${snapshot.isDragging ? 'shadow-lg border-brand-300' : 'hover:shadow-md'}`}
-                        >
+                          <div
+                            ref={provided.innerRef}
+                            {...provided.draggableProps}
+                            {...provided.dragHandleProps}
+                            className={`bg-white dark:bg-slate-800 p-4 mb-3 rounded-lg shadow-sm border border-gray-200 dark:border-slate-700 cursor-grab active:cursor-grabbing transition-shadow ${snapshot.isDragging ? 'shadow-lg border-brand-300' : 'hover:shadow-md'}`}
+                          >
                           <div className="flex justify-between items-start mb-2">
-                            <span className="text-xs font-mono font-semibold text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                            <span className="text-xs font-mono font-semibold text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-slate-700 px-2 py-1 rounded">
                               #{order.order_number || order.id.slice(0, 8)}
                             </span>
-                            <span className="text-xs text-gray-400">{formatDate(order.scheduled_date)}</span>
+                            <span className="text-xs text-gray-400 dark:text-slate-500">{formatDate(order.scheduled_date)}</span>
                           </div>
-                          <h4 className="font-semibold text-gray-900 mb-1 leading-tight">{order.client?.name || 'Cliente sin nombre'}</h4>
-                          <p className="text-sm text-gray-600 mb-3">{order.plant?.name || 'Planta principal'}</p>
+                          <h4 className="font-semibold text-gray-900 dark:text-white mb-1 leading-tight">{order.client?.name || 'Cliente sin nombre'}</h4>
+                          <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">{order.plant?.name || 'Planta principal'}</p>
                           
                           <div className="flex items-center justify-between pt-3 border-t border-gray-100">
                             <div className="flex items-center gap-2">

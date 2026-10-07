@@ -9,12 +9,14 @@ import {
 import { supabase } from '@4s-clima/shared/supabase';
 import { WORK_ORDER_STATUS } from '@4s-clima/shared/constants';
 import { formatDate, formatCurrency, getStatusLabel, getStatusColor } from '@4s-clima/shared/utils';
+import { useDarkMode } from '../hooks/useDarkMode';
 
 /**
  * Dashboard administrativo.
  * Vista general con KPIs, trabajos recientes, extras pendientes de facturar, y gráficos de rendimiento.
  */
 export default function DashboardPage() {
+  const { isDark } = useDarkMode();
   const [chartData, setChartData] = useState([]);
   const [stats, setStats] = useState({
     totalOrders: 0,
@@ -148,8 +150,8 @@ export default function DashboardPage() {
     <div>
       {/* Page header */}
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-        <p className="text-gray-500 text-sm mt-1">
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Dashboard</h1>
+        <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">
           Resumen general del día — {formatDate(new Date())}
         </p>
       </div>
@@ -212,18 +214,25 @@ export default function DashboardPage() {
         {/* Gráfico de Rendimiento */}
         <div className="card lg:col-span-2 shadow-sm border border-gray-100 flex flex-col">
           <div className="mb-4">
-            <h2 className="text-lg font-semibold text-gray-900">Rendimiento Semanal</h2>
-            <p className="text-xs text-gray-500">Órdenes completadas en los últimos 7 días</p>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Rendimiento Semanal</h2>
+            <p className="text-xs text-gray-500 dark:text-gray-400">Órdenes completadas en los últimos 7 días</p>
           </div>
           <div className="flex-1 min-h-[250px] -ml-6">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDark ? "#334155" : "#f1f5f9"} />
                 <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} />
                 <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} allowDecimals={false} />
                 <Tooltip 
-                  cursor={{ fill: '#f8fafc' }}
-                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                  cursor={{ fill: isDark ? '#1e293b' : '#f8fafc' }}
+                  contentStyle={{ 
+                    borderRadius: '12px', 
+                    border: isDark ? '1px solid #334155' : 'none', 
+                    boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+                    backgroundColor: isDark ? '#0f172a' : '#fff',
+                    color: isDark ? '#f1f5f9' : '#0f172a'
+                  }}
+                  itemStyle={{ color: isDark ? '#60a5fa' : '#3b82f6' }}
                 />
                 <Bar dataKey="Completadas" fill="#3b82f6" radius={[4, 4, 0, 0]} maxBarSize={40} />
               </BarChart>
@@ -257,7 +266,7 @@ export default function DashboardPage() {
       {/* Trabajos recientes */}
       <div className="card">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-gray-900">Trabajos Recientes</h2>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Trabajos Recientes</h2>
           <a href="/ordenes" className="text-sm text-brand-500 hover:text-brand-600 font-medium">
             Ver todos →
           </a>
@@ -293,7 +302,7 @@ export default function DashboardPage() {
                       <td className="font-mono text-xs text-gray-600">
                         {order.order_number || order.id?.slice(0, 8)}
                       </td>
-                      <td className="font-medium text-gray-900">
+                      <td className="font-medium text-gray-900 dark:text-white">
                         {order.client?.name || '-'}
                       </td>
                       <td className="text-gray-600">

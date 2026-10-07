@@ -99,8 +99,8 @@ export default function TechniciansPage() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Técnicos</h1>
-          <p className="text-gray-500 text-sm mt-1">{totalCount} técnicos registrados</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Técnicos</h1>
+          <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">{totalCount} técnicos registrados</p>
         </div>
         {isOwner && (
           <button 
@@ -121,8 +121,8 @@ export default function TechniciansPage() {
         </div>
       ) : technicians.length === 0 ? (
         <div className="text-center py-16 card">
-          <Users size={40} className="text-gray-300 mx-auto mb-3" />
-          <p className="text-gray-400">No hay técnicos registrados.</p>
+          <Users size={40} className="text-gray-300 dark:text-slate-600 mx-auto mb-3" />
+          <p className="text-gray-400 dark:text-slate-500">No hay técnicos registrados.</p>
         </div>
       ) : (
         <div className="space-y-6">
@@ -130,13 +130,13 @@ export default function TechniciansPage() {
             {technicians.map((tech) => (
               <div key={tech.id} className={`card ${!tech.active ? 'opacity-60' : ''}`}>
                 <div className="flex items-center gap-3 mb-4">
-                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${tech.active ? 'bg-gradient-to-br from-brand-500 to-brand-700' : 'bg-gray-300'}`}>
+                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${tech.active ? 'bg-gradient-to-br from-brand-500 to-brand-700' : 'bg-gray-300 dark:bg-slate-700'}`}>
                     <span className="text-white font-bold text-lg">
                       {tech.name?.[0]?.toUpperCase() || '?'}
                     </span>
                   </div>
                   <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold text-gray-900 truncate">{tech.name}</h3>
+                    <h3 className="font-semibold text-gray-900 dark:text-white truncate">{tech.name}</h3>
                     <div className="flex items-center gap-1.5">
                       <span className={`w-2 h-2 rounded-full ${tech.active ? 'bg-emerald-500' : 'bg-gray-400'}`} />
                       <span className="text-xs text-gray-500">

@@ -60,12 +60,13 @@ export default function CalendarPage() {
       const calendarEvents = data
         .filter(wo => wo.scheduled_date)
         .map(wo => {
-          let startDate = new Date(wo.scheduled_date + 'T00:00:00');
-          let endDate = new Date(wo.scheduled_date + 'T23:59:59');
+          const [year, month, day] = wo.scheduled_date.split('-').map(Number);
+          let startDate = new Date(year, month - 1, day, 8, 0, 0); // Default 08:00
+          let endDate = new Date(year, month - 1, day, 10, 0, 0);
 
           if (wo.scheduled_time) {
-            startDate = new Date(`${wo.scheduled_date}T${wo.scheduled_time}`);
-            // By default let's assume a work order takes 2 hours
+            const [hours, minutes] = wo.scheduled_time.split(':').map(Number);
+            startDate = new Date(year, month - 1, day, hours, minutes, 0);
             endDate = new Date(startDate.getTime() + 2 * 60 * 60 * 1000);
           }
 
@@ -113,11 +114,11 @@ export default function CalendarPage() {
   return (
     <div className="h-full flex flex-col">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Calendario de Programación</h1>
-        <p className="text-gray-500 text-sm mt-1">Visualiza las órdenes de trabajo programadas</p>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Calendario de Programación</h1>
+        <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">Visualiza las órdenes de trabajo programadas</p>
       </div>
 
-      <div className="flex-1 bg-white p-4 rounded-xl border border-gray-200 shadow-sm min-h-[600px]">
+      <div className="flex-1 bg-white dark:bg-slate-800 p-4 rounded-xl border border-gray-200 dark:border-slate-700 shadow-sm min-h-[700px] calendar-container">
         {isLoading ? (
           <div className="h-full flex items-center justify-center">
             <div className="w-8 h-8 border-4 border-brand-500 border-t-transparent rounded-full animate-spin"></div>
@@ -128,19 +129,23 @@ export default function CalendarPage() {
             events={events}
             startAccessor="start"
             endAccessor="end"
-            style={{ height: '100%' }}
+            style={{ minHeight: 650 }}
+            defaultView="week"
             messages={{
               next: "Sig",
               previous: "Ant",
               today: "Hoy",
               month: "Mes",
               week: "Semana",
-              day: "Día"
+              day: "Día",
+              agenda: "Agenda"
             }}
             culture='es'
             onSelectEvent={handleSelectEvent}
             eventPropGetter={eventStyleGetter}
             popup
+            step={30}
+            timeslots={2}
           />
         )}
       </div>

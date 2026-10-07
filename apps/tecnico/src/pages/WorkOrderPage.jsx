@@ -52,30 +52,30 @@ export default function WorkOrderPage() {
   return (
     <div className="page-container">
       {/* Header */}
-      <div className="page-header bg-gray-50/90 backdrop-blur-xl border-b border-gray-200">
+      <div className="page-header bg-gray-50/90 dark:bg-slate-950/90 backdrop-blur-xl border-b border-gray-200 dark:border-slate-800">
         <div className="flex items-center gap-3">
           <button
             onClick={() => navigate(-1)}
-            className="w-10 h-10 rounded-xl bg-white border border-gray-200 flex items-center justify-center hover:bg-gray-50 active:bg-gray-100 transition-colors shadow-sm"
+            className="w-10 h-10 rounded-xl bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 flex items-center justify-center hover:bg-gray-50 dark:hover:bg-slate-800 active:bg-gray-100 dark:active:bg-slate-700 transition-colors shadow-sm"
             aria-label="Volver"
           >
-            <ArrowLeft size={20} className="text-gray-700" />
+            <ArrowLeft size={20} className="text-gray-700 dark:text-gray-300" />
           </button>
           <div className="flex-1 min-w-0">
-            <h1 className="text-lg font-bold text-slate-900 truncate">
+            <h1 className="text-lg font-bold text-slate-900 dark:text-white truncate">
               {wo.order_number || 'Orden de Trabajo'}
             </h1>
             <div className="flex items-center gap-2 mt-0.5">
               <span className={`badge text-[10px] shadow-sm border ${
                 wo.status === WORK_ORDER_STATUS.IN_PROGRESS 
-                  ? 'bg-brand-50 text-brand-700 border-brand-200' 
+                  ? 'bg-brand-50 text-brand-700 border-brand-200 dark:bg-brand-900/30 dark:text-brand-400 dark:border-brand-800' 
                   : wo.status === WORK_ORDER_STATUS.COMPLETED
-                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                  : 'bg-white text-gray-600 border-gray-200'
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:border-emerald-800'
+                  : 'bg-white text-gray-600 border-gray-200 dark:bg-slate-800 dark:text-gray-300 dark:border-slate-700'
               }`}>
                 {getStatusLabel(wo.status)}
               </span>
-              <span className="text-xs font-semibold text-gray-500">
+              <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">
                 {WORK_ORDER_TYPE_LABELS[wo.type]}
               </span>
             </div>
@@ -86,35 +86,35 @@ export default function WorkOrderPage() {
       <div className="space-y-4 animate-slide-up">
         {/* Programación */}
         <div className="card">
-          <div className="flex items-center gap-2 mb-4 pb-3 border-b border-gray-100">
+          <div className="flex items-center gap-2 mb-4 pb-3 border-b border-gray-100 dark:border-slate-800">
             <Clock size={18} className="text-brand-500" />
-            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Programación</h3>
+            <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Programación</h3>
           </div>
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div>
-              <span className="text-gray-500 text-xs font-semibold uppercase tracking-wide block mb-1">Fecha</span>
-              <p className="text-slate-900 font-bold">{formatDate(wo.scheduled_date)}</p>
+              <span className="text-gray-500 dark:text-gray-400 text-xs font-semibold uppercase tracking-wide block mb-1">Fecha</span>
+              <p className="text-slate-900 dark:text-white font-bold">{formatDate(wo.scheduled_date)}</p>
             </div>
             <div>
-              <span className="text-gray-500 text-xs font-semibold uppercase tracking-wide block mb-1">Hora</span>
-              <p className="text-slate-900 font-bold">{wo.scheduled_time ? `${wo.scheduled_time.slice(0, 5)} hs` : 'A confirmar'}</p>
+              <span className="text-gray-500 dark:text-gray-400 text-xs font-semibold uppercase tracking-wide block mb-1">Hora</span>
+              <p className="text-slate-900 dark:text-white font-bold">{wo.scheduled_time ? `${wo.scheduled_time.slice(0, 5)} hs` : 'A confirmar'}</p>
             </div>
           </div>
         </div>
 
         {/* Cliente y planta */}
         <div className="card">
-          <div className="flex items-center gap-2 mb-4 pb-3 border-b border-gray-100">
+          <div className="flex items-center gap-2 mb-4 pb-3 border-b border-gray-100 dark:border-slate-800">
             <Building2 size={18} className="text-brand-500" />
-            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Cliente</h3>
+            <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Cliente</h3>
           </div>
-          <p className="text-slate-900 font-bold text-lg mb-3">
+          <p className="text-slate-900 dark:text-white font-bold text-lg mb-3">
             {wo.client?.name || 'N/D'}
           </p>
           {wo.plant && (
-            <div className="space-y-3 text-sm bg-gray-50 rounded-xl p-3 border border-gray-100">
-              <div className="flex items-start gap-2 text-gray-600 font-medium">
-                <MapPin size={16} className="mt-0.5 flex-shrink-0 text-gray-500" />
+            <div className="space-y-3 text-sm bg-gray-50 dark:bg-slate-800/50 rounded-xl p-3 border border-gray-100 dark:border-slate-800">
+              <div className="flex items-start gap-2 text-gray-600 dark:text-gray-300 font-medium">
+                <MapPin size={16} className="mt-0.5 flex-shrink-0 text-gray-500 dark:text-gray-400" />
                 <span>
                   {wo.plant.name}
                   {wo.plant.address && ` — ${wo.plant.address}`}
@@ -124,7 +124,7 @@ export default function WorkOrderPage() {
               {wo.plant.contact_phone && (
                 <a
                   href={`tel:${wo.plant.contact_phone}`}
-                  className="flex items-center gap-2 text-brand-600 font-semibold hover:text-brand-700 active:text-brand-800"
+                  className="flex items-center gap-2 text-brand-600 dark:text-brand-400 font-semibold hover:text-brand-700 dark:hover:text-brand-300 active:text-brand-800"
                 >
                   <Phone size={16} />
                   <span>{wo.plant.contact_name || 'Contacto'}: {wo.plant.contact_phone}</span>
@@ -135,7 +135,7 @@ export default function WorkOrderPage() {
                   href={`https://maps.google.com/?q=${encodeURIComponent(wo.plant.address)}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="mt-2 flex items-center justify-center gap-2 w-full py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-sm font-semibold transition-colors border border-blue-200"
+                  className="mt-2 flex items-center justify-center gap-2 w-full py-2 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/40 text-blue-700 dark:text-blue-400 rounded-lg text-sm font-semibold transition-colors border border-blue-200 dark:border-blue-800/50"
                 >
                   <Navigation size={16} />
                   Abrir en Google Maps
@@ -148,47 +148,47 @@ export default function WorkOrderPage() {
         {/* Equipo */}
         {wo.equipment && (
           <div className="card">
-            <div className="flex items-center gap-2 mb-4 pb-3 border-b border-gray-100">
+            <div className="flex items-center gap-2 mb-4 pb-3 border-b border-gray-100 dark:border-slate-800">
               <Wrench size={18} className="text-brand-500" />
-              <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Equipo</h3>
+              <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Equipo</h3>
             </div>
             <div className="space-y-3 text-sm">
               <div className="flex items-center justify-between">
-                <span className="text-gray-500 font-medium">Tipo</span>
-                <span className="text-slate-900 font-bold">
+                <span className="text-gray-500 dark:text-gray-400 font-medium">Tipo</span>
+                <span className="text-slate-900 dark:text-white font-bold">
                   {EQUIPMENT_TYPE_LABELS[wo.equipment.type] || wo.equipment.type}
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-gray-500 font-medium">Marca / Modelo</span>
-                <span className="text-slate-900 font-bold">
+                <span className="text-gray-500 dark:text-gray-400 font-medium">Marca / Modelo</span>
+                <span className="text-slate-900 dark:text-white font-bold">
                   {wo.equipment.brand} {wo.equipment.model}
                 </span>
               </div>
               {wo.equipment.serial_number && (
                 <div className="flex items-center justify-between">
-                  <span className="text-gray-500 font-medium flex items-center gap-1.5">
-                    <Hash size={14} className="text-gray-500" /> Serie
+                  <span className="text-gray-500 dark:text-gray-400 font-medium flex items-center gap-1.5">
+                    <Hash size={14} className="text-gray-500 dark:text-gray-400" /> Serie
                   </span>
-                  <span className="text-slate-900 font-mono font-bold bg-gray-100 px-2 py-0.5 rounded-md text-xs border border-gray-200">
+                  <span className="text-slate-900 dark:text-white font-mono font-bold bg-gray-100 dark:bg-slate-800 px-2 py-0.5 rounded-md text-xs border border-gray-200 dark:border-slate-700">
                     {wo.equipment.serial_number}
                   </span>
                 </div>
               )}
               {wo.equipment.capacity_btu && (
                 <div className="flex items-center justify-between">
-                  <span className="text-gray-500 font-medium flex items-center gap-1.5">
-                    <Thermometer size={14} className="text-gray-500" /> Capacidad
+                  <span className="text-gray-500 dark:text-gray-400 font-medium flex items-center gap-1.5">
+                    <Thermometer size={14} className="text-gray-500 dark:text-gray-400" /> Capacidad
                   </span>
-                  <span className="text-slate-900 font-bold">
+                  <span className="text-slate-900 dark:text-white font-bold">
                     {wo.equipment.capacity_btu.toLocaleString()} BTU
                   </span>
                 </div>
               )}
               {wo.equipment.location_description && (
-                <div className="mt-3 bg-blue-50/50 p-3 rounded-xl border border-blue-100 flex items-start gap-2">
-                  <MapPin size={18} className="text-blue-500 flex-shrink-0 mt-0.5" />
-                  <p className="text-blue-800 text-xs font-semibold leading-relaxed mt-0.5">
+                <div className="mt-3 bg-blue-50/50 dark:bg-blue-900/20 p-3 rounded-xl border border-blue-100 dark:border-blue-800/50 flex items-start gap-2">
+                  <MapPin size={18} className="text-blue-500 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+                  <p className="text-blue-800 dark:text-blue-300 text-xs font-semibold leading-relaxed mt-0.5">
                     {wo.equipment.location_description}
                   </p>
                 </div>
@@ -200,15 +200,15 @@ export default function WorkOrderPage() {
         {/* Observaciones */}
         {wo.observations && (
           <div className="card">
-            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider mb-2 pb-2 border-b border-gray-100">Observaciones</h3>
-            <p className="text-gray-600 text-sm leading-relaxed font-medium">{wo.observations}</p>
+            <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider mb-2 pb-2 border-b border-gray-100 dark:border-slate-800">Observaciones</h3>
+            <p className="text-gray-600 dark:text-gray-300 text-sm leading-relaxed font-medium">{wo.observations}</p>
           </div>
         )}
       </div>
 
       {/* Acciones fijas en el bottom */}
-      <div className="fixed bottom-0 left-0 right-0 px-4 pb-6 pt-4 bg-gradient-to-t from-gray-50 via-gray-50 to-transparent z-20">
-        <div className="max-w-lg mx-auto">
+      <div className="fixed bottom-0 left-0 right-0 px-4 pb-6 pt-4 bg-gradient-to-t from-gray-50 via-gray-50 dark:from-slate-950 dark:via-slate-950 to-transparent z-20 pointer-events-none">
+        <div className="max-w-lg mx-auto pointer-events-auto">
           {/* Botón iniciar trabajo */}
           {isPending && (
             <button

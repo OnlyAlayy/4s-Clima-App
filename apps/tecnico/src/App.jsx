@@ -5,6 +5,7 @@ import { useAuthStore } from './stores/authStore';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
 import { useRealtimeNotifications } from './hooks/useRealtimeNotifications';
 import { WifiOff } from 'lucide-react';
+import { useDarkMode } from './hooks/useDarkMode';
 
 // Layout
 import AppLayout from './components/layout/AppLayout';
@@ -49,6 +50,7 @@ export default function App() {
   const isOnline = useOnlineStatus();
   const initialize = useAuthStore((s) => s.initialize);
   const profile = useAuthStore((s) => s.profile);
+  useDarkMode(); // Initialize dark mode globally
 
   // Inicializar auth al montar la app
   useEffect(() => {

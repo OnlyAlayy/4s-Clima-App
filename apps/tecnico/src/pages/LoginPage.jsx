@@ -37,13 +37,13 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-6 bg-surface-dark">
+    <div className="min-h-screen flex flex-col items-center justify-center px-6 bg-gray-50 dark:bg-slate-950 transition-colors">
       {/* Logo y marca */}
       <div className="flex flex-col items-center mb-10 animate-fade-in">
         <div className="h-16 flex items-center justify-center mb-2">
-          <img src="/logo4sclima.webp" alt="4S Clima Logo" className="h-full w-auto object-contain brightness-0 invert" />
+          <img src="/logo4sclima.webp" alt="4S Clima Logo" className="h-full w-auto object-contain dark:brightness-0 dark:invert" />
         </div>
-        <p className="text-gray-500 text-sm mt-1 uppercase tracking-widest font-semibold">Panel del Técnico</p>
+        <p className="text-gray-500 dark:text-gray-400 text-sm mt-1 uppercase tracking-widest font-semibold">Panel del Técnico</p>
       </div>
 
       {/* Formulario */}
@@ -123,7 +123,7 @@ export default function LoginPage() {
       </form>
 
       {/* Footer */}
-      <p className="text-gray-600 text-xs mt-10">
+      <p className="text-gray-600 dark:text-gray-400 text-xs mt-10">
         © {new Date().getFullYear()} 4S Clima — v1.0
       </p>
     </div>

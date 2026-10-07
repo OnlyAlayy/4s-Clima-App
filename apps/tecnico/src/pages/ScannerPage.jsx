@@ -86,23 +86,23 @@ export default function ScannerPage() {
   return (
     <div className="page-container h-full flex flex-col">
       <div className="page-header">
-        <h1 className="text-2xl font-bold text-slate-900">Buscar Equipo</h1>
-        <p className="text-sm text-gray-500 mt-1">
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Buscar Equipo</h1>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
           Escaneá el código QR o ingresá el código manual.
         </p>
       </div>
 
-      <div className="flex bg-gray-100 p-1 rounded-xl mb-6">
+      <div className="flex bg-gray-100 dark:bg-slate-800 p-1 rounded-xl mb-6">
         <button
           onClick={() => { setMode('qr'); setEquipment(null); setError(''); }}
-          className={`flex-1 py-2 text-sm font-semibold rounded-lg flex items-center justify-center gap-2 transition-all ${mode === 'qr' ? 'bg-white text-brand-600 shadow-sm' : 'text-gray-500'}`}
+          className={`flex-1 py-2 text-sm font-semibold rounded-lg flex items-center justify-center gap-2 transition-all ${mode === 'qr' ? 'bg-white dark:bg-slate-700 text-brand-600 dark:text-brand-400 shadow-sm' : 'text-gray-500 dark:text-gray-400'}`}
         >
           <Camera size={18} />
           Escáner QR
         </button>
         <button
           onClick={() => { setMode('manual'); setEquipment(null); setError(''); }}
-          className={`flex-1 py-2 text-sm font-semibold rounded-lg flex items-center justify-center gap-2 transition-all ${mode === 'manual' ? 'bg-white text-brand-600 shadow-sm' : 'text-gray-500'}`}
+          className={`flex-1 py-2 text-sm font-semibold rounded-lg flex items-center justify-center gap-2 transition-all ${mode === 'manual' ? 'bg-white dark:bg-slate-700 text-brand-600 dark:text-brand-400 shadow-sm' : 'text-gray-500 dark:text-gray-400'}`}
         >
           <QrCode size={18} />
           Manual
@@ -114,8 +114,8 @@ export default function ScannerPage() {
           <>
             {mode === 'qr' && (
               <div className="flex-1 flex flex-col">
-                <div id="qr-reader" className="w-full rounded-2xl overflow-hidden shadow-sm border border-gray-200"></div>
-                <p className="text-center text-sm text-gray-500 mt-4">
+                <div id="qr-reader" className="w-full rounded-2xl overflow-hidden shadow-sm border border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900"></div>
+                <p className="text-center text-sm text-gray-500 dark:text-gray-400 mt-4">
                   Apuntá la cámara al código QR del equipo
                 </p>
               </div>
@@ -123,11 +123,11 @@ export default function ScannerPage() {
 
             {mode === 'manual' && (
               <form onSubmit={handleManualSubmit} className="flex-1">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Código de Equipo / Nro de Serie
                 </label>
                 <div className="relative">
-                  <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
                   <input
                     type="text"
                     value={manualCode}
@@ -148,38 +148,38 @@ export default function ScannerPage() {
             )}
 
             {error && (
-              <div className="mt-4 p-4 bg-red-50 rounded-xl flex items-start gap-3">
+              <div className="mt-4 p-4 bg-red-50 dark:bg-red-900/30 rounded-xl flex items-start gap-3 border border-red-100 dark:border-red-800">
                 <AlertCircle size={20} className="text-red-500 shrink-0" />
-                <p className="text-sm text-red-700">{error}</p>
+                <p className="text-sm text-red-700 dark:text-red-400">{error}</p>
               </div>
             )}
           </>
         ) : (
           <div className="card animate-in fade-in slide-in-from-bottom-4">
-            <div className="w-12 h-12 bg-brand-100 text-brand-600 rounded-full flex items-center justify-center mb-4">
+            <div className="w-12 h-12 bg-brand-100 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400 rounded-full flex items-center justify-center mb-4">
               <Package size={24} />
             </div>
-            <h2 className="text-xl font-bold text-gray-900 mb-1">
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-1">
               {equipment.brand} {equipment.model}
             </h2>
-            <p className="text-sm text-gray-500 mb-4 font-mono">{equipment.id}</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4 font-mono">{equipment.id}</p>
             
             <div className="space-y-3 mb-6">
-              <div className="flex justify-between py-2 border-b border-gray-50">
-                <span className="text-gray-500 text-sm">Tipo</span>
-                <span className="font-medium text-gray-900">{EQUIPMENT_TYPE_LABELS[equipment.type] || equipment.type}</span>
+              <div className="flex justify-between py-2 border-b border-gray-50 dark:border-slate-800">
+                <span className="text-gray-500 dark:text-gray-400 text-sm">Tipo</span>
+                <span className="font-medium text-gray-900 dark:text-white">{EQUIPMENT_TYPE_LABELS[equipment.type] || equipment.type}</span>
               </div>
-              <div className="flex justify-between py-2 border-b border-gray-50">
-                <span className="text-gray-500 text-sm">N° Serie</span>
-                <span className="font-medium text-gray-900">{equipment.serial_number || '-'}</span>
+              <div className="flex justify-between py-2 border-b border-gray-50 dark:border-slate-800">
+                <span className="text-gray-500 dark:text-gray-400 text-sm">N° Serie</span>
+                <span className="font-medium text-gray-900 dark:text-white">{equipment.serial_number || '-'}</span>
               </div>
-              <div className="flex justify-between py-2 border-b border-gray-50">
-                <span className="text-gray-500 text-sm">Planta</span>
-                <span className="font-medium text-gray-900">{equipment.plant?.name || '-'}</span>
+              <div className="flex justify-between py-2 border-b border-gray-50 dark:border-slate-800">
+                <span className="text-gray-500 dark:text-gray-400 text-sm">Planta</span>
+                <span className="font-medium text-gray-900 dark:text-white">{equipment.plant?.name || '-'}</span>
               </div>
-              <div className="flex justify-between py-2 border-b border-gray-50">
-                <span className="text-gray-500 text-sm">Ubicación</span>
-                <span className="font-medium text-gray-900">{equipment.location_description || '-'}</span>
+              <div className="flex justify-between py-2 border-b border-gray-50 dark:border-slate-800">
+                <span className="text-gray-500 dark:text-gray-400 text-sm">Ubicación</span>
+                <span className="font-medium text-gray-900 dark:text-white">{equipment.location_description || '-'}</span>
               </div>
             </div>
 

@@ -92,12 +92,36 @@ export default function ClientDetailsPage() {
           <ArrowLeft size={20} />
         </button>
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">{client.name}</h1>
-          <p className="text-sm text-gray-500">
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{client.name}</h1>
+            {client.active === false && (
+              <span className="px-2 py-0.5 bg-red-100 text-red-700 rounded-md text-xs font-semibold">Dado de baja</span>
+            )}
+          </div>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
             {client.cuit ? `CUIT: ${client.cuit}` : 'Sin CUIT'} 
             {client.contract_type && <span className="ml-2 px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-md text-xs uppercase font-semibold">{client.contract_type}</span>}
           </p>
         </div>
+      </div>
+      
+      {/* Botones de acción del cliente */}
+      <div className="flex justify-end gap-3 mb-6">
+        <button 
+          onClick={async () => {
+            if (!confirm(`¿Estás seguro de que querés ${client.active !== false ? 'dar de baja' : 'reactivar'} a este cliente?`)) return;
+            const newStatus = client.active === false ? true : false;
+            await supabase.from('clients').update({ active: newStatus }).eq('id', client.id);
+            loadClientData();
+          }}
+          className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
+            client.active !== false 
+              ? 'bg-red-50 text-red-600 hover:bg-red-100 border border-red-200' 
+              : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-200'
+          }`}
+        >
+          {client.active !== false ? 'Dar de baja' : 'Reactivar cliente'}
+        </button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -105,7 +129,7 @@ export default function ClientDetailsPage() {
         {/* Info del cliente */}
         <div className="lg:col-span-1 space-y-6">
           <div className="card space-y-4">
-            <h2 className="font-semibold text-gray-900 flex items-center gap-2">
+            <h2 className="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
               <Building2 size={18} className="text-brand-500" />
               Datos Generales
             </h2>

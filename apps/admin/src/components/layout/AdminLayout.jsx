@@ -7,7 +7,7 @@ import Sidebar from './Sidebar';
  */
 export default function AdminLayout() {
   return (
-    <div className="min-h-screen flex bg-gray-50">
+    <div className="min-h-screen flex bg-gray-50 dark:bg-slate-900 transition-colors duration-200">
       {/* Sidebar */}
       <Sidebar />
 

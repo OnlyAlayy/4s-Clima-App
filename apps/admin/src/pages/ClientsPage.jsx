@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Building2, Plus, Search, Phone, MapPin } from 'lucide-react';
+import { Building2, Plus, Search, Phone, MapPin, Archive, ArchiveRestore } from 'lucide-react';
 import { supabase } from '@4s-clima/shared/supabase';
 import CreateClientModal from '../components/CreateClientModal';
 
@@ -55,6 +55,15 @@ export default function ClientsPage() {
   }
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
+
+  const handleToggleActive = async (client) => {
+    const isActivating = client.active === false;
+    const action = isActivating ? 'reactivar' : 'dar de baja';
+    if (!confirm(`¿Estás seguro de que querés ${action} a ${client.name}?`)) return;
+    
+    await supabase.from('clients').update({ active: isActivating }).eq('id', client.id);
+    loadClients(page);
+  };
 
   return (
     <div>
@@ -113,7 +122,12 @@ export default function ClientsPage() {
                     {client.plants?.length || 0} plantas
                   </span>
                 </div>
-                <h3 className="font-semibold text-gray-900 mb-1">{client.name}</h3>
+                <h3 className="font-semibold text-gray-900 dark:text-white mb-1 flex items-center gap-2">
+                  {client.name}
+                  {client.active === false && (
+                    <span className="px-1.5 py-0.5 bg-red-100 text-red-700 rounded text-[10px] font-bold uppercase">Baja</span>
+                  )}
+                </h3>
                 {client.cuit && (
                   <p className="text-xs text-gray-500 mb-2">CUIT: {client.cuit}</p>
                 )}
@@ -129,13 +143,39 @@ export default function ClientsPage() {
                     <span>{client.contact_name}: {client.contact_phone}</span>
                   </div>
                 )}
-                {client.contract_type && (
-                  <div className="mt-3 pt-3 border-t border-gray-50">
-                    <span className="badge bg-emerald-50 text-emerald-700">
-                      {client.contract_type}
-                    </span>
+                <div className="mt-4 pt-3 border-t border-gray-50 flex justify-between items-center h-8">
+                  <div>
+                    {client.contract_type && (
+                      <span className="badge bg-emerald-50 text-emerald-700">
+                        {client.contract_type}
+                      </span>
+                    )}
                   </div>
-                )}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleToggleActive(client);
+                    }}
+                    className={`p-1.5 rounded-lg transition-colors flex items-center gap-1 text-xs font-medium ${
+                      client.active !== false
+                        ? 'text-gray-400 hover:text-red-600 hover:bg-red-50'
+                        : 'text-gray-400 hover:text-emerald-600 hover:bg-emerald-50'
+                    }`}
+                    title={client.active !== false ? "Dar de baja" : "Reactivar"}
+                  >
+                    {client.active !== false ? (
+                      <>
+                        <Archive size={14} /> 
+                        <span className="sr-only">Baja</span>
+                      </>
+                    ) : (
+                      <>
+                        <ArchiveRestore size={14} />
+                        <span className="sr-only">Activar</span>
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
             ))}
           </div>

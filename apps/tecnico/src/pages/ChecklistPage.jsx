@@ -167,27 +167,27 @@ export default function ChecklistPage() {
   return (
     <div className="page-container">
       {/* Header */}
-      <div className="page-header bg-white/90 backdrop-blur-xl border-b border-gray-200">
+      <div className="page-header bg-white/90 dark:bg-slate-950/90 backdrop-blur-xl border-b border-gray-200 dark:border-slate-800">
         <div className="flex items-center gap-3 mb-4 mt-2">
           <button
             onClick={() => navigate(-1)}
-            className="w-10 h-10 rounded-xl bg-white border border-gray-200 flex items-center justify-center active:bg-gray-100 hover:bg-gray-50 transition-colors shadow-sm"
+            className="w-10 h-10 rounded-xl bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 flex items-center justify-center active:bg-gray-100 dark:active:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors shadow-sm"
             aria-label="Volver"
           >
-            <ArrowLeft size={20} className="text-gray-700" />
+            <ArrowLeft size={20} className="text-gray-700 dark:text-gray-300" />
           </button>
           <div className="flex-1">
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight">Checklist</h1>
-            <p className="text-xs font-semibold text-gray-500">
+            <h1 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Checklist</h1>
+            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">
               {currentOrder?.client?.name} — {currentOrder?.equipment?.type}
             </p>
           </div>
-          <span className="text-sm font-bold bg-brand-50 text-brand-700 px-3 py-1.5 rounded-lg border border-brand-200 shadow-sm">
+          <span className="text-sm font-bold bg-brand-50 text-brand-700 dark:bg-brand-900/30 dark:text-brand-400 px-3 py-1.5 rounded-lg border border-brand-200 dark:border-brand-800 shadow-sm">
             {completed}/{total}
           </span>
         </div>
         {/* Barra de progreso */}
-        <div className="h-2 bg-gray-100 rounded-full overflow-hidden shadow-inner">
+        <div className="h-2 bg-gray-100 dark:bg-slate-800 rounded-full overflow-hidden shadow-inner">
           <div
             className="h-full bg-brand-500 rounded-full transition-all duration-500 ease-out"
             style={{ width: `${progress}%` }}
@@ -215,7 +215,7 @@ export default function ChecklistPage() {
       <div className="space-y-6 animate-slide-up pb-10">
         {Object.entries(categories).map(([catName, catItems]) => (
           <section key={catName}>
-            <h2 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3 px-2 flex items-center gap-2">
+            <h2 className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-3 px-2 flex items-center gap-2">
               <div className="w-1 h-3 bg-brand-500 rounded-full"></div>
               {catName}
             </h2>
@@ -226,7 +226,7 @@ export default function ChecklistPage() {
                     className="checklist-row shadow-sm"
                     data-status={item.status}
                   >
-                    <span className="text-sm font-medium text-slate-800 flex-1 leading-snug">
+                    <span className="text-sm font-medium text-slate-800 dark:text-slate-200 flex-1 leading-snug">
                       {item.item_name}
                     </span>
 
@@ -265,8 +265,8 @@ export default function ChecklistPage() {
                         onClick={() => setExpandedNote(expandedNote === item.id ? null : item.id)}
                         className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all shadow-sm border
                           ${notes[item.id]
-                            ? 'bg-brand-50 text-brand-600 border-brand-200'
-                            : 'bg-white text-gray-400 border-gray-200 active:bg-gray-50'
+                            ? 'bg-brand-50 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400 border-brand-200 dark:border-brand-800'
+                            : 'bg-white dark:bg-slate-900 text-gray-400 dark:text-gray-500 border-gray-200 dark:border-slate-700 active:bg-gray-50 dark:active:bg-slate-800'
                           }`}
                         aria-label="Agregar nota"
                       >
@@ -295,8 +295,8 @@ export default function ChecklistPage() {
       </div>
 
       {/* Botón guardar y firmar */}
-      <div className="fixed bottom-20 left-0 right-0 px-4 pb-4 pt-2 bg-gradient-to-t from-surface-dark via-surface-dark to-transparent z-20">
-        <div className="max-w-lg mx-auto">
+      <div className="fixed bottom-20 left-0 right-0 px-4 pb-4 pt-2 bg-gradient-to-t from-gray-50 via-gray-50 dark:from-slate-950 dark:via-slate-950 to-transparent z-20 pointer-events-none">
+        <div className="max-w-lg mx-auto pointer-events-auto">
           <button
             onClick={handleSave}
             disabled={!allDone || isSaving}
@@ -327,10 +327,10 @@ export default function ChecklistPage() {
  */
 function StatusButton({ icon, active, onClick, color }) {
   const colorClasses = {
-    emerald: active ? 'bg-emerald-500 text-slate-900' : 'bg-emerald-500/10 text-emerald-500/50',
-    amber: active ? 'bg-amber-500 text-slate-900' : 'bg-amber-500/10 text-amber-500/50',
-    red: active ? 'bg-red-500 text-slate-900' : 'bg-red-500/10 text-red-500/50',
-    gray: active ? 'bg-gray-500 text-slate-900' : 'bg-gray-500/10 text-gray-500/50',
+    emerald: active ? 'bg-emerald-500 text-slate-900 dark:text-slate-100' : 'bg-emerald-500/10 text-emerald-500/50',
+    amber: active ? 'bg-amber-500 text-slate-900 dark:text-slate-100' : 'bg-amber-500/10 text-amber-500/50',
+    red: active ? 'bg-red-500 text-slate-900 dark:text-slate-100' : 'bg-red-500/10 text-red-500/50',
+    gray: active ? 'bg-gray-500 text-slate-900 dark:text-slate-100' : 'bg-gray-500/10 text-gray-500/50',
   };
 
   return (

@@ -80,8 +80,8 @@ export default function ExtrasPage() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Adicionales</h1>
-          <p className="text-gray-500 text-sm mt-1">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Adicionales</h1>
+          <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">
             Repuestos y materiales extra utilizados por los técnicos
           </p>
         </div>
@@ -95,15 +95,15 @@ export default function ExtrasPage() {
 
       {/* Banner de alerta */}
       {totalUnbilled > 0 && (
-        <div className="bg-red-50 border border-red-200 rounded-2xl p-4 mb-6 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center flex-shrink-0">
-            <AlertCircle size={20} className="text-red-500" />
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/30 rounded-2xl p-4 mb-6 flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-red-100 dark:bg-red-900/50 flex items-center justify-center flex-shrink-0">
+            <AlertCircle size={20} className="text-red-500 dark:text-red-400" />
           </div>
           <div>
-            <p className="font-semibold text-red-800">
+            <p className="font-semibold text-red-800 dark:text-red-300">
               {formatCurrency(totalUnbilled)} en extras sin facturar
             </p>
-            <p className="text-red-600 text-sm">
+            <p className="text-red-600 dark:text-red-400/80 text-sm">
               Facturá estos adicionales antes de que queden en el olvido.
             </p>
           </div>
@@ -123,7 +123,7 @@ export default function ExtrasPage() {
             className={`px-4 py-2 rounded-xl text-sm font-medium transition-all
               ${filter === value
                 ? 'bg-brand-500 text-white'
-                : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
+                : 'bg-white dark:bg-slate-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700'
               }`}
           >
             {label}
@@ -141,8 +141,8 @@ export default function ExtrasPage() {
           </div>
         ) : extras.length === 0 ? (
           <div className="p-12 text-center">
-            <DollarSign size={40} className="text-gray-300 mx-auto mb-3" />
-            <p className="text-gray-400">No hay extras registrados.</p>
+            <DollarSign size={40} className="text-gray-300 dark:text-slate-600 mx-auto mb-3" />
+            <p className="text-gray-400 dark:text-slate-500">No hay extras registrados.</p>
           </div>
         ) : (
           <div className="table-container border-0">
@@ -166,27 +166,27 @@ export default function ExtrasPage() {
                   return (
                     <tr
                       key={extra.id}
-                      className={!extra.billed ? 'bg-red-50/50' : ''}
+                      className={!extra.billed ? 'bg-red-50/50 dark:bg-red-900/10' : ''}
                     >
-                      <td className="font-medium text-gray-900">
+                      <td className="font-medium text-gray-900 dark:text-white">
                         {extra.description}
                       </td>
-                      <td className="font-mono text-xs text-gray-500">
+                      <td className="font-mono text-xs text-gray-500 dark:text-gray-400">
                         {extra.work_order?.order_number || '-'}
                       </td>
-                      <td className="text-gray-600 text-sm">
+                      <td className="text-gray-600 dark:text-gray-300 text-sm">
                         {extra.work_order?.client?.name || '-'}
                       </td>
-                      <td className="text-gray-600 text-sm">
+                      <td className="text-gray-600 dark:text-gray-300 text-sm">
                         {extra.work_order?.assigned?.name || '-'}
                       </td>
-                      <td className="text-gray-900 font-medium">
+                      <td className="text-gray-900 dark:text-white font-medium">
                         {extra.quantity} {extra.unit}
                       </td>
-                      <td className="text-gray-600 text-sm">
+                      <td className="text-gray-600 dark:text-gray-300 text-sm">
                         {formatCurrency(extra.unit_price)}
                       </td>
-                      <td className="font-semibold text-gray-900">
+                      <td className="font-semibold text-gray-900 dark:text-white">
                         {formatCurrency(total)}
                       </td>
                       <td>

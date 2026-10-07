@@ -54,7 +54,7 @@ export default function CreateWorkOrderModal({ isOpen, onClose, onCreated }) {
 
   const loadInitialData = async () => {
     const [clientsRes, techRes] = await Promise.all([
-      supabase.from('clients').select('id, name').order('name'),
+      supabase.from('clients').select('id, name').neq('active', false).order('name'),
       supabase.from('users').select('id, name').eq('role', 'tecnico').order('name')
     ]);
     if (clientsRes.data) setClients(clientsRes.data);
@@ -124,12 +124,12 @@ export default function CreateWorkOrderModal({ isOpen, onClose, onCreated }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
-      <div className="bg-white rounded-2xl shadow-elevated w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col animate-slide-up">
+      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-elevated w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col animate-slide-up border border-transparent dark:border-slate-700">
         
         {/* Header */}
-        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-          <h2 className="text-xl font-bold text-gray-900">Nueva Orden de Trabajo</h2>
-          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full text-gray-500 transition-colors">
+        <div className="px-6 py-4 border-b border-gray-100 dark:border-slate-700 flex items-center justify-between">
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white">Nueva Orden de Trabajo</h2>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-full text-gray-500 dark:text-gray-400 transition-colors">
             <X size={20} />
           </button>
         </div>
@@ -240,7 +240,7 @@ export default function CreateWorkOrderModal({ isOpen, onClose, onCreated }) {
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 flex justify-end gap-3 rounded-b-2xl">
+        <div className="px-6 py-4 border-t border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900/50 flex justify-end gap-3 rounded-b-2xl">
           <button 
             type="button" 
             onClick={onClose} 

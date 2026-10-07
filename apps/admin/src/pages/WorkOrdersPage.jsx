@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Search, Plus, FileText, Download, LayoutList, LayoutGrid } from 'lucide-react';
 import { supabase } from '@4s-clima/shared/supabase';
 import { formatDate, getStatusLabel, getStatusColor } from '@4s-clima/shared/utils';
@@ -15,7 +16,8 @@ export default function WorkOrdersPage() {
   const [viewMode, setViewMode] = useState('list'); // 'list' | 'kanban'
   const [orders, setOrders] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [search, setSearch] = useState('');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [search, setSearch] = useState(searchParams.get('search') || '');
   const [statusFilter, setStatusFilter] = useState('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDownloading, setIsDownloading] = useState(null); // Guarda el id de la orden descargando
@@ -30,9 +32,10 @@ export default function WorkOrdersPage() {
   }, [statusFilter, search]);
 
   useEffect(() => {
-    if (page > 1) {
-      loadOrders(page);
-    }
+    // Avoid double fetching on mount when page is 1
+    // But if we click "Anterior" and it becomes 1, we DO need to fetch.
+    // The easiest fix is just always fetching when page changes (React 18 strict mode double fetch is fine).
+    loadOrders(page);
   }, [page]);
 
   async function loadOrders(pageNumber = 1) {
@@ -53,8 +56,18 @@ export default function WorkOrdersPage() {
     }
 
     if (search) {
-      // Búsqueda server-side en orden, cliente o técnico
-      query = query.or(`order_number.ilike.%${search}%,client.name.ilike.%${search}%,assigned.name.ilike.%${search}%`);
+      // Workaround para OR en tablas unidas: buscar IDs primero
+      const { data: clients } = await supabase.from('clients').select('id').ilike('name', `%${search}%`);
+      const { data: techs } = await supabase.from('users').select('id').eq('role', 'tecnico').ilike('name', `%${search}%`);
+      
+      const clientIds = clients?.map(c => c.id) || [];
+      const techIds = techs?.map(t => t.id) || [];
+      
+      let orString = `order_number.ilike.%${search}%`;
+      if (clientIds.length > 0) orString += `,client_id.in.(${clientIds.join(',')})`;
+      if (techIds.length > 0) orString += `,assigned_to.in.(${techIds.join(',')})`;
+      
+      query = query.or(orString);
     }
 
     // Paginación
@@ -120,7 +133,19 @@ export default function WorkOrdersPage() {
       .order('scheduled_date', { ascending: false });
 
     if (statusFilter !== 'all') query = query.eq('status', statusFilter);
-    if (search) query = query.or(`order_number.ilike.%${search}%,client.name.ilike.%${search}%,assigned.name.ilike.%${search}%`);
+    if (search) {
+      const { data: clients } = await supabase.from('clients').select('id').ilike('name', `%${search}%`);
+      const { data: techs } = await supabase.from('users').select('id').eq('role', 'tecnico').ilike('name', `%${search}%`);
+      
+      const clientIds = clients?.map(c => c.id) || [];
+      const techIds = techs?.map(t => t.id) || [];
+      
+      let orString = `order_number.ilike.%${search}%`;
+      if (clientIds.length > 0) orString += `,client_id.in.(${clientIds.join(',')})`;
+      if (techIds.length > 0) orString += `,assigned_to.in.(${techIds.join(',')})`;
+      
+      query = query.or(orString);
+    }
 
     const { data: allData, error } = await query;
     if (error || !allData || allData.length === 0) {
@@ -167,8 +192,8 @@ export default function WorkOrdersPage() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Órdenes de Trabajo</h1>
-          <p className="text-gray-500 text-sm mt-1">{totalCount} registros en total</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Órdenes de Trabajo</h1>
+          <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">{totalCount} registros en total</p>
         </div>
         <div className="flex gap-3">
           <button onClick={handleExportExcel} className="btn-secondary">
@@ -205,7 +230,10 @@ export default function WorkOrdersPage() {
             type="text"
             placeholder="Buscar por N° orden, cliente o técnico..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setSearchParams(e.target.value ? { search: e.target.value } : {});
+            }}
             className="input pl-10"
           />
         </div>
@@ -261,7 +289,7 @@ export default function WorkOrdersPage() {
                         <td className="font-mono text-xs text-gray-600">
                           {order.order_number || order.id?.slice(0, 8)}
                         </td>
-                        <td className="font-medium text-gray-900">{order.client?.name || '-'}</td>
+                        <td className="font-medium text-gray-900 dark:text-white">{order.client?.name || '-'}</td>
                         <td className="text-gray-600 text-xs">{order.plant?.name || '-'}</td>
                         <td className="text-gray-600">{order.assigned?.name || '-'}</td>
                         <td className="text-xs text-gray-500">{WORK_ORDER_TYPE_LABELS[order.type] || order.type}</td>
