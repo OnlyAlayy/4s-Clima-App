@@ -90,27 +90,27 @@ export function getStatusLabel(status) {
 export function getStatusColor(status) {
   const colors = {
     [WORK_ORDER_STATUS.PENDING]: {
-      bg: 'bg-amber-100',
-      text: 'text-amber-800',
+      bg: 'bg-amber-100 dark:bg-amber-900/30',
+      text: 'text-amber-800 dark:text-amber-400',
       dot: 'bg-amber-500',
     },
     [WORK_ORDER_STATUS.IN_PROGRESS]: {
-      bg: 'bg-blue-100',
-      text: 'text-blue-800',
+      bg: 'bg-blue-100 dark:bg-blue-900/30',
+      text: 'text-blue-800 dark:text-blue-400',
       dot: 'bg-blue-500',
     },
     [WORK_ORDER_STATUS.COMPLETED]: {
-      bg: 'bg-emerald-100',
-      text: 'text-emerald-800',
+      bg: 'bg-emerald-100 dark:bg-emerald-900/30',
+      text: 'text-emerald-800 dark:text-emerald-400',
       dot: 'bg-emerald-500',
     },
     [WORK_ORDER_STATUS.CANCELLED]: {
-      bg: 'bg-red-100',
-      text: 'text-red-800',
+      bg: 'bg-red-100 dark:bg-red-900/30',
+      text: 'text-red-800 dark:text-red-400',
       dot: 'bg-red-500',
     },
   };
-  return colors[status] || { bg: 'bg-gray-100', text: 'text-gray-800', dot: 'bg-gray-500' };
+  return colors[status] || { bg: 'bg-gray-100 dark:bg-gray-800', text: 'text-gray-800 dark:text-gray-300', dot: 'bg-gray-500' };
 }
 
 /**
