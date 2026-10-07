@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, ClipboardList, Building2, Users, DollarSign,
-  LogOut, Snowflake, Settings, CalendarDays, Sun, Moon
+  LogOut, Snowflake, Settings, CalendarDays, Sun, Moon, Wallet
 } from 'lucide-react';
 import { useAdminAuth } from '../../App';
 import { useDarkMode } from '../../hooks/useDarkMode';
@@ -21,6 +21,7 @@ export default function Sidebar() {
     { to: '/clientes', icon: Building2, label: 'Clientes' },
     { to: '/tecnicos', icon: Users, label: 'Técnicos' },
     { to: '/extras', icon: DollarSign, label: 'Adicionales' },
+    { to: '/finanzas', icon: Wallet, label: 'Cobranzas' },
   ];
 
   return (

@@ -15,6 +15,7 @@ import ClientsPage from './pages/ClientsPage';
 import ClientDetailsPage from './pages/ClientDetailsPage';
 import TechniciansPage from './pages/TechniciansPage';
 import ExtrasPage from './pages/ExtrasPage';
+import FinancesPage from './pages/FinancesPage';
 
 /**
  * Store de auth del admin (inline para simplicidad).
@@ -135,6 +136,7 @@ export default function App() {
         <Route path="clientes/:id" element={<ClientDetailsPage />} />
         <Route path="tecnicos" element={<TechniciansPage />} />
         <Route path="extras" element={<ExtrasPage />} />
+        <Route path="finanzas" element={<FinancesPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
