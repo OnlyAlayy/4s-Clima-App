@@ -124,14 +124,14 @@ export default function WorkOrdersKanban({ initialOrders, onOrderUpdated }) {
                               <div className="w-6 h-6 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center text-xs font-bold">
                                 {order.assigned?.name?.charAt(0) || '?'}
                               </div>
-                              <span className="text-xs font-medium text-gray-600 truncate max-w-[120px]">
+                              <span className="text-xs font-medium text-gray-600 dark:text-gray-400 truncate max-w-[120px]">
                                 {order.assigned?.name || 'Sin asignar'}
                               </span>
                             </div>
                             
                             {/* Extras indicators */}
                             {order.extras && order.extras.filter(e => !e.billed).length > 0 && (
-                              <span className="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-medium">
+                              <span className="text-[10px] bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 px-1.5 py-0.5 rounded font-medium">
                                 +Extras
                               </span>
                             )}

@@ -32,11 +32,24 @@ export default function WorkOrdersPage() {
   }, [statusFilter, search]);
 
   useEffect(() => {
-    // Avoid double fetching on mount when page is 1
-    // But if we click "Anterior" and it becomes 1, we DO need to fetch.
-    // The easiest fix is just always fetching when page changes (React 18 strict mode double fetch is fine).
     loadOrders(page);
-  }, [page]);
+
+    // Suscripción en tiempo real a cambios en órdenes de trabajo
+    const subscription = supabase
+      .channel('work_orders_changes')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'work_orders' },
+        () => {
+          loadOrders(page);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(subscription);
+    };
+  }, [page, statusFilter, search]);
 
   async function loadOrders(pageNumber = 1) {
     setIsLoading(true);
@@ -286,13 +299,13 @@ export default function WorkOrdersPage() {
                     const unbilledExtras = (order.extras || []).filter((e) => !e.billed).length;
                     return (
                       <tr key={order.id}>
-                        <td className="font-mono text-xs text-gray-600">
+                        <td className="font-mono text-xs text-gray-600 dark:text-gray-400">
                           {order.order_number || order.id?.slice(0, 8)}
                         </td>
                         <td className="font-medium text-gray-900 dark:text-white">{order.client?.name || '-'}</td>
-                        <td className="text-gray-600 text-xs">{order.plant?.name || '-'}</td>
-                        <td className="text-gray-600">{order.assigned?.name || '-'}</td>
-                        <td className="text-xs text-gray-500">{WORK_ORDER_TYPE_LABELS[order.type] || order.type}</td>
+                        <td className="text-gray-600 dark:text-gray-400 text-xs">{order.plant?.name || '-'}</td>
+                        <td className="text-gray-600 dark:text-gray-400">{order.assigned?.name || '-'}</td>
+                        <td className="text-xs text-gray-500 dark:text-gray-400">{WORK_ORDER_TYPE_LABELS[order.type] || order.type}</td>
                         <td>
                           <span className={`badge ${sc.bg} ${sc.text}`}>
                             <span className={`w-1.5 h-1.5 rounded-full ${sc.dot}`} />
@@ -301,15 +314,15 @@ export default function WorkOrdersPage() {
                         </td>
                         <td>
                           {unbilledExtras > 0 ? (
-                            <span className="badge bg-red-100 text-red-700">{unbilledExtras} sin facturar</span>
+                            <span className="badge bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">{unbilledExtras} sin facturar</span>
                           ) : (
-                            <span className="text-gray-400 text-xs">—</span>
+                            <span className="text-gray-400 dark:text-gray-500 text-xs">—</span>
                           )}
                         </td>
-                        <td className="text-gray-500 text-xs">
+                        <td className="text-gray-500 dark:text-gray-400 text-xs">
                           <div className="flex flex-col">
                             <span>{formatDate(order.scheduled_date)}</span>
-                            {order.scheduled_time && <span className="text-gray-400 font-mono mt-0.5">{order.scheduled_time.slice(0, 5)} hs</span>}
+                            {order.scheduled_time && <span className="text-gray-400 dark:text-gray-500 font-mono mt-0.5">{order.scheduled_time.slice(0, 5)} hs</span>}
                           </div>
                         </td>
                         <td className="text-right">
@@ -338,22 +351,22 @@ export default function WorkOrdersPage() {
             
             {/* Controles de Paginación */}
             {totalPages > 1 && (
-              <div className="px-6 py-4 flex items-center justify-between bg-gray-50/50 rounded-b-2xl">
-                <span className="text-sm text-gray-500">
+              <div className="px-6 py-4 flex items-center justify-between bg-gray-50/50 dark:bg-slate-900/50 rounded-b-2xl border-t border-gray-100 dark:border-slate-800">
+                <span className="text-sm text-gray-500 dark:text-gray-400">
                   Mostrando {(page - 1) * PAGE_SIZE + 1} a {Math.min(page * PAGE_SIZE, totalCount)} de {totalCount}
                 </span>
                 <div className="flex gap-2">
                   <button 
                     onClick={() => setPage(p => Math.max(1, p - 1))}
                     disabled={page === 1}
-                    className="px-3 py-1.5 text-sm font-medium bg-white border border-gray-200 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="px-3 py-1.5 text-sm font-medium bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
                     Anterior
                   </button>
                   <button 
                     onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                     disabled={page === totalPages}
-                    className="px-3 py-1.5 text-sm font-medium bg-white border border-gray-200 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="px-3 py-1.5 text-sm font-medium bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
                     Siguiente
                   </button>
