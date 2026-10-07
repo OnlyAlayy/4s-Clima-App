@@ -19,6 +19,7 @@ export default function WorkOrdersPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState(searchParams.get('search') || '');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [dateFilter, setDateFilter] = useState('this_week'); // 'all' | 'today' | 'this_week' | 'this_month'
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDownloading, setIsDownloading] = useState(null); // Guarda el id de la orden descargando
 
@@ -26,14 +27,17 @@ export default function WorkOrdersPage() {
   const [totalCount, setTotalCount] = useState(0);
   const PAGE_SIZE = 20;
 
-  useEffect(() => {
-    setPage(1); // Reset a pagina 1 cuando cambian filtros
-    loadOrders(1);
-  }, [statusFilter, search]);
-
+  // Efecto principal de carga (se dispara al cambiar filtros, pagina o modo de vista)
   useEffect(() => {
     loadOrders(page);
+  }, [page, statusFilter, search, dateFilter, viewMode]);
 
+  // Efecto para Reset de página cuando cambian los filtros
+  useEffect(() => {
+    setPage(1);
+  }, [statusFilter, search, dateFilter, viewMode]);
+
+  useEffect(() => {
     // Suscripción en tiempo real a cambios en órdenes de trabajo
     const subscription = supabase
       .channel('work_orders_changes')
@@ -49,7 +53,7 @@ export default function WorkOrdersPage() {
     return () => {
       supabase.removeChannel(subscription);
     };
-  }, [page, statusFilter, search]);
+  }, [page, statusFilter, search, dateFilter, viewMode]);
 
   async function loadOrders(pageNumber = 1) {
     setIsLoading(true);
@@ -83,10 +87,36 @@ export default function WorkOrdersPage() {
       query = query.or(orString);
     }
 
-    // Paginación
-    const from = (pageNumber - 1) * PAGE_SIZE;
-    const to = from + PAGE_SIZE - 1;
-    query = query.range(from, to);
+    if (dateFilter !== 'all') {
+      const today = new Date();
+      if (dateFilter === 'today') {
+        const todayStr = today.toISOString().split('T')[0];
+        query = query.eq('scheduled_date', todayStr);
+      } else if (dateFilter === 'this_week') {
+        // Ultimos 7 dias y proximos 7 dias
+        const start = new Date(today);
+        start.setDate(today.getDate() - 7);
+        const end = new Date(today);
+        end.setDate(today.getDate() + 7);
+        query = query.gte('scheduled_date', start.toISOString().split('T')[0]);
+        query = query.lte('scheduled_date', end.toISOString().split('T')[0]);
+      } else if (dateFilter === 'this_month') {
+        const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+        const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+        query = query.gte('scheduled_date', firstDay.toISOString().split('T')[0]);
+        query = query.lte('scheduled_date', lastDay.toISOString().split('T')[0]);
+      }
+    }
+
+    // Paginación: Solo si estamos en modo lista
+    if (viewMode === 'list') {
+      const from = (pageNumber - 1) * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
+      query = query.range(from, to);
+    } else {
+      // En modo Kanban, traemos hasta 500 registros para evitar sobrecarga, pero sin paginación
+      query = query.limit(500);
+    }
 
     const { data, count, error } = await query;
     if (!error) {
@@ -250,6 +280,18 @@ export default function WorkOrdersPage() {
             className="input pl-10"
           />
         </div>
+        
+        <select
+          value={dateFilter}
+          onChange={(e) => setDateFilter(e.target.value)}
+          className="select w-auto"
+        >
+          <option value="today">Hoy</option>
+          <option value="this_week">Esta Semana</option>
+          <option value="this_month">Este Mes</option>
+          <option value="all">Todas las fechas</option>
+        </select>
+
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
