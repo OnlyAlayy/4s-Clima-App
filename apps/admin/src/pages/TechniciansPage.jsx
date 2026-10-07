@@ -77,7 +77,6 @@ export default function TechniciansPage() {
   }
 
   const toggleActiveStatus = async (tech) => {
-    if (!isOwner) return;
     const newStatus = !tech.active;
     if (window.confirm(`¿Estás seguro de que querés ${newStatus ? 'activar' : 'desactivar'} a ${tech.name}?`)) {
       const { error } = await supabase
@@ -184,15 +183,13 @@ export default function TechniciansPage() {
                       Cambiar Clave
                     </button>
                     
-                    {isOwner && (
-                      <button 
-                        onClick={() => toggleActiveStatus(tech)}
-                        className={`flex-none p-1.5 rounded-lg border transition-colors ${tech.active ? 'bg-red-50 hover:bg-red-100 text-red-600 border-red-200' : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-600 border-emerald-200'}`}
-                        title={tech.active ? "Desactivar técnico" : "Activar técnico"}
-                      >
-                        {tech.active ? <PowerOff size={16} /> : <Power size={16} />}
-                      </button>
-                    )}
+                    <button 
+                      onClick={() => toggleActiveStatus(tech)}
+                      className={`flex-none p-1.5 rounded-lg border transition-colors ${tech.active ? 'bg-red-50 hover:bg-red-100 text-red-600 border-red-200' : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-600 border-emerald-200'}`}
+                      title={tech.active ? "Desactivar técnico" : "Activar técnico"}
+                    >
+                      {tech.active ? <PowerOff size={16} /> : <Power size={16} />}
+                    </button>
                   </div>
                 </div>
               </div>

@@ -55,7 +55,7 @@ export default function CreateWorkOrderModal({ isOpen, onClose, onCreated }) {
   const loadInitialData = async () => {
     const [clientsRes, techRes] = await Promise.all([
       supabase.from('clients').select('id, name').neq('active', false).order('name'),
-      supabase.from('users').select('id, name').eq('role', 'tecnico').order('name')
+      supabase.from('users').select('id, name').eq('role', 'tecnico').neq('active', false).order('name')
     ]);
     if (clientsRes.data) setClients(clientsRes.data);
     if (techRes.data) setTechnicians(techRes.data);

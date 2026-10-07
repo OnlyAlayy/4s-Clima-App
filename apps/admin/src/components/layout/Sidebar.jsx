@@ -14,14 +14,24 @@ export default function Sidebar() {
   const { profile, logout } = useAdminAuth();
   const { isDark, toggleDarkMode } = useDarkMode();
 
-  const navItems = [
-    { to: '/', icon: LayoutDashboard, label: 'Dashboard', end: true },
-    { to: '/calendario', icon: CalendarDays, label: 'Calendario' },
-    { to: '/ordenes', icon: ClipboardList, label: 'Órdenes de Trabajo' },
-    { to: '/clientes', icon: Building2, label: 'Clientes' },
-    { to: '/tecnicos', icon: Users, label: 'Técnicos' },
-    { to: '/extras', icon: DollarSign, label: 'Adicionales' },
-    { to: '/finanzas', icon: Wallet, label: 'Cobranzas' },
+  const navGroups = [
+    {
+      label: 'OPERACIÓN',
+      items: [
+        { to: '/', icon: LayoutDashboard, label: 'Dashboard', end: true },
+        { to: '/ordenes', icon: ClipboardList, label: 'Órdenes de Trabajo' },
+        { to: '/calendario', icon: CalendarDays, label: 'Calendario' },
+        { to: '/finanzas', icon: Wallet, label: 'Cobranzas' },
+      ]
+    },
+    {
+      label: 'ADMINISTRACIÓN',
+      items: [
+        { to: '/clientes', icon: Building2, label: 'Clientes' },
+        { to: '/tecnicos', icon: Users, label: 'Técnicos' },
+        { to: '/extras', icon: DollarSign, label: 'Catálogo Extras' },
+      ]
+    }
   ];
 
   return (
@@ -39,19 +49,26 @@ export default function Sidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-        {navItems.map(({ to, icon: Icon, label, end }) => (
-          <NavLink
-            key={to}
-            to={to}
-            end={end}
-            className={({ isActive }) =>
-              `sidebar-link ${isActive ? 'active' : ''}`
-            }
-          >
-            <Icon size={18} />
-            <span>{label}</span>
-          </NavLink>
+      <nav className="flex-1 px-3 py-4 space-y-6 overflow-y-auto">
+        {navGroups.map((group, i) => (
+          <div key={i} className="space-y-1">
+            <p className="px-3 text-[10px] font-bold tracking-widest text-blue-200/50 uppercase mb-2">
+              {group.label}
+            </p>
+            {group.items.map(({ to, icon: Icon, label, end }) => (
+              <NavLink
+                key={to}
+                to={to}
+                end={end}
+                className={({ isActive }) =>
+                  `sidebar-link ${isActive ? 'active' : ''}`
+                }
+              >
+                <Icon size={18} />
+                <span>{label}</span>
+              </NavLink>
+            ))}
+          </div>
         ))}
       </nav>
 

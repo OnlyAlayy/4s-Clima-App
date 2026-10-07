@@ -38,7 +38,7 @@ export default function WorkOrderDetailPage() {
   }, [id]);
 
   async function loadTechnicians() {
-    const { data } = await supabase.from('users').select('id, name').eq('role', 'tecnico').eq('active', true);
+    const { data } = await supabase.from('users').select('id, name').eq('role', 'tecnico').neq('active', false);
     setTechnicians(data || []);
   }
 

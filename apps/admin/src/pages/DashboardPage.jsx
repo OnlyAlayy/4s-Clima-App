@@ -82,9 +82,9 @@ export default function DashboardPage() {
           .eq('status', WORK_ORDER_STATUS.IN_PROGRESS),
         supabase.from('extras').select('quantity, unit_price')
           .eq('billed', false),
-        supabase.from('clients').select('*', { count: 'exact', head: true }),
+        supabase.from('clients').select('*', { count: 'exact', head: true }).neq('active', false),
         supabase.from('users').select('*', { count: 'exact', head: true })
-          .eq('role', 'tecnico'),
+          .eq('role', 'tecnico').neq('active', false),
         supabase.from('work_orders')
           .select(`
             *,
