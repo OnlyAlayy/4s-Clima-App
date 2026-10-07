@@ -78,17 +78,15 @@ export default function TechniciansPage() {
 
   const toggleActiveStatus = async (tech) => {
     const newStatus = !tech.active;
-    if (window.confirm(`¿Estás seguro de que querés ${newStatus ? 'activar' : 'desactivar'} a ${tech.name}?`)) {
-      const { error } = await supabase
-        .from('users')
-        .update({ active: newStatus })
-        .eq('id', tech.id);
-      
-      if (!error) {
-        loadTechnicians(page);
-      } else {
-        alert('Error al cambiar el estado: ' + error.message);
-      }
+    const { error } = await supabase
+      .from('users')
+      .update({ active: newStatus })
+      .eq('id', tech.id);
+    
+    if (!error) {
+      loadTechnicians(page);
+    } else {
+      alert('Error al cambiar el estado: ' + error.message);
     }
   };
 

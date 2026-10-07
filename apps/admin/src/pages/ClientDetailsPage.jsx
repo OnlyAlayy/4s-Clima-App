@@ -109,9 +109,9 @@ export default function ClientDetailsPage() {
       <div className="flex justify-end gap-3 mb-6">
         <button 
           onClick={async () => {
-            if (!confirm(`¿Estás seguro de que querés ${client.active !== false ? 'dar de baja' : 'reactivar'} a este cliente?`)) return;
             const newStatus = client.active === false ? true : false;
-            const { error } = await supabase.from('clients').update({ active: newStatus }).eq('id', client.id);
+            const { data, error } = await supabase.from('clients').update({ active: newStatus }).eq('id', client.id).select();
+            console.log('Update result:', data, error);
             if (error) {
               alert('Error de base de datos: ' + error.message);
             } else {
