@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Search, Plus, FileText, Download, LayoutList, LayoutGrid } from 'lucide-react';
 import { supabase } from '@4s-clima/shared/supabase';
 import { formatDate, getStatusLabel, getStatusColor } from '@4s-clima/shared/utils';
@@ -22,6 +22,7 @@ export default function WorkOrdersPage() {
   const [dateFilter, setDateFilter] = useState('this_week'); // 'all' | 'today' | 'this_week' | 'this_month'
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDownloading, setIsDownloading] = useState(null); // Guarda el id de la orden descargando
+  const navigate = useNavigate();
 
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
@@ -340,7 +341,11 @@ export default function WorkOrdersPage() {
                     const sc = getStatusColor(order.status);
                     const unbilledExtras = (order.extras || []).filter((e) => !e.billed).length;
                     return (
-                      <tr key={order.id}>
+                      <tr 
+                        key={order.id} 
+                        onClick={() => navigate(`/ordenes/${order.id}`)}
+                        className="cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-800/50 transition-colors"
+                      >
                         <td className="font-mono text-xs text-gray-600 dark:text-gray-400">
                           {order.order_number || order.id?.slice(0, 8)}
                         </td>
@@ -370,7 +375,10 @@ export default function WorkOrdersPage() {
                         <td className="text-right">
                           {order.status === WORK_ORDER_STATUS.COMPLETED && (
                             <button
-                              onClick={() => handleDownloadPDF(order)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDownloadPDF(order);
+                              }}
                               disabled={isDownloading === order.id}
                               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-brand-50 hover:bg-brand-100 text-brand-600 text-xs font-semibold rounded-lg transition-colors border border-brand-200"
                               title="Descargar Remito PDF"

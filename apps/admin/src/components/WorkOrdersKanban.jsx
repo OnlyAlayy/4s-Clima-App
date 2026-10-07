@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { WORK_ORDER_STATUS } from '@4s-clima/shared/constants';
 import { formatDate } from '@4s-clima/shared/utils';
@@ -12,6 +13,7 @@ const COLUMNS = [
 
 export default function WorkOrdersKanban({ initialOrders, onOrderUpdated }) {
   const [columns, setColumns] = useState({});
+  const navigate = useNavigate();
 
   useEffect(() => {
     // Group orders by status
@@ -108,6 +110,7 @@ export default function WorkOrdersKanban({ initialOrders, onOrderUpdated }) {
                             ref={provided.innerRef}
                             {...provided.draggableProps}
                             {...provided.dragHandleProps}
+                            onClick={() => navigate(`/ordenes/${order.id}`)}
                             className={`bg-white dark:bg-slate-800 p-4 mb-3 rounded-lg shadow-sm border border-gray-200 dark:border-slate-700 cursor-grab active:cursor-grabbing transition-shadow ${snapshot.isDragging ? 'shadow-lg border-brand-300' : 'hover:shadow-md'}`}
                           >
                           <div className="flex justify-between items-start mb-2">
