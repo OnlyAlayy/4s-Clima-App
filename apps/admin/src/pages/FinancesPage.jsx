@@ -8,9 +8,9 @@ export default function FinancesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [filter, setFilter] = useState('unbilled'); // 'unbilled' | 'pending' | 'paid' | 'all'
 
-  // Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
+  const [basePrice, setBasePrice] = useState('');
   const [invoiceAmount, setInvoiceAmount] = useState('');
 
   useEffect(() => {
@@ -25,7 +25,7 @@ export default function FinancesPage() {
         *,
         client:clients(name),
         assigned:users!work_orders_assigned_to_fkey(name),
-        extras(id, billed, unit_price, quantity)
+        extras(id, description, unit, billed, unit_price, quantity)
       `)
       .eq('status', 'completed')
       .order('completed_at', { ascending: false });
@@ -46,11 +46,21 @@ export default function FinancesPage() {
   }
 
   const openFacturaModal = (order) => {
-    // Si la orden ya tiene un monto total previo o si podemos autocalcular extras, lo pre-cargamos. 
-    // Por ahora lo iniciamos vacío.
-    setInvoiceAmount('');
+    // Calculamos el subtotal de extras reportados por el técnico
+    const extrasTotal = (order.extras || []).reduce((sum, e) => sum + (e.quantity * e.unit_price), 0);
+    
     setSelectedOrder(order);
+    setBasePrice('');
+    setInvoiceAmount(extrasTotal > 0 ? extrasTotal.toString() : '');
     setIsModalOpen(true);
+  };
+
+  // Autocalcular cuando cambia el precio base
+  const handleBasePriceChange = (val) => {
+    setBasePrice(val);
+    const base = parseFloat(val) || 0;
+    const extrasTotal = (selectedOrder?.extras || []).reduce((sum, e) => sum + (e.quantity * e.unit_price), 0);
+    setInvoiceAmount((base + extrasTotal).toString());
   };
 
   const confirmFacturar = async () => {
@@ -262,25 +272,68 @@ export default function FinancesPage() {
               </p>
             </div>
             
-            <div className="p-6">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Monto Final a Cobrar ($)
-              </label>
-              <div className="relative">
-                <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                <input 
-                  type="number"
-                  autoFocus
-                  className="input pl-10 text-lg"
-                  placeholder="Ej: 85000"
-                  value={invoiceAmount}
-                  onChange={(e) => setInvoiceAmount(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && confirmFacturar()}
-                />
+            <div className="p-6 max-h-[60vh] overflow-y-auto">
+              {/* Desglose de Extras */}
+              {selectedOrder.extras && selectedOrder.extras.length > 0 && (
+                <div className="mb-6">
+                  <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Extras y Repuestos Reportados</h4>
+                  <div className="bg-gray-50 dark:bg-slate-800/50 rounded-xl p-4 space-y-3 border border-gray-100 dark:border-slate-800">
+                    {selectedOrder.extras.map(e => (
+                      <div key={e.id} className="flex justify-between items-center text-sm">
+                        <div className="flex-1">
+                          <span className="font-medium text-gray-800 dark:text-gray-200">{e.description}</span>
+                          <span className="text-gray-500 dark:text-gray-400 ml-2">
+                            ({e.quantity} {e.unit} x {formatCurrency(e.unit_price)})
+                          </span>
+                        </div>
+                        <span className="font-semibold text-gray-900 dark:text-white">
+                          {formatCurrency(e.quantity * e.unit_price)}
+                        </span>
+                      </div>
+                    ))}
+                    <div className="border-t border-gray-200 dark:border-slate-700 pt-2 mt-2 flex justify-between font-bold">
+                      <span className="text-gray-700 dark:text-gray-300">Subtotal Extras:</span>
+                      <span className="text-gray-900 dark:text-white">
+                        {formatCurrency(selectedOrder.extras.reduce((s, e) => s + (e.quantity * e.unit_price), 0))}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Servicio Base */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Servicio Base / Mano de Obra ($)
+                </label>
+                <div className="relative">
+                  <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                  <input 
+                    type="number"
+                    className="input pl-10"
+                    placeholder="Ej: 50000"
+                    value={basePrice}
+                    onChange={(e) => handleBasePriceChange(e.target.value)}
+                  />
+                </div>
               </div>
-              <p className="text-xs text-gray-500 dark:text-gray-500 mt-3">
-                Ingresá el costo total del servicio incluyendo los repuestos que haya usado el técnico.
-              </p>
+
+              {/* Total */}
+              <div className="pt-4 border-t border-gray-100 dark:border-slate-800">
+                <label className="block text-sm font-bold text-brand-700 dark:text-brand-400 mb-2">
+                  Total Final a Facturar ($)
+                </label>
+                <div className="relative">
+                  <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-500" size={18} />
+                  <input 
+                    type="number"
+                    className="input pl-10 text-lg font-bold border-brand-200 focus:border-brand-500 dark:border-brand-800/50 dark:bg-slate-900"
+                    value={invoiceAmount}
+                    onChange={(e) => setInvoiceAmount(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && confirmFacturar()}
+                  />
+                </div>
+              </div>
             </div>
 
             <div className="px-6 py-4 bg-gray-50 dark:bg-slate-800/50 border-t border-gray-100 dark:border-slate-800 flex justify-end gap-3">
