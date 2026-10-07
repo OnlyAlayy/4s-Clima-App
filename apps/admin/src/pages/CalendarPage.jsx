@@ -92,23 +92,26 @@ export default function CalendarPage() {
   };
 
   const eventStyleGetter = (event) => {
-    let backgroundColor = '#3b82f6'; // default blue
+    let className = 'calendar-event-pending';
     if (event.resource.status === WORK_ORDER_STATUS.COMPLETED) {
-      backgroundColor = '#10b981'; // emerald
+      className = 'calendar-event-completed';
     } else if (event.resource.status === WORK_ORDER_STATUS.IN_PROGRESS) {
-      backgroundColor = '#f59e0b'; // amber
+      className = 'calendar-event-inprogress';
     }
+    return { className };
+  };
 
-    return {
-      style: {
-        backgroundColor,
-        borderRadius: '5px',
-        opacity: 0.9,
-        color: 'white',
-        border: '0px',
-        display: 'block'
-      }
-    };
+  const CustomAgendaEvent = ({ event }) => {
+    let colorClass = 'bg-brand-500';
+    if (event.resource.status === WORK_ORDER_STATUS.COMPLETED) colorClass = 'bg-emerald-500';
+    if (event.resource.status === WORK_ORDER_STATUS.IN_PROGRESS) colorClass = 'bg-amber-500';
+
+    return (
+      <div className="flex items-center gap-2 py-1">
+        <div className={`w-3 h-3 rounded-full flex-shrink-0 ${colorClass}`} />
+        <span className="font-medium text-gray-900 dark:text-gray-100">{event.title}</span>
+      </div>
+    );
   };
 
   return (
@@ -143,6 +146,11 @@ export default function CalendarPage() {
             culture='es'
             onSelectEvent={handleSelectEvent}
             eventPropGetter={eventStyleGetter}
+            components={{
+              agenda: {
+                event: CustomAgendaEvent
+              }
+            }}
             popup
             step={30}
             timeslots={2}

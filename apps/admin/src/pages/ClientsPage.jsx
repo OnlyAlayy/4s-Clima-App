@@ -61,8 +61,12 @@ export default function ClientsPage() {
     const action = isActivating ? 'reactivar' : 'dar de baja';
     if (!confirm(`¿Estás seguro de que querés ${action} a ${client.name}?`)) return;
     
-    await supabase.from('clients').update({ active: isActivating }).eq('id', client.id);
-    loadClients(page);
+    const { error } = await supabase.from('clients').update({ active: isActivating }).eq('id', client.id);
+    if (error) {
+      alert('Error: ' + error.message);
+    } else {
+      loadClients(page);
+    }
   };
 
   return (
@@ -151,30 +155,6 @@ export default function ClientsPage() {
                       </span>
                     )}
                   </div>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleToggleActive(client);
-                    }}
-                    className={`p-1.5 rounded-lg transition-colors flex items-center gap-1 text-xs font-medium ${
-                      client.active !== false
-                        ? 'text-gray-400 hover:text-red-600 hover:bg-red-50'
-                        : 'text-gray-400 hover:text-emerald-600 hover:bg-emerald-50'
-                    }`}
-                    title={client.active !== false ? "Dar de baja" : "Reactivar"}
-                  >
-                    {client.active !== false ? (
-                      <>
-                        <Archive size={14} /> 
-                        <span className="sr-only">Baja</span>
-                      </>
-                    ) : (
-                      <>
-                        <ArchiveRestore size={14} />
-                        <span className="sr-only">Activar</span>
-                      </>
-                    )}
-                  </button>
                 </div>
               </div>
             ))}

@@ -237,4 +237,38 @@
   .dark .calendar-container .rbc-overlay-header {
     @apply border-b border-slate-700 bg-slate-900;
   }
+
+  /* Custom Calendar Event Classes */
+  .calendar-event-pending {
+    background-color: #3b82f6 !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 5px !important;
+  }
+  .calendar-event-completed {
+    background-color: #10b981 !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 5px !important;
+  }
+  .calendar-event-inprogress {
+    background-color: #f59e0b !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 5px !important;
+  }
+
+  /* Fix Agenda View */
+  .rbc-agenda-view .calendar-event-pending,
+  .rbc-agenda-view .calendar-event-completed,
+  .rbc-agenda-view .calendar-event-inprogress {
+    background-color: transparent !important;
+    color: inherit !important;
+  }
+  
+  .dark .rbc-agenda-view .calendar-event-pending,
+  .dark .rbc-agenda-view .calendar-event-completed,
+  .dark .rbc-agenda-view .calendar-event-inprogress {
+    color: #e2e8f0 !important;
+  }
 }
