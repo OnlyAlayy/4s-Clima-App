@@ -160,7 +160,7 @@ export default function FinancesPage() {
         <div className="card p-6 border-l-4 border-blue-500">
           <div className="flex justify-between items-start">
             <div>
-              <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Plata en la calle</p>
+              <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Pendiente de Cobro</p>
               <h3 className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
                 {formatCurrency(moneyInStreet)}
               </h3>
