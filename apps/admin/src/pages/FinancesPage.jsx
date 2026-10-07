@@ -8,6 +8,11 @@ export default function FinancesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [filter, setFilter] = useState('unbilled'); // 'unbilled' | 'pending' | 'paid' | 'all'
 
+  // Modal state
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedOrder, setSelectedOrder] = useState(null);
+  const [invoiceAmount, setInvoiceAmount] = useState('');
+
   useEffect(() => {
     loadFinances();
   }, [filter]);
@@ -40,21 +45,31 @@ export default function FinancesPage() {
     setIsLoading(false);
   }
 
-  const markAsFacturado = async (orderId) => {
-    const amountStr = prompt('Ingrese el monto final a facturar por este trabajo (ej: 50000):');
-    if (!amountStr) return;
-    const amount = parseFloat(amountStr);
-    if (isNaN(amount)) return alert('Monto inválido');
+  const openFacturaModal = (order) => {
+    // Si la orden ya tiene un monto total previo o si podemos autocalcular extras, lo pre-cargamos. 
+    // Por ahora lo iniciamos vacío.
+    setInvoiceAmount('');
+    setSelectedOrder(order);
+    setIsModalOpen(true);
+  };
+
+  const confirmFacturar = async () => {
+    if (!selectedOrder) return;
+    
+    const amount = parseFloat(invoiceAmount);
+    if (isNaN(amount) || amount <= 0) return alert('Por favor, ingresá un monto válido mayor a 0');
 
     const { error } = await supabase
       .from('work_orders')
       .update({ payment_status: 'pending', total_amount: amount })
-      .eq('id', orderId);
+      .eq('id', selectedOrder.id);
 
     if (error) {
       console.error('Error al facturar:', error);
       alert('Error al guardar: ' + error.message + '. ¿Corriste el código SQL en Supabase?');
     } else {
+      setIsModalOpen(false);
+      setSelectedOrder(null);
       loadFinances();
     }
   };
@@ -212,7 +227,7 @@ export default function FinancesPage() {
                     <td className="text-right">
                       {(!order.payment_status || order.payment_status === 'unbilled') && (
                         <button
-                          onClick={() => markAsFacturado(order.id)}
+                          onClick={() => openFacturaModal(order)}
                           className="btn-secondary text-xs px-3 py-1.5 border-brand-200 text-brand-700 hover:bg-brand-50"
                         >
                           Emitir Factura
@@ -235,6 +250,57 @@ export default function FinancesPage() {
           </div>
         )}
       </div>
+
+      {/* Modal Profesional de Facturación */}
+      {isModalOpen && selectedOrder && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden border border-gray-100 dark:border-slate-800">
+            <div className="px-6 py-4 border-b border-gray-100 dark:border-slate-800 bg-gray-50/50 dark:bg-slate-800/50">
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white">Emitir Factura</h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                Orden {selectedOrder.order_number || selectedOrder.id.slice(0,8)} - {selectedOrder.client?.name}
+              </p>
+            </div>
+            
+            <div className="p-6">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Monto Final a Cobrar ($)
+              </label>
+              <div className="relative">
+                <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                <input 
+                  type="number"
+                  autoFocus
+                  className="input pl-10 text-lg"
+                  placeholder="Ej: 85000"
+                  value={invoiceAmount}
+                  onChange={(e) => setInvoiceAmount(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && confirmFacturar()}
+                />
+              </div>
+              <p className="text-xs text-gray-500 dark:text-gray-500 mt-3">
+                Ingresá el costo total del servicio incluyendo los repuestos que haya usado el técnico.
+              </p>
+            </div>
+
+            <div className="px-6 py-4 bg-gray-50 dark:bg-slate-800/50 border-t border-gray-100 dark:border-slate-800 flex justify-end gap-3">
+              <button 
+                onClick={() => setIsModalOpen(false)}
+                className="btn-secondary bg-white dark:bg-slate-800"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={confirmFacturar}
+                className="btn-primary"
+                disabled={!invoiceAmount}
+              >
+                Confirmar Factura
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
