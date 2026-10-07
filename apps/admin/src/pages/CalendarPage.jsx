@@ -154,6 +154,7 @@ export default function CalendarPage() {
             popup
             step={30}
             timeslots={2}
+            dayLayoutAlgorithm="no-overlap"
           />
         )}
       </div>

@@ -271,4 +271,13 @@
   .dark .rbc-agenda-view .calendar-event-inprogress {
     color: #e2e8f0 !important;
   }
+
+  /* Prevent text wrapping in tiny event blocks */
+  .rbc-event-content, .rbc-event-label {
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    font-size: 11px !important;
+    line-height: 1.2 !important;
+  }
 }
