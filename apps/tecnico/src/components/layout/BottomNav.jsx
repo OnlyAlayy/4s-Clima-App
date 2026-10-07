@@ -1,4 +1,4 @@
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import { ClipboardList, User, Home, QrCode } from 'lucide-react';
 
 /**
@@ -12,6 +12,11 @@ export default function BottomNav() {
     { to: '/escaner', icon: QrCode, label: 'Escáner' },
     { to: '/perfil', icon: User, label: 'Perfil' },
   ];
+
+  const location = useLocation();
+  const isMainTab = navItems.some(item => item.to === location.pathname);
+
+  if (!isMainTab) return null;
 
   return (
     <nav className="bottom-nav">
