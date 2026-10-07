@@ -111,8 +111,12 @@ export default function ClientDetailsPage() {
           onClick={async () => {
             if (!confirm(`¿Estás seguro de que querés ${client.active !== false ? 'dar de baja' : 'reactivar'} a este cliente?`)) return;
             const newStatus = client.active === false ? true : false;
-            await supabase.from('clients').update({ active: newStatus }).eq('id', client.id);
-            loadClientData();
+            const { error } = await supabase.from('clients').update({ active: newStatus }).eq('id', client.id);
+            if (error) {
+              alert('Error de base de datos: ' + error.message);
+            } else {
+              loadClientData();
+            }
           }}
           className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
             client.active !== false 
