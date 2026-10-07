@@ -267,6 +267,20 @@ export default function WorkOrderPage() {
               </p>
             </div>
           )}
+
+          {/* Fallback si el estado es desconocido o no coincide con los 3 de arriba */}
+          {!isPending && !isInProgress && !isCompleted && (
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-4 text-center shadow-sm">
+              <p className="text-amber-700 font-bold mb-2">Estado detectado: "{wo.status || 'ninguno'}"</p>
+              <button
+                onClick={handleStart}
+                disabled={isStarting}
+                className="btn-primary w-full shadow-lg shadow-amber-500/20"
+              >
+                Forzar Inicio de Trabajo
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>
