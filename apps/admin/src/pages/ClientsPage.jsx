@@ -35,7 +35,7 @@ export default function ClientsPage() {
     
     let query = supabase
       .from('clients')
-      .select('*, plants(id)', { count: 'exact' })
+      .select('*, plants(id), work_orders(payment_status, total_amount)', { count: 'exact' })
       .order('name');
 
     if (search) {
@@ -154,6 +154,19 @@ export default function ClientsPage() {
                         {client.contract_type}
                       </span>
                     )}
+                  </div>
+                  <div>
+                    {(() => {
+                      const debt = (client.work_orders || [])
+                        .filter(o => o.payment_status === 'pending')
+                        .reduce((sum, o) => sum + (Number(o.total_amount) || 0), 0);
+                      
+                      return debt > 0 ? (
+                        <span className="badge bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 font-semibold" title="Deuda pendiente">
+                          Deuda: ${debt.toLocaleString('es-AR')}
+                        </span>
+                      ) : null;
+                    })()}
                   </div>
                 </div>
               </div>

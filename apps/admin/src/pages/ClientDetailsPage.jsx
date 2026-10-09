@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Building2, MapPin, Phone, Mail, FileText, Settings2, Plus, Box } from 'lucide-react';
+import { ArrowLeft, Building2, MapPin, Phone, Mail, FileText, Settings2, Plus, Box, DollarSign } from 'lucide-react';
 import { supabase } from '@4s-clima/shared/supabase';
 import { EQUIPMENT_TYPE_LABELS } from '@4s-clima/shared/constants';
 import CreatePlantModal from '../components/CreatePlantModal';
@@ -45,7 +45,6 @@ export default function ClientDetailsPage() {
       
       setPlants(plantsData || []);
 
-      // Cargar Equipos (haciendo join con las plantas encontradas)
       if (plantsData && plantsData.length > 0) {
         const plantIds = plantsData.map(p => p.id);
         const { data: equipData } = await supabase
@@ -58,6 +57,19 @@ export default function ClientDetailsPage() {
       } else {
         setEquipment([]);
       }
+
+      // Cargar Estado de Cuenta (Trabajos Pendientes de Cobro)
+      const { data: debtData } = await supabase
+        .from('work_orders')
+        .select('total_amount, payment_status')
+        .eq('client_id', id)
+        .eq('payment_status', 'pending');
+        
+      if (debtData) {
+        const totalDebt = debtData.reduce((sum, order) => sum + (Number(order.total_amount) || 0), 0);
+        setClient(prev => ({ ...prev, total_debt: totalDebt }));
+      }
+
     }
     
     setIsLoading(false);
@@ -165,6 +177,23 @@ export default function ClientDetailsPage() {
                 <p className="text-sm text-gray-600">{client.notes}</p>
               </div>
             )}
+          </div>
+
+          {/* Estado de Cuenta */}
+          <div className="card space-y-4 border-l-4 border-l-brand-500 bg-brand-50/30">
+            <h2 className="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+              <DollarSign size={18} className="text-brand-500" />
+              Estado de Cuenta
+            </h2>
+            <div className="space-y-1">
+              <p className="text-sm text-gray-500 dark:text-gray-400">Total adeudado:</p>
+              <p className={`text-2xl font-bold ${client.total_debt > 0 ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                ${(client.total_debt || 0).toLocaleString('es-AR')}
+              </p>
+              {client.total_debt > 0 && (
+                <p className="text-xs text-red-500 dark:text-red-400 font-medium">Hay trabajos pendientes de cobro.</p>
+              )}
+            </div>
           </div>
         </div>
 

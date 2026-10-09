@@ -26,5 +26,11 @@
   "engines": {
     "node": ">=18.0.0"
   },
-  "packageManager": "npm@10.0.0"
+  "packageManager": "npm@10.0.0",
+  "dependencies": {
+    "@afipsdk/afip.js": "^0.8.1",
+    "body-parser": "^2.3.0",
+    "express": "^5.2.1",
+    "node-forge": "^1.4.0"
+  }
 }

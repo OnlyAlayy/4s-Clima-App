@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { DollarSign, Check, AlertCircle, FileText, TrendingUp, Wallet } from 'lucide-react';
+import { DollarSign, Check, AlertCircle, FileText, TrendingUp, Wallet, Download } from 'lucide-react';
 import { supabase } from '@4s-clima/shared/supabase';
 import { formatCurrency, formatDate } from '@4s-clima/shared/utils';
 
@@ -80,18 +80,66 @@ export default function FinancesPage() {
     const amount = parseFloat(invoiceAmount);
     if (isNaN(amount) || amount <= 0) return alert('Por favor, ingresá un monto válido mayor a 0');
 
-    const { error } = await supabase
-      .from('work_orders')
-      .update({ payment_status: 'pending', total_amount: amount })
-      .eq('id', selectedOrder.id);
+    try {
+      // 1. Emitir factura en AFIP (llamando al Vercel Serverless Function)
+      let afipMsg = '';
+      let afipVoucherNumber = null;
+      let afipCae = null;
+      
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const token = session?.access_token;
+      
+        const afipRes = await fetch('/api/invoice', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': token ? `Bearer ${token}` : ''
+          },
+          body: JSON.stringify({ amount })
+        });
+        
+        if (afipRes.ok) {
+          const afipData = await afipRes.json();
+          if (afipData.success) {
+            afipVoucherNumber = afipData.voucher.number;
+            afipCae = afipData.voucher.cae;
+            afipMsg = `\n✅ Factura AFIP generada:\nNro: ${afipData.voucher.number}\nCAE: ${afipData.voucher.cae}`;
+          }
+        } else {
+          console.warn('No se pudo emitir en AFIP (estás en local o hubo un error):', await afipRes.text());
+        }
+      } catch (err) {
+        console.warn('No se pudo conectar con el endpoint de AFIP (ignorar en local).', err);
+      }
 
-    if (error) {
-      console.error('Error al facturar:', error);
-      alert('Error al guardar: ' + error.message + '. ¿Corriste el código SQL en Supabase?');
-    } else {
-      setIsModalOpen(false);
-      setSelectedOrder(null);
-      loadFinances();
+      // 2. Guardar en la base de datos
+      const updateData = { 
+        payment_status: 'pending', 
+        total_amount: amount 
+      };
+
+      if (afipVoucherNumber && afipCae) {
+        updateData.afip_voucher_number = afipVoucherNumber.toString();
+        updateData.afip_cae = afipCae.toString();
+      }
+
+      const { error } = await supabase
+        .from('work_orders')
+        .update(updateData)
+        .eq('id', selectedOrder.id);
+
+      if (error) {
+        console.error('Error al facturar:', error);
+        alert('Error al guardar: ' + error.message + '. ¿Corriste el código SQL en Supabase?');
+      } else {
+        alert('Factura guardada correctamente.' + afipMsg);
+        setIsModalOpen(false);
+        setSelectedOrder(null);
+        loadFinances();
+      }
+    } catch (error) {
+      alert('Error inesperado: ' + error.message);
     }
   };
 
@@ -106,6 +154,54 @@ export default function FinancesPage() {
       alert('Error: ' + error.message);
     } else {
       loadFinances();
+    }
+  };
+
+  const anularFactura = async (order) => {
+    const invoiceNumStr = window.prompt(`Ingresá el número de la Factura original que querés anular para la orden ${order.order_number || order.id?.slice(0, 8)}:`);
+    if (!invoiceNumStr) return;
+    
+    const associatedInvoice = parseInt(invoiceNumStr, 10);
+    if (isNaN(associatedInvoice) || associatedInvoice <= 0) return alert('Número de factura inválido.');
+    
+    const amount = Number(order.total_amount) || 0;
+    if (amount <= 0) return alert('El monto de la orden es 0. No se puede generar una nota de crédito.');
+
+    if (!window.confirm(`¿Estás seguro que querés emitir una NOTA DE CRÉDITO por $${amount} asociada a la factura Nro ${associatedInvoice}?`)) return;
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      
+      const afipRes = await fetch('/api/invoice', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : ''
+        },
+        body: JSON.stringify({ amount, isCreditNote: true, associatedInvoice })
+      });
+      
+      if (afipRes.ok) {
+        const afipData = await afipRes.json();
+        if (afipData.success) {
+          alert(`✅ Nota de Crédito generada exitosamente!\nNro de Nota de Crédito: ${afipData.voucher.number}\nCAE: ${afipData.voucher.cae}`);
+          
+          // Opcional: Revertir el estado de pago a unbilled
+          await supabase
+            .from('work_orders')
+            .update({ payment_status: 'unbilled', total_amount: 0, afip_voucher_number: null, afip_cae: null })
+            .eq('id', order.id);
+            
+          loadFinances();
+        } else {
+          alert('Error de AFIP: ' + JSON.stringify(afipData));
+        }
+      } else {
+        alert('Error al conectar con AFIP (puede ser por estar en local): ' + await afipRes.text());
+      }
+    } catch (err) {
+      alert('Error inesperado: ' + err.message);
     }
   };
 
@@ -130,6 +226,35 @@ export default function FinancesPage() {
     }
   };
 
+  const exportToCSV = () => {
+    if (orders.length === 0) return alert('No hay datos para exportar.');
+    
+    let csvContent = "data:text/csv;charset=utf-8,";
+    csvContent += "Fecha,Nro Orden,Cliente,Tecnico,Factura AFIP,CAE,Estado,Total\n";
+
+    orders.forEach(order => {
+      const fecha = order.completed_at ? formatDate(order.completed_at) : '';
+      const nroOrden = order.order_number || order.id?.slice(0, 8);
+      const cliente = order.client?.name || '';
+      const tecnico = order.assigned?.name || '';
+      const factura = order.afip_voucher_number || 'Sin Factura';
+      const cae = order.afip_cae || '';
+      const estado = order.payment_status === 'paid' ? 'Pagado' : order.payment_status === 'pending' ? 'Esperando Pago' : 'Sin Facturar';
+      const total = order.total_amount || 0;
+
+      const row = `"${fecha}","${nroOrden}","${cliente}","${tecnico}","${factura}","${cae}","${estado}","${total}"`;
+      csvContent += row + "\n";
+    });
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `Libro_IVA_Ventas_${new Date().getTime()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -139,6 +264,13 @@ export default function FinancesPage() {
             Gestión de facturación y seguimiento de pagos
           </p>
         </div>
+        <button 
+          onClick={exportToCSV}
+          className="btn-secondary flex items-center gap-2"
+        >
+          <Download size={18} />
+          Exportar Libro IVA
+        </button>
       </div>
 
       {/* Dashboard Stats */}
@@ -231,6 +363,7 @@ export default function FinancesPage() {
                   <th>Completada el</th>
                   <th>Estado Cobro</th>
                   <th>Total</th>
+                  <th>Factura AFIP</th>
                   <th className="text-right">Acciones</th>
                 </tr>
               </thead>
@@ -253,6 +386,16 @@ export default function FinancesPage() {
                     <td className="font-semibold text-gray-900 dark:text-white">
                       {order.total_amount ? formatCurrency(order.total_amount) : '-'}
                     </td>
+                    <td className="text-sm">
+                      {order.afip_voucher_number ? (
+                        <div className="flex flex-col text-xs">
+                          <span className="text-brand-600 dark:text-brand-400 font-medium">Nro: {order.afip_voucher_number}</span>
+                          <span className="text-gray-500 dark:text-gray-400">CAE: {order.afip_cae}</span>
+                        </div>
+                      ) : (
+                        <span className="text-gray-400 dark:text-slate-500 italic text-xs">Sin Factura AFIP</span>
+                      )}
+                    </td>
                     <td className="text-right">
                       {(!order.payment_status || order.payment_status === 'unbilled') && (
                         <button
@@ -260,6 +403,14 @@ export default function FinancesPage() {
                           className="btn-secondary text-xs px-3 py-1.5 border-brand-200 text-brand-700 hover:bg-brand-50"
                         >
                           Emitir Factura
+                        </button>
+                      )}
+                      {(order.payment_status === 'pending' || order.payment_status === 'paid') && (
+                        <button
+                          onClick={() => anularFactura(order)}
+                          className="btn-secondary text-xs px-3 py-1.5 border-red-200 text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/30 ml-2"
+                        >
+                          Anular
                         </button>
                       )}
                       {order.payment_status === 'pending' && (
