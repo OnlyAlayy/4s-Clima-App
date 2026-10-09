@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { DollarSign, Check, AlertCircle, FileText, TrendingUp, Wallet, Download } from 'lucide-react';
 import { supabase } from '@4s-clima/shared/supabase';
 import { formatCurrency, formatDate } from '@4s-clima/shared/utils';
+import { generateInvoicePDF } from '../services/pdfService';
 
 export default function FinancesPage() {
   const [orders, setOrders] = useState([]);
@@ -255,6 +256,25 @@ export default function FinancesPage() {
     document.body.removeChild(link);
   };
 
+  const handleDownloadPDF = async (order) => {
+    try {
+      const newTab = window.open('', '_blank');
+      if (newTab) {
+        newTab.document.title = "Generando Factura PDF...";
+        newTab.document.body.innerHTML = "<div style='font-family: sans-serif; padding: 2rem;'>Generando Factura de 4S Clima...</div>";
+      }
+      
+      const pdfBlobUrl = await generateInvoicePDF(order);
+      
+      if (newTab && pdfBlobUrl) {
+        newTab.location.href = pdfBlobUrl;
+      }
+    } catch (err) {
+      console.error("Error al descargar PDF:", err);
+      alert("Hubo un error al generar la Factura PDF.");
+    }
+  };
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -405,6 +425,14 @@ export default function FinancesPage() {
                           Emitir Factura
                         </button>
                       )}
+                      {order.afip_voucher_number && (
+                        <button
+                          onClick={() => handleDownloadPDF(order)}
+                          className="btn-secondary text-xs px-3 py-1.5 border-blue-200 text-blue-700 hover:bg-blue-50 dark:border-blue-800 dark:text-blue-400 dark:hover:bg-blue-900/30 ml-2"
+                        >
+                          Descargar PDF
+                        </button>
+                      )}
                       {(order.payment_status === 'pending' || order.payment_status === 'paid') && (
                         <button
                           onClick={() => anularFactura(order)}
@@ -416,7 +444,7 @@ export default function FinancesPage() {
                       {order.payment_status === 'pending' && (
                         <button
                           onClick={() => markAsPagado(order.id)}
-                          className="btn-success text-xs px-3 py-1.5"
+                          className="btn-success text-xs px-3 py-1.5 ml-2"
                         >
                           <Check size={14} />
                           Marcar Pagado

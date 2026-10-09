@@ -2,6 +2,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { formatDate } from '@4s-clima/shared/utils';
 import { EQUIPMENT_TYPE_LABELS, WORK_ORDER_TYPE_LABELS } from '@4s-clima/shared/constants';
+import QRCode from 'qrcode';
 
 /**
  * Función para obtener una imagen de una URL y convertirla a base64 (necesario para jsPDF)
@@ -359,4 +360,119 @@ export const generateWorkOrderPDF = async (wo) => {
   // Devolvemos el Blob URL para que quien llamó a la función pueda abrirlo en la pestaña segura
   const pdfBlob = doc.output('bloburl');
   return pdfBlob;
+};
+
+/**
+ * Genera el PDF de la Factura C (estilo AFIP)
+ */
+export const generateInvoicePDF = async (wo) => {
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  
+  // Header AFIP - Factura C
+  doc.setLineWidth(0.5);
+  doc.rect(10, 10, pageWidth - 20, 45); // Cuadro principal
+  doc.line(pageWidth / 2, 10, pageWidth / 2, 55); // Linea divisoria central
+
+  // Letra C en el medio
+  doc.rect((pageWidth / 2) - 6, 10, 12, 12, 'F'); // Fondo
+  doc.setFillColor(255, 255, 255);
+  doc.rect((pageWidth / 2) - 6, 10, 12, 12);
+  doc.setFontSize(22);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(0, 0, 0);
+  doc.text('C', pageWidth / 2, 19, { align: 'center' });
+  
+  doc.setFontSize(8);
+  doc.text('COD. 011', pageWidth / 2, 26, { align: 'center' });
+
+  // Datos Empresa (Izquierda)
+  doc.setFontSize(14);
+  doc.text('4S CLIMA', 15, 20);
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.text('Razón Social: 4S CLIMA S.A.', 15, 28);
+  doc.text('Domicilio Comercial: CABA', 15, 33);
+  doc.text('Condición frente al IVA: Monotributista', 15, 38);
+
+  // Datos Factura (Derecha)
+  doc.setFontSize(14);
+  doc.setFont('helvetica', 'bold');
+  doc.text('FACTURA', pageWidth / 2 + 5, 20);
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`Punto de Venta: 0001  Comp. Nro: ${wo.afip_voucher_number || '00000000'}`, pageWidth / 2 + 5, 28);
+  doc.text(`Fecha de Emisión: ${formatDate(wo.completed_at || new Date())}`, pageWidth / 2 + 5, 33);
+  doc.text('CUIT: 23477380719', pageWidth / 2 + 5, 38);
+  doc.text('Ingresos Brutos: 23477380719', pageWidth / 2 + 5, 43);
+
+  // Datos del Cliente
+  doc.rect(10, 58, pageWidth - 20, 20);
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'bold');
+  doc.text('CUIT / DNI:', 15, 65);
+  doc.setFont('helvetica', 'normal');
+  doc.text(wo.client?.cuit || 'Consumidor Final', 45, 65);
+  
+  doc.setFont('helvetica', 'bold');
+  doc.text('Razón Social:', 15, 70);
+  doc.setFont('helvetica', 'normal');
+  doc.text(wo.client?.name || 'Consumidor Final', 45, 70);
+  
+  doc.setFont('helvetica', 'bold');
+  doc.text('Domicilio:', 15, 75);
+  doc.setFont('helvetica', 'normal');
+  doc.text(wo.client?.address || 'Sin especificar', 45, 75);
+
+  // Detalles de la Orden / Factura
+  const invoiceItems = [
+    [`Servicio Técnico: ${WORK_ORDER_TYPE_LABELS[wo.type] || wo.type}`, '1', `$${wo.total_amount || 0}`, `$${wo.total_amount || 0}`]
+  ];
+
+  autoTable(doc, {
+    startY: 82,
+    head: [['Descripción', 'Cantidad', 'Precio Unitario', 'Subtotal']],
+    body: invoiceItems,
+    theme: 'grid',
+    headStyles: { fillColor: [200, 200, 200], textColor: [0, 0, 0], fontStyle: 'bold' },
+    styles: { fontSize: 9, cellPadding: 3 }
+  });
+
+  // Total
+  const finalY = doc.lastAutoTable.finalY + 10;
+  doc.setFontSize(12);
+  doc.setFont('helvetica', 'bold');
+  doc.text(`Importe Total: $${(wo.total_amount || 0).toLocaleString('es-AR')}`, pageWidth - 15, finalY, { align: 'right' });
+
+  // Pie de Página - Código QR y CAE
+  if (wo.afip_cae) {
+    const qrObj = { 
+      ver: 1, 
+      fecha: "2023-10-01", 
+      cuit: 23477380719, 
+      ptoVta: 1, 
+      tipoCmp: 11, 
+      nroCmp: wo.afip_voucher_number, 
+      importe: wo.total_amount 
+    };
+    const qrData = "https://www.afip.gob.ar/fe/qr/?p=" + btoa(JSON.stringify(qrObj));
+    
+    try {
+      const qrDataUrl = await QRCode.toDataURL(qrData, { margin: 1 });
+      doc.addImage(qrDataUrl, 'PNG', 15, 250, 30, 30);
+    } catch (e) {
+      console.error('Error al generar QR', e);
+    }
+
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`CAE: ${wo.afip_cae}`, pageWidth - 60, 260);
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Vencimiento CAE: 31/12/2026', pageWidth - 60, 265);
+  }
+
+  const fileName = `Factura_C_${wo.afip_voucher_number || '0000'}.pdf`;
+  doc.save(fileName); 
+  return doc.output('bloburl');
 };
