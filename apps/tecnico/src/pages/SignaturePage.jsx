@@ -99,7 +99,7 @@ export default function SignaturePage() {
         await db.pendingSync.add({
           table: 'signatures',
           action: 'insert',
-          id: `sig-${id}`,
+          recordId: `sig-${id}`,
           data: {
             work_order_id: id,
             signer_name: signerName.trim(),

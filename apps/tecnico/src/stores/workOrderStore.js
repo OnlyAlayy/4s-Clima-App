@@ -27,7 +27,7 @@ export const useWorkOrderStore = create((set, get) => ({
           .select(`
             *,
             client:clients(id, name),
-            plant:plants(id, name, address),
+            plant:plants(id, name, address, latitude, longitude),
             equipment:equipment(id, type, brand, model)
           `)
           .eq('assigned_to', technicianId)
@@ -67,7 +67,7 @@ export const useWorkOrderStore = create((set, get) => ({
           .select(`
             *,
             client:clients(id, name, address, contact_name, contact_phone),
-            plant:plants(id, name, address, floor, contact_name, contact_phone, notes),
+            plant:plants(id, name, address, floor, contact_name, contact_phone, notes, latitude, longitude),
             equipment:equipment(id, type, brand, model, serial_number, capacity_btu, refrigerant_type, location_description),
             checklist_items(*),
             extras(*),
@@ -136,7 +136,7 @@ export const useWorkOrderStore = create((set, get) => ({
       await db.pendingSync.add({
         table: 'work_orders',
         action: 'update',
-        id: orderId,
+        recordId: orderId,
         data: { status: WORK_ORDER_STATUS.IN_PROGRESS, started_at: now },
         created_at: now,
       });
@@ -184,7 +184,7 @@ export const useWorkOrderStore = create((set, get) => ({
       await db.pendingSync.add({
         table: 'work_orders',
         action: 'update',
-        id: orderId,
+        recordId: orderId,
         data: { status: WORK_ORDER_STATUS.COMPLETED, completed_at: now },
         created_at: now,
       });
@@ -272,33 +272,40 @@ export const useWorkOrderStore = create((set, get) => ({
           } catch (uploadErr) {
             console.error('Error subiendo imagen offline:', uploadErr);
             error = uploadErr;
-            continue; // Saltar a la siguiente operación si falla la subida (reintentará en el futuro)
           }
         }
 
-        if (item.action === 'insert' || item.action === 'upsert') {
-          const res = await supabase.from(item.table).upsert(dataToUpsert);
-          error = res.error;
-        } else if (item.action === 'update') {
-          const res = await supabase.from(item.table).update(dataToUpsert).eq('id', item.id);
-          error = res.error;
-        } else if (item.action === 'delete') {
-          const res = await supabase.from(item.table).delete().eq('id', item.id);
-          error = res.error;
+        if (!error) {
+          if (item.action === 'insert' || item.action === 'upsert') {
+            const res = await supabase.from(item.table).upsert(dataToUpsert);
+            error = res.error;
+          } else if (item.action === 'update') {
+            const res = await supabase.from(item.table).update(dataToUpsert).eq('id', item.recordId);
+            error = res.error;
+          } else if (item.action === 'delete') {
+            const res = await supabase.from(item.table).delete().eq('id', item.recordId);
+            error = res.error;
+          }
         }
 
         if (!error) {
           await db.pendingSync.delete(item.id);
           // Marcar como sincronizado
           if (item.table === 'work_orders') {
-            await db.workOrders.update(item.id, { synced: true });
+            await db.workOrders.update(item.recordId, { synced: true });
           }
         } else {
           console.error(`Error sync ${item.table} (${item.action}):`, error);
           // Si el error es de PostgREST (el servidor rechazó la petición por RLS o validación),
-          // eliminar el item para evitar envenenar la cola de sincronización para siempre.
+          // guardar en failedSyncLog y eliminar de pendingSync para evitar un bucle tóxico.
           if (error.code || error.status >= 400) {
-            console.warn(`Eliminando operación fallida permanentemente para evitar bucle tóxico:`, item.id);
+            console.warn(`Moviendo operación fallida a failedSyncLog:`, item.id);
+            await db.failedSyncLog.add({
+              ...item,
+              id: undefined, // Let Dexie auto-increment
+              error: error,
+              failed_at: new Date().toISOString()
+            });
             await db.pendingSync.delete(item.id);
           }
         }

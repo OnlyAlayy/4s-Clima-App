@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X, MapPin } from 'lucide-react';
 import { supabase } from '@4s-clima/shared/supabase';
+import LocationPickerMap from './geo/LocationPickerMap';
 
 export default function CreatePlantModal({ isOpen, onClose, onCreated, clientId }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -9,6 +10,7 @@ export default function CreatePlantModal({ isOpen, onClose, onCreated, clientId 
   const [name, setName] = useState('');
   const [address, setAddress] = useState('');
   const [floor, setFloor] = useState('');
+  const [coords, setCoords] = useState({ lat: null, lng: null });
   const [contactName, setContactName] = useState('');
   const [contactPhone, setContactPhone] = useState('');
   const [notes, setNotes] = useState('');
@@ -23,6 +25,7 @@ export default function CreatePlantModal({ isOpen, onClose, onCreated, clientId 
     setName('');
     setAddress('');
     setFloor('');
+    setCoords({ lat: null, lng: null });
     setContactName('');
     setContactPhone('');
     setNotes('');
@@ -41,6 +44,8 @@ export default function CreatePlantModal({ isOpen, onClose, onCreated, clientId 
       name,
       address: address || null,
       floor: floor || null,
+      latitude: coords.lat,
+      longitude: coords.lng,
       contact_name: contactName || null,
       contact_phone: contactPhone || null,
       notes: notes || null
@@ -98,6 +103,14 @@ export default function CreatePlantModal({ isOpen, onClose, onCreated, clientId 
                 <input type="text" className="input" placeholder="Ej: 2B" value={floor} onChange={(e) => setFloor(e.target.value)} />
               </div>
             </div>
+
+            <LocationPickerMap
+              latitude={coords.lat}
+              longitude={coords.lng}
+              addressText={address}
+              onChange={({ lat, lng }) => setCoords({ lat, lng })}
+              label="Ubicación GPS de la Planta"
+            />
 
             <hr className="border-gray-100 my-2" />
 

@@ -4,11 +4,13 @@ import {
   ArrowLeft, Building2, MapPin, Phone, Clock, Wrench, User,
   Camera, FileSignature, ClipboardCheck, Package, CheckCircle2,
   XCircle, AlertCircle, Edit3, Trash2, Calendar, Hash, Thermometer,
-  ChevronDown, ChevronUp
+  ChevronDown, ChevronUp, ShieldCheck
 } from 'lucide-react';
 import { supabase } from '@4s-clima/shared/supabase';
-import { formatDate, formatDateTime, formatCurrency, getStatusLabel, getStatusColor } from '@4s-clima/shared/utils';
+import { formatDate, formatDateTime, formatCurrency, getStatusLabel, getStatusColor, resolveOrderLocation } from '@4s-clima/shared';
 import { WORK_ORDER_STATUS, WORK_ORDER_TYPE_LABELS, EQUIPMENT_TYPE_LABELS } from '@4s-clima/shared/constants';
+import LocationViewerMap from '../components/geo/LocationViewerMap';
+import LiveTrackingViewer from '../components/geo/LiveTrackingViewer';
 
 /**
  * Página de detalle completo de una Orden de Trabajo para el Admin.
@@ -130,6 +132,8 @@ export default function WorkOrderDetailPage() {
   const signatures = order.signatures || [];
   const extras = order.extras || [];
   const extrasTotal = extras.reduce((sum, e) => sum + (e.quantity * e.unit_price), 0);
+  const loc = resolveOrderLocation(order);
+  const isInProgress = order.status === WORK_ORDER_STATUS.IN_PROGRESS;
 
   return (
     <div>
@@ -212,6 +216,19 @@ export default function WorkOrderDetailPage() {
         </div>
       </div>
 
+      {/* Radar de Live Tracking en Vivo (se activa automáticamente cuando la orden está en curso) */}
+      {isInProgress && (
+        <div className="mb-6">
+          <LiveTrackingViewer
+            orderId={order.id}
+            destinationCoords={{ latitude: loc.latitude, longitude: loc.longitude }}
+            destinationAddress={loc.address}
+            technicianName={order.assigned?.name || 'Técnico'}
+            isOrderInProgress={isInProgress}
+          />
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Columna Izquierda: Info + Edición */}
         <div className="lg:col-span-1 space-y-6">
@@ -255,13 +272,15 @@ export default function WorkOrderDetailPage() {
                 </h3>
                 <p className="font-bold text-gray-900 dark:text-white text-lg">{order.client?.name || '-'}</p>
                 {order.client?.cuit && <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">CUIT: {order.client.cuit}</p>}
-                {order.plant && (
+                
+                {/* Datos de la sede o destino eventual */}
+                {loc.address && (
                   <div className="mt-4 bg-gray-50 dark:bg-slate-800/50 rounded-xl p-3 space-y-2 border border-gray-100 dark:border-slate-800">
                     <div className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300">
-                      <MapPin size={14} className="mt-0.5 text-gray-400" />
-                      <span>{order.plant.name}{order.plant.address && ` — ${order.plant.address}`}</span>
+                      <MapPin size={14} className="mt-0.5 text-gray-400 shrink-0" />
+                      <span>{loc.label}{loc.address && ` — ${loc.address}`}</span>
                     </div>
-                    {order.plant.contact_phone && (
+                    {order.plant?.contact_phone && (
                       <div className="flex items-center gap-2 text-sm text-brand-600 dark:text-brand-400">
                         <Phone size={14} />
                         <span>{order.plant.contact_name || 'Contacto'}: {order.plant.contact_phone}</span>
@@ -269,6 +288,17 @@ export default function WorkOrderDetailPage() {
                     )}
                   </div>
                 )}
+
+                {/* Mapa de destino de la orden */}
+                <div className="mt-4">
+                  <LocationViewerMap
+                    latitude={loc.latitude}
+                    longitude={loc.longitude}
+                    address={loc.address}
+                    title={loc.label}
+                    height="160px"
+                  />
+                </div>
               </div>
 
               {/* Programación */}
@@ -327,41 +357,82 @@ export default function WorkOrderDetailPage() {
         <div className="lg:col-span-2 space-y-6">
           {/* Checklist */}
           <div className="card p-6">
-            <h3 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider mb-4 flex items-center gap-2">
-              <ClipboardCheck size={16} className="text-brand-500" /> Checklist del Técnico
-              {checklist.length > 0 && (
-                <span className="text-xs font-medium text-gray-500 dark:text-gray-400 normal-case">
-                  ({checklist.filter(c => c.status === 'ok').length}/{checklist.length} completados)
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
+                <ClipboardCheck size={16} className="text-brand-500" /> Checklist del Técnico
+                {order.checklist_status === 'submitted' && checklist.length > 0 && (
+                  <span className="text-xs font-medium text-gray-500 dark:text-gray-400 normal-case">
+                    ({checklist.filter(c => c.status === 'ok').length}/{checklist.length} aprobados)
+                  </span>
+                )}
+              </h3>
+              {order.checklist_status === 'submitted' ? (
+                <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/50 flex items-center gap-1">
+                  <ShieldCheck size={13} /> Enviado e Inmutable
+                </span>
+              ) : (
+                <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 border border-amber-200 dark:border-amber-800/50 flex items-center gap-1">
+                  <Clock size={13} /> Modo Borrador
                 </span>
               )}
-            </h3>
-            {checklist.length === 0 ? (
-              <p className="text-gray-400 dark:text-gray-600 text-sm text-center py-6">El técnico aún no completó el checklist.</p>
-            ) : (
-              <div className="space-y-2">
-                {checklist.sort((a, b) => a.sort_order - b.sort_order).map(item => (
-                  <div key={item.id} className="flex items-start gap-3 py-2 px-3 rounded-xl bg-gray-50/50 dark:bg-slate-800/30 border border-gray-100 dark:border-slate-800">
-                    {item.status === 'ok' ? (
-                      <CheckCircle2 size={18} className="text-emerald-500 mt-0.5 flex-shrink-0" />
-                    ) : item.status === 'fail' ? (
-                      <XCircle size={18} className="text-red-500 mt-0.5 flex-shrink-0" />
-                    ) : (
-                      <AlertCircle size={18} className="text-amber-500 mt-0.5 flex-shrink-0" />
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 dark:text-white">{item.item_name}</p>
-                      {item.category && <span className="text-[10px] text-gray-500 dark:text-gray-400 uppercase font-semibold">{item.category}</span>}
-                      {item.notes && <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 italic">"{item.notes}"</p>}
-                    </div>
-                    <span className={`text-xs font-bold px-2 py-0.5 rounded ${
-                      item.status === 'ok' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
-                      item.status === 'fail' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
-                      'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
-                    }`}>
-                      {item.status === 'ok' ? 'OK' : item.status === 'fail' ? 'FALLA' : 'N/A'}
+            </div>
+
+            {/* Si aún no ha sido enviado de forma definitiva por el técnico */}
+            {order.checklist_status !== 'submitted' ? (
+              <div className="p-6 text-center bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-800/40 rounded-xl space-y-2">
+                <div className="w-10 h-10 rounded-full bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center mx-auto text-amber-600 dark:text-amber-400 animate-pulse">
+                  <Clock size={20} />
+                </div>
+                <h4 className="text-sm font-bold text-amber-900 dark:text-amber-200">
+                  Checklist en curso (Modo Borrador)
+                </h4>
+                <p className="text-xs text-amber-700/80 dark:text-amber-400/80 max-w-md mx-auto">
+                  El técnico está completando la inspección técnica en la locación. El informe detallado se habilitará en tiempo real una vez que el checklist sea enviado de forma definitiva.
+                </p>
+                {checklist.length > 0 && (
+                  <div className="pt-2">
+                    <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 bg-amber-100/80 dark:bg-amber-900/50 text-amber-900 dark:text-amber-300 rounded-lg">
+                      Avance actual: {checklist.filter(c => c.status !== null).length} de {checklist.length} ítems respondidos
                     </span>
                   </div>
-                ))}
+                )}
+              </div>
+            ) : checklist.length === 0 ? (
+              <p className="text-gray-400 dark:text-gray-600 text-sm text-center py-6">El checklist fue enviado pero no contiene ítems registrados.</p>
+            ) : (
+              <div className="space-y-3">
+                {order.checklist_submitted_at && (
+                  <div className="text-[11px] text-gray-500 dark:text-gray-400 flex items-center justify-between pb-1 border-b border-gray-100 dark:border-slate-800">
+                    <span className="font-medium text-emerald-600 dark:text-emerald-400">Certificado oficial sellado</span>
+                    <span>Enviado: {formatDateTime(order.checklist_submitted_at)}</span>
+                  </div>
+                )}
+                <div className="space-y-2">
+                  {checklist.sort((a, b) => a.sort_order - b.sort_order).map(item => (
+                    <div key={item.id} className="flex items-start gap-3 py-2 px-3 rounded-xl bg-gray-50/50 dark:bg-slate-800/30 border border-gray-100 dark:border-slate-800">
+                      {item.status === 'ok' ? (
+                        <CheckCircle2 size={18} className="text-emerald-500 mt-0.5 flex-shrink-0" />
+                      ) : item.status === 'fail' ? (
+                        <XCircle size={18} className="text-red-500 mt-0.5 flex-shrink-0" />
+                      ) : (
+                        <AlertCircle size={18} className="text-amber-500 mt-0.5 flex-shrink-0" />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900 dark:text-white">{item.item_name}</p>
+                        {item.category && <span className="text-[10px] text-gray-500 dark:text-gray-400 uppercase font-semibold">{item.category}</span>}
+                        {item.notes && <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 italic">"{item.notes}"</p>}
+                      </div>
+                      <span className={`text-xs font-bold px-2 py-0.5 rounded ${
+                        item.status === 'ok' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
+                        item.status === 'fail' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
+                        item.status === 'warning' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
+                        'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400'
+                      }`}>
+                        {item.status === 'ok' ? 'OK' : item.status === 'fail' ? 'FALLA' : item.status === 'warning' ? 'ATENCIÓN' : 'N/A'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>

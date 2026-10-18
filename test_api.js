@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const bodyParser = require('body-parser');
 
@@ -7,8 +8,8 @@ app.use(bodyParser.json());
 
 // Mocking Vercel's req/res for the handler
 app.all('/api/invoice', async (req, res) => {
-  // To simulate the Vercel env
-  const module = await import('./apps/admin/api/invoice.js');
+  // To simulate the Vercel env (cache busting to reload changes instantly)
+  const module = await import('./apps/admin/api/invoice.js?t=' + Date.now());
   await module.default(req, res);
 });
 

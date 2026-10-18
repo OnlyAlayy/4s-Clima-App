@@ -5,6 +5,7 @@ import { supabase } from '@4s-clima/shared/supabase';
 import { EQUIPMENT_TYPE_LABELS } from '@4s-clima/shared/constants';
 import CreatePlantModal from '../components/CreatePlantModal';
 import CreateEquipmentModal from '../components/CreateEquipmentModal';
+import { EditClientButton, EditPlantButton, EditEquipmentButton } from '../components/edit';
 
 export default function ClientDetailsPage() {
   const { id } = useParams();
@@ -118,7 +119,8 @@ export default function ClientDetailsPage() {
       </div>
       
       {/* Botones de acción del cliente */}
-      <div className="flex justify-end gap-3 mb-6">
+      <div className="flex justify-end items-center gap-3 mb-6">
+        <EditClientButton client={client} onSuccess={loadClientData} />
         <button 
           onClick={async () => {
             const newStatus = client.active === false ? true : false;
@@ -219,10 +221,13 @@ export default function ClientDetailsPage() {
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {plants.map(plant => (
-                  <div key={plant.id} className="p-3 border border-gray-100 rounded-xl hover:border-brand-200 transition-colors bg-gray-50">
-                    <h3 className="font-semibold text-gray-900 text-sm mb-1">{plant.name}</h3>
-                    <p className="text-xs text-gray-500 flex items-center gap-1"><MapPin size={10} /> {plant.address || 'Sin dirección'}</p>
-                    {plant.contact_name && <p className="text-xs text-gray-500 mt-1">Ref: {plant.contact_name} ({plant.contact_phone})</p>}
+                  <div key={plant.id} className="p-3 border border-gray-100 dark:border-slate-700 rounded-xl hover:border-brand-200 dark:hover:border-slate-600 transition-colors bg-gray-50 dark:bg-slate-800/50 flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold text-gray-900 dark:text-white text-sm mb-1 truncate">{plant.name}</h3>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1 truncate"><MapPin size={10} className="shrink-0" /> {plant.address || 'Sin dirección'}</p>
+                      {plant.contact_name && <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">Ref: {plant.contact_name} ({plant.contact_phone})</p>}
+                    </div>
+                    <EditPlantButton plant={plant} onSuccess={loadClientData} />
                   </div>
                 ))}
               </div>
@@ -262,16 +267,20 @@ export default function ClientDetailsPage() {
                       <th>Marca / Modelo</th>
                       <th>Capacidad</th>
                       <th>Serie</th>
+                      <th className="w-10 text-right"></th>
                     </tr>
                   </thead>
                   <tbody>
                     {equipment.map(eq => (
                       <tr key={eq.id}>
-                        <td className="text-xs font-medium text-gray-700">{eq.plant?.name}</td>
-                        <td className="text-xs text-gray-500">{EQUIPMENT_TYPE_LABELS[eq.type] || eq.type}</td>
-                        <td className="text-xs text-gray-900">{eq.brand} {eq.model}</td>
-                        <td className="text-xs text-gray-500">{eq.capacity_btu ? `${eq.capacity_btu} BTU` : '-'}</td>
-                        <td className="text-xs text-gray-500 font-mono">{eq.serial_number || '-'}</td>
+                        <td className="text-xs font-medium text-gray-700 dark:text-gray-300">{eq.plant?.name}</td>
+                        <td className="text-xs text-gray-500 dark:text-gray-400">{EQUIPMENT_TYPE_LABELS[eq.type] || eq.type}</td>
+                        <td className="text-xs text-gray-900 dark:text-white">{eq.brand} {eq.model}</td>
+                        <td className="text-xs text-gray-500 dark:text-gray-400">{eq.capacity_btu ? `${eq.capacity_btu} BTU` : '-'}</td>
+                        <td className="text-xs text-gray-500 dark:text-gray-400 font-mono">{eq.serial_number || '-'}</td>
+                        <td className="text-right">
+                          <EditEquipmentButton equipment={eq} plants={plants} onSuccess={loadClientData} />
+                        </td>
                       </tr>
                     ))}
                   </tbody>

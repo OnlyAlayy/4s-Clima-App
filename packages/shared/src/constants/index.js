@@ -91,3 +91,9 @@ export const CHECKLIST_STATUS_LABELS = {
   [CHECKLIST_STATUS.FAIL]: 'Falla',
   [CHECKLIST_STATUS.NA]: 'N/A',
 };
+
+/** Estados del checklist en la orden de trabajo */
+export const CHECKLIST_ORDER_STATUS = {
+  DRAFT: 'draft',
+  SUBMITTED: 'submitted',
+};

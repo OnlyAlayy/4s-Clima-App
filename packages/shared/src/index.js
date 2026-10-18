@@ -17,6 +17,7 @@ export {
   EQUIPMENT_TYPES,
   PHOTO_TYPES,
   EXTRA_UNITS,
+  CHECKLIST_ORDER_STATUS,
 } from './constants/index.js';
 
 // Checklists predefinidos
@@ -35,4 +36,10 @@ export {
   getStatusLabel,
   getStatusColor,
   truncateText,
+  DEFAULT_MAP_CENTER,
+  DEFAULT_MAP_ZOOM,
+  resolveOrderLocation,
+  calculateDistance,
+  formatDistance,
+  searchAddressCoordinates,
 } from './utils/index.js';

@@ -1,16 +1,16 @@
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, ClipboardList, Building2, Users, DollarSign,
-  LogOut, Snowflake, Settings, CalendarDays, Sun, Moon, Wallet
+  LogOut, CalendarDays, Sun, Moon, Wallet, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { useAdminAuth } from '../../App';
 import { useDarkMode } from '../../hooks/useDarkMode';
 
 /**
  * Sidebar de navegación del panel administrativo.
- * Fijo a la izquierda, con logo, links y logout.
+ * Fijo a la izquierda con opción de colapsar / expandir mediante flecha.
  */
-export default function Sidebar() {
+export default function Sidebar({ isCollapsed = false, toggleSidebar }) {
   const { profile, logout } = useAdminAuth();
   const { isDark, toggleDarkMode } = useDarkMode();
 
@@ -35,37 +35,94 @@ export default function Sidebar() {
   ];
 
   return (
-    <aside className="fixed left-0 top-0 bottom-0 w-64 bg-sidebar flex flex-col z-40">
-      {/* Logo */}
-      <div className="px-6 py-6 border-b border-white/10">
-        <div className="flex items-center gap-3">
-          <div className="h-10 flex items-center justify-center flex-shrink-0">
-            <img src="/logo4sclima.webp" alt="4S Clima Logo" className="h-full w-auto object-contain brightness-0 invert" />
-          </div>
-          <div className="flex flex-col justify-center">
-            <p className="text-blue-200 text-xs uppercase tracking-widest font-semibold border-l border-white/20 pl-3 ml-1">Panel Admin</p>
-          </div>
-        </div>
+    <aside
+      className={`fixed left-0 top-0 bottom-0 ${
+        isCollapsed ? 'w-20' : 'w-64'
+      } bg-sidebar border-r border-white/10 flex flex-col z-40 transition-all duration-300 ease-in-out shadow-2xl select-none`}
+    >
+      {/* Header con Logo y botón de colapso integrado con el estilo corporativo */}
+      <div
+        className={`py-5 border-b border-white/10 transition-all duration-300 ${
+          isCollapsed
+            ? 'px-3 flex flex-col items-center gap-3'
+            : 'px-5 flex items-center justify-between'
+        }`}
+      >
+        {isCollapsed ? (
+          <>
+            <div className="h-9 w-9 flex items-center justify-center flex-shrink-0" title="4S Clima - Panel Admin">
+              <img
+                src="/logo4sclima.webp"
+                alt="4S Clima Logo"
+                className="h-full w-auto object-contain brightness-0 invert"
+              />
+            </div>
+            {toggleSidebar && (
+              <button
+                onClick={toggleSidebar}
+                className="p-1.5 rounded-lg text-blue-200/70 hover:text-white hover:bg-white/10 active:bg-white/20 transition-all duration-150 flex items-center justify-center focus:outline-none"
+                title="Agrandar menú (Expandir)"
+              >
+                <ChevronRight size={18} />
+              </button>
+            )}
+          </>
+        ) : (
+          <>
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="h-9 flex items-center justify-center flex-shrink-0">
+                <img
+                  src="/logo4sclima.webp"
+                  alt="4S Clima Logo"
+                  className="h-full w-auto object-contain brightness-0 invert"
+                />
+              </div>
+              <div className="flex flex-col justify-center min-w-0">
+                <p className="text-blue-200 text-[11px] uppercase tracking-wider font-semibold border-l border-white/20 pl-2.5 truncate">
+                  Panel Admin
+                </p>
+              </div>
+            </div>
+
+            {toggleSidebar && (
+              <button
+                onClick={toggleSidebar}
+                className="p-1.5 rounded-lg text-blue-200/70 hover:text-white hover:bg-white/10 active:bg-white/20 transition-all duration-150 flex items-center justify-center flex-shrink-0 focus:outline-none"
+                title="Achicar menú hacia la izquierda"
+              >
+                <ChevronLeft size={18} />
+              </button>
+            )}
+          </>
+        )}
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-3 py-4 space-y-6 overflow-y-auto">
+      <nav className={`flex-1 ${isCollapsed ? 'px-2' : 'px-3'} py-4 space-y-6 overflow-y-auto`}>
         {navGroups.map((group, i) => (
           <div key={i} className="space-y-1">
-            <p className="px-3 text-[10px] font-bold tracking-widest text-blue-200/50 uppercase mb-2">
-              {group.label}
-            </p>
+            {isCollapsed ? (
+              <div className="my-2 border-t border-white/10 mx-2" title={group.label} />
+            ) : (
+              <p className="px-3 text-[10px] font-bold tracking-widest text-blue-200/50 uppercase mb-2">
+                {group.label}
+              </p>
+            )}
+
             {group.items.map(({ to, icon: Icon, label, end }) => (
               <NavLink
                 key={to}
                 to={to}
                 end={end}
+                title={isCollapsed ? label : undefined}
                 className={({ isActive }) =>
-                  `sidebar-link ${isActive ? 'active' : ''}`
+                  `sidebar-link ${isCollapsed ? 'justify-center px-0 py-3' : ''} ${
+                    isActive ? 'active' : ''
+                  }`
                 }
               >
-                <Icon size={18} />
-                <span>{label}</span>
+                <Icon size={isCollapsed ? 20 : 18} />
+                {!isCollapsed && <span>{label}</span>}
               </NavLink>
             ))}
           </div>
@@ -73,37 +130,58 @@ export default function Sidebar() {
       </nav>
 
       {/* User info + logout */}
-      <div className="px-3 py-4 border-t border-white/10">
-        <div className="flex items-center gap-3 px-4 py-2 mb-2">
-          <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center flex-shrink-0 shadow-sm">
-            <span className="text-white text-xs font-bold">
-              {profile?.name?.[0]?.toUpperCase() || 'A'}
-            </span>
+      <div className={`${isCollapsed ? 'px-2' : 'px-3'} py-4 border-t border-white/10`}>
+
+        {isCollapsed ? (
+          <div
+            className="flex justify-center mb-2 py-1"
+            title={`${profile?.name || 'Admin'} (Administrador)`}
+          >
+            <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center flex-shrink-0 shadow-sm">
+              <span className="text-white text-xs font-bold">
+                {profile?.name?.[0]?.toUpperCase() || 'A'}
+              </span>
+            </div>
           </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-white text-sm font-medium truncate">
-              {profile?.name || 'Admin'}
-            </p>
-            <p className="text-blue-200 text-[10px] truncate font-medium">Administrador</p>
+        ) : (
+          <div className="flex items-center gap-3 px-4 py-2 mb-2">
+            <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center flex-shrink-0 shadow-sm">
+              <span className="text-white text-xs font-bold">
+                {profile?.name?.[0]?.toUpperCase() || 'A'}
+              </span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-white text-sm font-medium truncate">
+                {profile?.name || 'Admin'}
+              </p>
+              <p className="text-blue-200 text-[10px] truncate font-medium">Administrador</p>
+            </div>
           </div>
-        </div>
-        
+        )}
+
         <button
           onClick={toggleDarkMode}
-          className="sidebar-link w-full text-blue-100 mb-1"
+          title={isCollapsed ? (isDark ? 'Modo Claro' : 'Modo Oscuro') : undefined}
+          className={`sidebar-link w-full text-blue-100 mb-1 ${
+            isCollapsed ? 'justify-center px-0 py-3' : ''
+          }`}
         >
-          {isDark ? <Sun size={18} /> : <Moon size={18} />}
-          <span>{isDark ? 'Modo Claro' : 'Modo Oscuro'}</span>
+          {isDark ? <Sun size={isCollapsed ? 20 : 18} /> : <Moon size={isCollapsed ? 20 : 18} />}
+          {!isCollapsed && <span>{isDark ? 'Modo Claro' : 'Modo Oscuro'}</span>}
         </button>
 
         <button
           onClick={logout}
-          className="sidebar-link w-full text-blue-100 hover:text-white hover:bg-red-500"
+          title={isCollapsed ? 'Cerrar Sesión' : undefined}
+          className={`sidebar-link w-full text-blue-100 hover:text-white hover:bg-red-500 ${
+            isCollapsed ? 'justify-center px-0 py-3' : ''
+          }`}
         >
-          <LogOut size={18} />
-          <span>Cerrar Sesión</span>
+          <LogOut size={isCollapsed ? 20 : 18} />
+          {!isCollapsed && <span>Cerrar Sesión</span>}
         </button>
       </div>
     </aside>
   );
 }
+

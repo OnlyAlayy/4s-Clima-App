@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Check, AlertTriangle, X, Minus, ChevronRight, MessageSquare } from 'lucide-react';
+import {
+  ArrowLeft, Check, AlertTriangle, X, Minus, ChevronRight,
+  MessageSquare, Save, CheckCircle2, Lock, ShieldCheck
+} from 'lucide-react';
 import { useWorkOrderStore } from '../stores/workOrderStore';
 import { CHECKLIST_STATUS } from '@4s-clima/shared/constants';
 import { getChecklistByEquipmentType } from '@4s-clima/shared/constants/checklists';
@@ -9,40 +12,108 @@ import { db } from '../services/offlineDb';
 
 /**
  * Página de checklist del técnico.
- * Interfaz de botones grandes sin escribir.
- * El técnico toca OK / Atención / Falla para cada ítem.
+ * Soporta:
+ * 1. Guardado parcial en modo borrador (draft) en cualquier momento.
+ * 2. Cierre y envío definitivo (submitted) con validación del 100% y confirmación.
+ * 3. Inmutabilidad en modo solo lectura una vez enviado.
+ * 4. Carga de plantillas dinámicas si la orden tiene checklist_template_id, o fallback automático por tipo de equipo.
  */
 export default function ChecklistPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { currentOrder } = useWorkOrderStore();
+  const { currentOrder, fetchWorkOrder, isLoading } = useWorkOrderStore();
   const [items, setItems] = useState([]);
   const [expandedNote, setExpandedNote] = useState(null);
   const [notes, setNotes] = useState({});
-  const [isSaving, setIsSaving] = useState(false);
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
+  const [isSubmittingFinal, setIsSubmittingFinal] = useState(false);
+  const [draftToast, setDraftToast] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
 
-  // Inicializar checklist
+  // Cargar orden si no está en Zustand (ej: tras recarga con F5)
   useEffect(() => {
-    if (!currentOrder) return;
+    if (id && (!currentOrder || currentOrder.id !== id)) {
+      fetchWorkOrder(id);
+    }
+  }, [id, currentOrder, fetchWorkOrder]);
 
-    // Si ya tiene checklist items de la DB, usarlos
-    if (currentOrder.checklist_items?.length > 0) {
+  // ¿El checklist ya fue sellado y enviado?
+  const isSubmitted = currentOrder?.checklist_status === 'submitted';
+
+  // Inicializar checklist (usar existentes, plantilla dinámica o plantilla por defecto)
+  useEffect(() => {
+    if (!currentOrder || currentOrder.id !== id) return;
+
+    // 1. Si ya tiene checklist_items guardados en la DB o caché, usarlos
+    if (currentOrder.checklist_items && currentOrder.checklist_items.length > 0) {
       setItems(currentOrder.checklist_items);
       const existingNotes = {};
       currentOrder.checklist_items.forEach((item) => {
         if (item.notes) existingNotes[item.id] = item.notes;
       });
       setNotes(existingNotes);
-    } else {
-      // Generar desde template según tipo de equipo
-      const template = getChecklistByEquipmentType(currentOrder.equipment?.type);
-      if (template) {
+      return;
+    }
+
+    // 2. Si no tiene ítems aún, generar desde plantilla
+    async function generateInitialItems() {
+      let template = null;
+
+      // Buscar si la orden tiene asignada una plantilla dinámica en la base de datos
+      if (currentOrder.checklist_template_id) {
+        try {
+          const { data: tpl } = await supabase
+            .from('checklist_templates')
+            .select('*')
+            .eq('id', currentOrder.checklist_template_id)
+            .single();
+
+          if (tpl && (tpl.sections || tpl.categories)) {
+            template = {
+              name: tpl.name,
+              categories: Array.isArray(tpl.sections) ? tpl.sections : tpl.categories || [],
+            };
+          }
+        } catch (err) {
+          console.warn('No se pudo cargar la plantilla dinámica, usando fallback:', err);
+        }
+      }
+
+      // Si no hay plantilla específica en la orden, buscar la plantilla activa más reciente creada en el admin
+      if (!template) {
+        try {
+          const { data: activeTpls } = await supabase
+            .from('checklist_templates')
+            .select('*')
+            .eq('active', true)
+            .order('created_at', { ascending: false })
+            .limit(1);
+
+          if (activeTpls && activeTpls.length > 0) {
+            const tpl = activeTpls[0];
+            template = {
+              name: tpl.name,
+              categories: Array.isArray(tpl.sections) ? tpl.sections : tpl.categories || [],
+            };
+          }
+        } catch (err) {
+          console.warn('No se pudo cargar plantilla activa:', err);
+        }
+      }
+
+      // Si aún no hay plantilla, usar fallback por tipo de equipo
+      if (!template) {
+        template = getChecklistByEquipmentType(currentOrder.equipment?.type);
+      }
+
+      if (template && (template.categories || template.sections)) {
         let sortOrder = 0;
         const generated = [];
-        template.categories.forEach((cat) => {
-          cat.items.forEach((itemName) => {
+        const cats = template.categories || template.sections || [];
+        cats.forEach((cat) => {
+          (cat.items || []).forEach((itemName) => {
             generated.push({
-              id: `temp-${sortOrder}`,
+              id: crypto.randomUUID(),
               work_order_id: id,
               category: cat.name,
               item_name: itemName,
@@ -55,10 +126,13 @@ export default function ChecklistPage() {
         setItems(generated);
       }
     }
+
+    generateInitialItems();
   }, [currentOrder, id]);
 
-  // Cambiar estado de un ítem
+  // Cambiar estado de un ítem (bloqueado si ya fue enviado)
   const toggleStatus = useCallback((itemId, newStatus) => {
+    if (isSubmitted) return;
     setItems((prev) =>
       prev.map((item) =>
         item.id === itemId
@@ -66,87 +140,187 @@ export default function ChecklistPage() {
           : item
       )
     );
-  }, []);
+  }, [isSubmitted]);
 
   // Actualizar nota de un ítem
   const updateNote = useCallback((itemId, note) => {
+    if (isSubmitted) return;
     setNotes((prev) => ({ ...prev, [itemId]: note }));
-  }, []);
+  }, [isSubmitted]);
 
-  // Guardar y avanzar a firma
-  const handleSave = async () => {
-    // Validación: buscar ítems sin responder
-    const unanswered = items.filter(item => item.status === null);
-    
-    if (unanswered.length > 0) {
-      const firstMissing = unanswered[0];
-      
-      // Hacer scroll hacia el primer elemento faltante
-      const el = document.getElementById(`checklist-item-${firstMissing.id}`);
-      if (el) {
-        // Obtenemos la barra superior para restarle al scroll
-        const yOffset = -100; 
-        const y = el.getBoundingClientRect().top + window.pageYOffset + yOffset;
-        
-        window.scrollTo({ top: y, behavior: 'smooth' });
-        
-        // Agregar una clase temporal para resaltarlo (usamos estilos inline para asegurar el efecto)
-        el.style.transition = 'all 0.3s ease';
-        el.style.boxShadow = '0 0 0 2px rgba(239, 68, 68, 1), 0 4px 6px -1px rgba(0, 0, 0, 0.1)';
-        
-        setTimeout(() => {
-          el.style.boxShadow = '';
-        }, 2000);
-      }
-      
-      alert('Por favor, completá todos los ítems del checklist antes de continuar.');
-      return;
-    }
-
-    setIsSaving(true);
-
-    const checklistData = items.map((item) => ({
+  // Construir datos consolidados
+  const buildChecklistData = () => {
+    return items.map((item) => ({
       ...item,
-      notes: notes[item.id] || item.notes || null,
+      notes: notes[item.id] !== undefined ? notes[item.id] : item.notes || null,
     }));
+  };
+
+  /**
+   * 1. GUARDAR BORRADOR (DRAFT)
+   * Permite guardar el progreso parcial en cualquier momento (ej: 4 de 15 ítems).
+   * No bloquea ni exige el 100% respondido.
+   */
+  const handleSaveDraft = async () => {
+    if (isSubmitted) return;
+    setIsSavingDraft(true);
+    const checklistData = buildChecklistData();
 
     try {
       if (navigator.onLine) {
         if (checklistData.length > 0) {
-          // Primero borramos los anteriores para evitar duplicados si el usuario va y vuelve de página
-          await supabase.from('checklist_items').delete().eq('work_order_id', id);
-          
-          // Insertamos la versión actual
-          const toInsert = checklistData.map(({ id: _id, ...rest }) => rest);
-          const { error } = await supabase.from('checklist_items').insert(toInsert);
-          
-          if (error) throw error;
+          const { error: upsertErr } = await supabase
+            .from('checklist_items')
+            .upsert(checklistData);
+          if (upsertErr) throw upsertErr;
         }
+
+        const { error: woErr } = await supabase
+          .from('work_orders')
+          .update({
+            checklist_status: 'draft',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', id);
+        if (woErr) throw woErr;
       } else {
-        // Guardar en IndexedDB para sync posterior
+        // Modo offline
         for (const item of checklistData) {
           await db.checklistItems.put({ ...item, synced: false });
         }
+        await db.workOrders.update(id, { checklist_status: 'draft', synced: false });
         await db.pendingSync.add({
           table: 'checklist_items',
           action: 'upsert',
-          id: id,
+          recordId: id,
           data: checklistData,
           created_at: new Date().toISOString(),
         });
       }
 
-      navigate(`/orden/${id}/fotos`);
-    } catch (error) {
-      console.error('Error guardando checklist:', error);
-      alert('Error al guardar. Se guardó localmente para sincronizar después.');
-      // Guardar offline como fallback
-      for (const item of checklistData) {
-        await db.checklistItems.put({ ...item, synced: false });
+      // Actualizar Zustand local
+      const cur = useWorkOrderStore.getState().currentOrder;
+      if (cur?.id === id) {
+        useWorkOrderStore.setState({
+          currentOrder: {
+            ...cur,
+            checklist_status: 'draft',
+            checklist_items: checklistData,
+          },
+        });
       }
-      navigate(`/orden/${id}/fotos`);
+
+      // Mostrar feedback visual
+      setDraftToast(true);
+      setTimeout(() => setDraftToast(false), 2500);
+    } catch (error) {
+      console.error('Error guardando borrador:', error);
+      alert('Hubo un error al guardar el borrador: ' + error.message);
     } finally {
-      setIsSaving(false);
+      setIsSavingDraft(false);
+    }
+  };
+
+  /**
+   * 2. ENVIAR CHECKLIST FINAL (SUBMITTED)
+   * Valida que el 100% esté respondido, pide confirmación,
+   * sella la orden con checklist_status = 'submitted' y bloquea la edición.
+   */
+  const handleSubmitFinal = async () => {
+    if (isSubmitted) {
+      navigate(`/orden/${id}/fotos`);
+      return;
+    }
+
+    // Validación: buscar ítems sin responder
+    const unanswered = items.filter((item) => item.status === null);
+    if (unanswered.length > 0) {
+      const firstMissing = unanswered[0];
+      const el = document.getElementById(`checklist-item-${firstMissing.id}`);
+      if (el) {
+        const yOffset = -100;
+        const y = el.getBoundingClientRect().top + window.pageYOffset + yOffset;
+        window.scrollTo({ top: y, behavior: 'smooth' });
+        el.style.transition = 'all 0.3s ease';
+        el.style.boxShadow = '0 0 0 2px rgba(239, 68, 68, 1), 0 4px 6px -1px rgba(0, 0, 0, 0.1)';
+        setTimeout(() => {
+          el.style.boxShadow = '';
+        }, 2000);
+      }
+      alert('Por favor, respondé todos los ítems antes de enviar el checklist final.');
+      return;
+    }
+
+    setShowConfirmModal(true);
+  };
+
+  const handleExecuteSubmitFinal = async () => {
+    setShowConfirmModal(false);
+    setIsSubmittingFinal(true);
+    const checklistData = buildChecklistData();
+    const now = new Date().toISOString();
+
+    try {
+      if (navigator.onLine) {
+        if (checklistData.length > 0) {
+          const { error: upsertErr } = await supabase
+            .from('checklist_items')
+            .upsert(checklistData);
+          if (upsertErr) throw upsertErr;
+        }
+
+        const { error: woErr } = await supabase
+          .from('work_orders')
+          .update({
+            checklist_status: 'submitted',
+            checklist_submitted_at: now,
+            updated_at: now,
+          })
+          .eq('id', id);
+        if (woErr) throw woErr;
+      } else {
+        // Offline queue
+        for (const item of checklistData) {
+          await db.checklistItems.put({ ...item, synced: false });
+        }
+        await db.workOrders.update(id, {
+          checklist_status: 'submitted',
+          checklist_submitted_at: now,
+          synced: false,
+        });
+        await db.pendingSync.add({
+          table: 'checklist_items',
+          action: 'upsert',
+          recordId: id,
+          data: checklistData,
+          created_at: now,
+        });
+        await db.pendingSync.add({
+          table: 'work_orders',
+          action: 'update',
+          recordId: id,
+          data: { checklist_status: 'submitted', checklist_submitted_at: now },
+          created_at: now,
+        });
+      }
+
+      // Actualizar Zustand local
+      const cur = useWorkOrderStore.getState().currentOrder;
+      if (cur?.id === id) {
+        useWorkOrderStore.setState({
+          currentOrder: {
+            ...cur,
+            checklist_status: 'submitted',
+            checklist_submitted_at: now,
+            checklist_items: checklistData,
+          },
+        });
+      }
+    } catch (error) {
+      console.error('Error enviando checklist final:', error);
+      alert('Error al enviar checklist: ' + error.message);
+    } finally {
+      setIsSubmittingFinal(false);
     }
   };
 
@@ -162,7 +336,7 @@ export default function ChecklistPage() {
   const completed = items.filter((i) => i.status !== null).length;
   const total = items.length;
   const progress = total > 0 ? Math.round((completed / total) * 100) : 100;
-  const allDone = total === 0 || completed === total;
+  const allDone = total > 0 && completed === total;
 
   return (
     <div className="page-container">
@@ -177,7 +351,14 @@ export default function ChecklistPage() {
             <ArrowLeft size={20} className="text-gray-700 dark:text-gray-300" />
           </button>
           <div className="flex-1">
-            <h1 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Checklist</h1>
+            <h1 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
+              Checklist
+              {isSubmitted && (
+                <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
+                  Enviado
+                </span>
+              )}
+            </h1>
             <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">
               {currentOrder?.client?.name} — {currentOrder?.equipment?.type}
             </p>
@@ -189,34 +370,57 @@ export default function ChecklistPage() {
         {/* Barra de progreso */}
         <div className="h-2 bg-gray-100 dark:bg-slate-800 rounded-full overflow-hidden shadow-inner">
           <div
-            className="h-full bg-brand-500 rounded-full transition-all duration-500 ease-out"
+            className={`h-full rounded-full transition-all duration-500 ease-out ${
+              allDone ? 'bg-emerald-500' : 'bg-brand-500'
+            }`}
             style={{ width: `${progress}%` }}
           />
         </div>
       </div>
 
+      {/* Banner de inmutabilidad si ya fue enviado */}
+      {isSubmitted && (
+        <div className="mb-4 mt-2 p-3.5 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-xl flex items-start gap-3 text-xs text-emerald-800 dark:text-emerald-300">
+          <ShieldCheck size={20} className="shrink-0 text-emerald-600 dark:text-emerald-400 mt-0.5" />
+          <div>
+            <span className="font-bold block text-sm">Checklist Sellado e Inmutable</span>
+            <span className="text-emerald-700/80 dark:text-emerald-400/80 mt-0.5 block">
+              Esta inspección ya fue enviada y sellada en el servidor. La edición se encuentra bloqueada en modo solo lectura.
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Toast de confirmación de borrador */}
+      {draftToast && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white px-4 py-2 rounded-xl text-xs font-semibold shadow-lg animate-fade-in flex items-center gap-2">
+          <CheckCircle2 size={16} className="text-emerald-400" />
+          <span>Borrador guardado ({completed}/{total} respondidos)</span>
+        </div>
+      )}
+
       {/* Leyenda rápida */}
-      <div className="flex items-center justify-center gap-4 mb-6 mt-4 text-[11px] font-semibold text-gray-600">
+      <div className="flex items-center justify-center gap-4 mb-6 mt-3 text-[11px] font-semibold text-gray-600 dark:text-gray-400">
         <span className="flex items-center gap-1.5">
-          <span className="w-3.5 h-3.5 rounded bg-emerald-100 border border-emerald-300 shadow-sm" /> OK
+          <span className="w-3.5 h-3.5 rounded bg-emerald-100 border border-emerald-300 dark:bg-emerald-950/40 dark:border-emerald-700 shadow-sm" /> OK
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="w-3.5 h-3.5 rounded bg-amber-100 border border-amber-300 shadow-sm" /> Atención
+          <span className="w-3.5 h-3.5 rounded bg-amber-100 border border-amber-300 dark:bg-amber-950/40 dark:border-amber-700 shadow-sm" /> Atención
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="w-3.5 h-3.5 rounded bg-red-100 border border-red-300 shadow-sm" /> Falla
+          <span className="w-3.5 h-3.5 rounded bg-red-100 border border-red-300 dark:bg-red-950/40 dark:border-red-700 shadow-sm" /> Falla
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="w-3.5 h-3.5 rounded bg-gray-100 border border-gray-300 shadow-sm" /> N/A
+          <span className="w-3.5 h-3.5 rounded bg-gray-100 border border-gray-300 dark:bg-gray-800 dark:border-gray-700 shadow-sm" /> N/A
         </span>
       </div>
 
       {/* Checklist por categorías */}
-      <div className="space-y-6 animate-slide-up pb-10">
+      <div className="space-y-6 animate-slide-up pb-32">
         {Object.entries(categories).map(([catName, catItems]) => (
           <section key={catName}>
             <h2 className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-3 px-2 flex items-center gap-2">
-              <div className="w-1 h-3 bg-brand-500 rounded-full"></div>
+              <div className="w-1 h-3 bg-brand-500 rounded-full" />
               {catName}
             </h2>
             <div className="space-y-2.5">
@@ -238,6 +442,7 @@ export default function ChecklistPage() {
                         active={item.status === CHECKLIST_STATUS.OK}
                         onClick={() => toggleStatus(item.id, CHECKLIST_STATUS.OK)}
                         color="emerald"
+                        disabled={isSubmitted}
                       />
                       <StatusButton
                         icon={<AlertTriangle size={14} />}
@@ -245,6 +450,7 @@ export default function ChecklistPage() {
                         active={item.status === CHECKLIST_STATUS.WARNING}
                         onClick={() => toggleStatus(item.id, CHECKLIST_STATUS.WARNING)}
                         color="amber"
+                        disabled={isSubmitted}
                       />
                       <StatusButton
                         icon={<X size={16} />}
@@ -252,6 +458,7 @@ export default function ChecklistPage() {
                         active={item.status === CHECKLIST_STATUS.FAIL}
                         onClick={() => toggleStatus(item.id, CHECKLIST_STATUS.FAIL)}
                         color="red"
+                        disabled={isSubmitted}
                       />
                       <StatusButton
                         icon={<Minus size={14} />}
@@ -259,9 +466,11 @@ export default function ChecklistPage() {
                         active={item.status === CHECKLIST_STATUS.NA}
                         onClick={() => toggleStatus(item.id, CHECKLIST_STATUS.NA)}
                         color="gray"
+                        disabled={isSubmitted}
                       />
-                      {/* Nota */}
+                      {/* Botón Nota */}
                       <button
+                        type="button"
                         onClick={() => setExpandedNote(expandedNote === item.id ? null : item.id)}
                         className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all shadow-sm border
                           ${notes[item.id]
@@ -282,6 +491,7 @@ export default function ChecklistPage() {
                         placeholder="Agregar observación..."
                         value={notes[item.id] || ''}
                         onChange={(e) => updateNote(item.id, e.target.value)}
+                        disabled={isSubmitted}
                         className="input text-sm min-h-[60px] resize-none"
                         rows={2}
                       />
@@ -294,38 +504,111 @@ export default function ChecklistPage() {
         ))}
       </div>
 
-      {/* Botón guardar y firmar */}
-      <div className="fixed bottom-20 left-0 right-0 px-4 pb-4 pt-2 bg-gradient-to-t from-gray-50 via-gray-50 dark:from-slate-950 dark:via-slate-950 to-transparent z-20 pointer-events-none">
+      {/* Barra de acción inferior fija */}
+      <div className="fixed bottom-0 left-0 right-0 px-4 pb-6 pt-3 bg-gradient-to-t from-gray-50 via-gray-50 dark:from-slate-950 dark:via-slate-950 to-transparent z-20 pointer-events-none">
         <div className="max-w-lg mx-auto pointer-events-auto">
-          <button
-            onClick={handleSave}
-            disabled={!allDone || isSaving}
-            className={`w-full text-base ${allDone ? 'btn-success' : 'btn-secondary opacity-60'}`}
-          >
-            {isSaving ? (
-              <>
-                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                Guardando...
-              </>
-            ) : allDone ? (
-              <>
-                Guardar y Fotografías
-                <ChevronRight size={18} />
-              </>
-            ) : (
-              `Completá todos los ítems (${completed}/${total})`
-            )}
-          </button>
+          {isSubmitted ? (
+            /* Modo ya enviado: solo navegación */
+            <button
+              onClick={() => navigate(`/orden/${id}/fotos`)}
+              className="w-full btn-primary text-base flex items-center justify-center gap-2 py-3"
+            >
+              <span>Continuar a Fotografías</span>
+              <ChevronRight size={18} />
+            </button>
+          ) : (
+            /* Modo editable: Guardar Borrador vs Enviar Checklist Final */
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={handleSaveDraft}
+                disabled={isSavingDraft || isSubmittingFinal}
+                className="btn-secondary text-sm py-3 flex items-center justify-center gap-1.5 font-bold"
+              >
+                {isSavingDraft ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
+                    <span>Guardando...</span>
+                  </>
+                ) : (
+                  <>
+                    <Save size={16} className="text-brand-500" />
+                    <span>Guardar Borrador</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleSubmitFinal}
+                disabled={!allDone || isSubmittingFinal || isSavingDraft}
+                className={`text-sm py-3 flex items-center justify-center gap-1.5 font-bold ${
+                  allDone ? 'btn-success' : 'btn-secondary opacity-60'
+                }`}
+              >
+                {isSubmittingFinal ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>Enviando...</span>
+                  </>
+                ) : allDone ? (
+                  <>
+                    <span>Enviar Checklist</span>
+                    <ChevronRight size={16} />
+                  </>
+                ) : (
+                  `Faltan (${total - completed})`
+                )}
+              </button>
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Modal de confirmación para envío definitivo */}
+      {showConfirmModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-2xl p-6 max-w-sm w-full shadow-2xl animate-scale-up space-y-4">
+            <div className="w-12 h-12 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center mx-auto">
+              <ShieldCheck size={28} />
+            </div>
+            <div className="text-center">
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+                ¿Enviar Checklist Final?
+              </h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 leading-relaxed">
+                Una vez enviado, el checklist quedará <strong className="text-gray-700 dark:text-gray-200">sellado e inmutable</strong> en el servidor y no podrás modificar ninguna respuesta.
+              </p>
+            </div>
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowConfirmModal(false)}
+                className="btn-secondary flex-1 py-2.5 text-xs font-semibold"
+              >
+                Volver a revisar
+              </button>
+              <button
+                type="button"
+                id="btn-confirm-final-submit"
+                onClick={handleExecuteSubmitFinal}
+                disabled={isSubmittingFinal}
+                className="btn-primary flex-1 py-2.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white"
+              >
+                {isSubmittingFinal ? 'Enviando...' : 'Sí, Enviar y Sellar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 /**
- * Botón de estado individual del checklist.
+ * Botón de estado individual del checklist con soporte para disabled.
  */
-function StatusButton({ icon, active, onClick, color }) {
+function StatusButton({ icon, active, onClick, color, disabled }) {
   const colorClasses = {
     emerald: active ? 'bg-emerald-500 text-slate-900 dark:text-slate-100' : 'bg-emerald-500/10 text-emerald-500/50',
     amber: active ? 'bg-amber-500 text-slate-900 dark:text-slate-100' : 'bg-amber-500/10 text-amber-500/50',
@@ -337,8 +620,9 @@ function StatusButton({ icon, active, onClick, color }) {
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-150
-        active:scale-90 ${colorClasses[color]}`}
+        active:scale-90 ${colorClasses[color]} ${disabled ? 'cursor-default opacity-80 active:scale-100' : ''}`}
       aria-pressed={active}
     >
       {icon}

@@ -5,8 +5,10 @@ import {
   ClipboardCheck, Play, ChevronRight, Thermometer, Hash, Package, Check, Navigation
 } from 'lucide-react';
 import { useWorkOrderStore } from '../stores/workOrderStore';
-import { formatDate, getStatusLabel, getStatusColor } from '@4s-clima/shared/utils';
+import { formatDate, getStatusLabel, getStatusColor, resolveOrderLocation } from '@4s-clima/shared';
 import { WORK_ORDER_STATUS, WORK_ORDER_TYPE_LABELS, EQUIPMENT_TYPE_LABELS } from '@4s-clima/shared/constants';
+import LocationViewerMap from '../components/geo/LocationViewerMap';
+import LiveTrackingSender from '../components/geo/LiveTrackingSender';
 
 /**
  * Página de detalle de una Orden de Trabajo.
@@ -48,6 +50,7 @@ export default function WorkOrderPage() {
   const isInProgress = wo.status === WORK_ORDER_STATUS.IN_PROGRESS;
   const isPending = !wo.status || wo.status === WORK_ORDER_STATUS.PENDING || wo.status === 'unassigned';
   const isCompleted = wo.status === WORK_ORDER_STATUS.COMPLETED;
+  const loc = resolveOrderLocation(wo);
 
   return (
     <div className="page-container">
@@ -111,17 +114,18 @@ export default function WorkOrderPage() {
           <p className="text-slate-900 dark:text-white font-bold text-lg mb-3">
             {wo.client?.name || 'N/D'}
           </p>
-          {wo.plant && (
-            <div className="space-y-3 text-sm bg-gray-50 dark:bg-slate-800/50 rounded-xl p-3 border border-gray-100 dark:border-slate-800">
+          {/* Información de la ubicación y contacto */}
+          {loc.address && (
+            <div className="space-y-3 text-sm bg-gray-50 dark:bg-slate-800/50 rounded-xl p-3 border border-gray-100 dark:border-slate-800 mb-3">
               <div className="flex items-start gap-2 text-gray-600 dark:text-gray-300 font-medium">
                 <MapPin size={16} className="mt-0.5 flex-shrink-0 text-gray-500 dark:text-gray-400" />
                 <span>
-                  {wo.plant.name}
-                  {wo.plant.address && ` — ${wo.plant.address}`}
-                  {wo.plant.floor && `, Piso ${wo.plant.floor}`}
+                  {loc.label}
+                  {loc.address && ` — ${loc.address}`}
+                  {loc.floor && `, Piso ${loc.floor}`}
                 </span>
               </div>
-              {wo.plant.contact_phone && (
+              {wo.plant?.contact_phone && (
                 <a
                   href={`tel:${wo.plant.contact_phone}`}
                   className="flex items-center gap-2 text-brand-600 dark:text-brand-400 font-semibold hover:text-brand-700 dark:hover:text-brand-300 active:text-brand-800"
@@ -130,19 +134,24 @@ export default function WorkOrderPage() {
                   <span>{wo.plant.contact_name || 'Contacto'}: {wo.plant.contact_phone}</span>
                 </a>
               )}
-              {wo.plant.address && (
-                <a 
-                  href={`https://maps.google.com/?q=${encodeURIComponent(wo.plant.address)}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-2 flex items-center justify-center gap-2 w-full py-2 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/40 text-blue-700 dark:text-blue-400 rounded-lg text-sm font-semibold transition-colors border border-blue-200 dark:border-blue-800/50"
-                >
-                  <Navigation size={16} />
-                  Abrir en Google Maps
-                </a>
-              )}
             </div>
           )}
+
+          {/* Visor de mapa con destino y botón directo a Google Maps */}
+          <LocationViewerMap
+            latitude={loc.latitude}
+            longitude={loc.longitude}
+            address={loc.address}
+            title={loc.label}
+            height="180px"
+          />
+
+          {/* Radar emisor de Live Tracking (activo en progreso) */}
+          <LiveTrackingSender
+            orderId={wo.id}
+            isActive={isInProgress}
+            technicianName="Técnico"
+          />
         </div>
 
         {/* Equipo */}

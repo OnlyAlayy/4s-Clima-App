@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Search, Plus, FileText, Download, LayoutList, LayoutGrid } from 'lucide-react';
+import { Search, Plus, FileText, Download, LayoutList, LayoutGrid, ClipboardList } from 'lucide-react';
 import { supabase } from '@4s-clima/shared/supabase';
 import { formatDate, getStatusLabel, getStatusColor } from '@4s-clima/shared/utils';
 import { WORK_ORDER_STATUS, WORK_ORDER_TYPE_LABELS } from '@4s-clima/shared/constants';
 import CreateWorkOrderModal from '../components/CreateWorkOrderModal';
-import { generateWorkOrderPDF } from '../services/pdfService';
+import ChecklistTemplatesModal from '../components/ChecklistTemplatesModal';
+import { generateWorkOrderPDF, openAndDownloadPDF } from '../services/pdfService';
 import WorkOrdersKanban from '../components/WorkOrdersKanban';
 
 /**
@@ -21,6 +22,7 @@ export default function WorkOrdersPage() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [dateFilter, setDateFilter] = useState('this_week'); // 'all' | 'today' | 'this_week' | 'this_month'
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isTemplatesOpen, setIsTemplatesOpen] = useState(false);
   const [isDownloading, setIsDownloading] = useState(null); // Guarda el id de la orden descargando
   const navigate = useNavigate();
 
@@ -129,12 +131,6 @@ export default function WorkOrdersPage() {
 
   const handleDownloadPDF = async (orderSummary) => {
     setIsDownloading(orderSummary.id);
-    const newTab = window.open('about:blank', '_blank');
-    if (newTab) {
-      newTab.document.title = "Generando PDF...";
-      newTab.document.body.innerHTML = "<div style='font-family: sans-serif; padding: 2rem;'>Generando PDF de 4S Clima...</div>";
-    }
-
     try {
       const { data, error } = await supabase
         .from('work_orders')
@@ -152,11 +148,9 @@ export default function WorkOrdersPage() {
         .single();
 
       if (error) throw error;
-      const pdfBlobUrl = await generateWorkOrderPDF(data);
-      if (newTab && pdfBlobUrl) newTab.location.href = pdfBlobUrl;
+      await openAndDownloadPDF(generateWorkOrderPDF(data));
     } catch (err) {
       console.error("Error al descargar PDF:", err);
-      if (newTab) newTab.close();
       alert("Hubo un error al generar el PDF.");
     } finally {
       setIsDownloading(null);
@@ -240,6 +234,10 @@ export default function WorkOrdersPage() {
           <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">{totalCount} registros en total</p>
         </div>
         <div className="flex gap-3">
+          <button onClick={() => setIsTemplatesOpen(true)} className="btn-secondary flex items-center gap-1.5">
+            <ClipboardList size={16} className="text-brand-500" />
+            <span>Plantillas Checklist</span>
+          </button>
           <button onClick={handleExportExcel} className="btn-secondary">
             Exportar Excel
           </button>
@@ -432,6 +430,11 @@ export default function WorkOrdersPage() {
         onCreated={() => {
           loadOrders(); // Recargar la lista
         }} 
+      />
+
+      <ChecklistTemplatesModal
+        isOpen={isTemplatesOpen}
+        onClose={() => setIsTemplatesOpen(false)}
       />
     </div>
   );

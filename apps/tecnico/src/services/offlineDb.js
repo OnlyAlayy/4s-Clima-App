@@ -29,6 +29,9 @@ db.version(1).stores({
   // Cola de sincronización pendiente
   // Cada registro representa una operación que debe enviarse a Supabase
   pendingSync: '++id, table, action, created_at',
+  
+  // Operaciones fallidas (errores 400+, RLS, etc.) para auditoría
+  failedSyncLog: '++id, table, action, error, created_at',
 });
 
 /**
@@ -42,6 +45,7 @@ export async function clearLocalDatabase() {
   await db.photos.clear();
   await db.signatures.clear();
   await db.pendingSync.clear();
+  await db.failedSyncLog.clear();
 }
 
 /**

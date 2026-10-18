@@ -30,7 +30,10 @@
   "dependencies": {
     "@afipsdk/afip.js": "^0.8.1",
     "body-parser": "^2.3.0",
+    "dotenv": "^18.0.6",
     "express": "^5.2.1",
-    "node-forge": "^1.4.0"
+    "leaflet": "^1.9.4",
+    "node-forge": "^1.4.0",
+    "react-leaflet": "^4.2.1"
   }
 }

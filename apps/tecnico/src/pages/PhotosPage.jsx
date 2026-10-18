@@ -124,7 +124,7 @@ export default function PhotosPage() {
           await db.pendingSync.add({
             table: 'photos',
             action: 'insert',
-            id: `photo-${id}-${type}`,
+            recordId: `photo-${id}-${type}`,
             data: {
               work_order_id: id,
               type: type,

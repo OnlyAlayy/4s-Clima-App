@@ -239,5 +239,5 @@ export const CHECKLIST_TEMPLATES = {
  * @returns {object|null} Template del checklist o null si no existe
  */
 export function getChecklistByEquipmentType(equipmentType) {
-  return CHECKLIST_TEMPLATES[equipmentType] || null;
+  return CHECKLIST_TEMPLATES[equipmentType] || CHECKLIST_TEMPLATES[EQUIPMENT_TYPES.SPLIT] || null;
 }

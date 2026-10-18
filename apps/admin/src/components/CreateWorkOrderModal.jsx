@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { supabase } from '@4s-clima/shared/supabase';
 import { WORK_ORDER_TYPES, WORK_ORDER_TYPE_LABELS } from '@4s-clima/shared/constants';
+import LocationPickerMap from './geo/LocationPickerMap';
 
 export default function CreateWorkOrderModal({ isOpen, onClose, onCreated }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -12,16 +13,22 @@ export default function CreateWorkOrderModal({ isOpen, onClose, onCreated }) {
   const [plants, setPlants] = useState([]);
   const [equipment, setEquipment] = useState([]);
   const [technicians, setTechnicians] = useState([]);
+  const [checklistTemplates, setChecklistTemplates] = useState([]);
 
   // Form state
   const [clientId, setClientId] = useState('');
   const [plantId, setPlantId] = useState('');
   const [equipmentId, setEquipmentId] = useState('');
   const [technicianId, setTechnicianId] = useState('');
+  const [checklistTemplateId, setChecklistTemplateId] = useState('');
   const [type, setType] = useState(WORK_ORDER_TYPES.PREVENTIVE);
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
   const [observations, setObservations] = useState('');
+
+  // Geolocalización y clientes eventuales (1 sola vez)
+  const [customCoords, setCustomCoords] = useState({ lat: null, lng: null });
+  const [customAddress, setCustomAddress] = useState('');
 
   // Cargar datos iniciales (clientes y técnicos)
   useEffect(() => {
@@ -42,27 +49,39 @@ export default function CreateWorkOrderModal({ isOpen, onClose, onCreated }) {
     }
   }, [clientId]);
 
-  // Cargar equipos cuando cambia la planta
+  // Cargar equipos y heredar coordenadas cuando cambia la planta
   useEffect(() => {
-    if (plantId) {
+    if (plantId && plantId !== 'custom') {
       loadEquipment(plantId);
       setEquipmentId('');
+      const selected = plants.find(p => p.id === plantId);
+      if (selected?.latitude && selected?.longitude) {
+        setCustomCoords({ lat: selected.latitude, lng: selected.longitude });
+      } else {
+        setCustomCoords({ lat: null, lng: null });
+      }
+      setCustomAddress(selected?.address || '');
     } else {
       setEquipment([]);
+      if (plantId === 'custom') {
+        setEquipmentId('');
+      }
     }
-  }, [plantId]);
+  }, [plantId, plants]);
 
   const loadInitialData = async () => {
-    const [clientsRes, techRes] = await Promise.all([
+    const [clientsRes, techRes, tplRes] = await Promise.all([
       supabase.from('clients').select('id, name').neq('active', false).order('name'),
-      supabase.from('users').select('id, name').eq('role', 'tecnico').neq('active', false).order('name')
+      supabase.from('users').select('id, name').eq('role', 'tecnico').neq('active', false).order('name'),
+      supabase.from('checklist_templates').select('id, name, equipment_type').eq('active', true).order('name')
     ]);
     if (clientsRes.data) setClients(clientsRes.data);
     if (techRes.data) setTechnicians(techRes.data);
+    if (tplRes.data) setChecklistTemplates(tplRes.data);
   };
 
   const loadPlants = async (cId) => {
-    const { data } = await supabase.from('plants').select('id, name').eq('client_id', cId).order('name');
+    const { data } = await supabase.from('plants').select('id, name, address, latitude, longitude').eq('client_id', cId).order('name');
     if (data) setPlants(data);
   };
 
@@ -76,16 +95,20 @@ export default function CreateWorkOrderModal({ isOpen, onClose, onCreated }) {
     setPlantId('');
     setEquipmentId('');
     setTechnicianId('');
+    setChecklistTemplateId('');
     setType(WORK_ORDER_TYPES.PREVENTIVE);
     setDate(new Date().toISOString().split('T')[0]); // Hoy
     setTime('');
     setObservations('');
+    setCustomCoords({ lat: null, lng: null });
+    setCustomAddress('');
     setError(null);
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!clientId || !plantId || !technicianId || !date) {
+    const isCustom = plantId === 'custom' || (!plantId && plants.length === 0);
+    if (!clientId || (!plantId && !isCustom) || !technicianId || !date) {
       setError('Por favor completá los campos obligatorios.');
       return;
     }
@@ -100,14 +123,20 @@ export default function CreateWorkOrderModal({ isOpen, onClose, onCreated }) {
     const { error: insertError } = await supabase.from('work_orders').insert({
       order_number: orderNumber,
       client_id: clientId,
-      plant_id: plantId,
+      plant_id: isCustom ? null : plantId,
       equipment_id: equipmentId || null,
       assigned_to: technicianId,
       type,
       scheduled_date: date,
       scheduled_time: time || null,
       observations,
-      status: 'pending'
+      status: 'pending',
+      checklist_status: 'draft',
+      checklist_template_id: checklistTemplateId || null,
+      custom_address: isCustom ? (customAddress || null) : null,
+      custom_latitude: customCoords.lat,
+      custom_longitude: customCoords.lng,
+      is_custom_location: isCustom,
     });
 
     setIsSubmitting(false);
@@ -156,20 +185,47 @@ export default function CreateWorkOrderModal({ isOpen, onClose, onCreated }) {
               </div>
               
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Planta / Sucursal *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Planta / Destino *</label>
                 <select className="select" value={plantId} onChange={(e) => setPlantId(e.target.value)} disabled={!clientId} required>
-                  <option value="">Seleccionar planta...</option>
+                  <option value="">Seleccionar destino...</option>
                   {plants.map(p => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
+                    <option key={p.id} value={p.id}>{p.name} {p.address ? `(${p.address})` : ''}</option>
                   ))}
+                  <option value="custom">📍 Ubicación eventual / Sin sucursal fija (1 sola vez)</option>
                 </select>
               </div>
             </div>
 
+            {/* Dirección para trabajo eventual de 1 sola vez */}
+            {plantId === 'custom' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Dirección del Trabajo Eventual *</label>
+                <input
+                  type="text"
+                  className="input"
+                  placeholder="Ej: Av. Callao 1234, CABA"
+                  value={customAddress}
+                  onChange={(e) => setCustomAddress(e.target.value)}
+                  required
+                />
+              </div>
+            )}
+
+            {/* Mapa interactivo: hereda coordenadas de planta o permite fijar pin eventual */}
+            {(plantId || customCoords.lat) && (
+              <LocationPickerMap
+                latitude={customCoords.lat}
+                longitude={customCoords.lng}
+                addressText={customAddress || plants.find(p => p.id === plantId)?.address || ''}
+                onChange={({ lat, lng }) => setCustomCoords({ lat, lng })}
+                label={plantId === 'custom' ? "Ubicación GPS (Cliente Eventual)" : "Ubicación GPS de la Orden"}
+              />
+            )}
+
             {/* Equipo */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Equipo a mantener (Opcional)</label>
-              <select className="select" value={equipmentId} onChange={(e) => setEquipmentId(e.target.value)} disabled={!plantId}>
+              <select className="select" value={equipmentId} onChange={(e) => setEquipmentId(e.target.value)} disabled={!plantId || plantId === 'custom'}>
                 <option value="">Aplica a toda la planta / Múltiples equipos</option>
                 {equipment.map(e => (
                   <option key={e.id} value={e.id}>
@@ -215,13 +271,29 @@ export default function CreateWorkOrderModal({ isOpen, onClose, onCreated }) {
               </div>
             </div>
 
-            {/* Tipo y Observaciones */}
+            {/* Tipo y Plantilla de Checklist */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de Tarea *</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tipo de Tarea *</label>
                 <select className="select" value={type} onChange={(e) => setType(e.target.value)} required>
                   {Object.entries(WORK_ORDER_TYPE_LABELS).map(([val, label]) => (
                     <option key={val} value={val}>{label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Plantilla de Checklist</label>
+                <select 
+                  className="select" 
+                  value={checklistTemplateId} 
+                  onChange={(e) => setChecklistTemplateId(e.target.value)}
+                >
+                  <option value="">Por defecto (Según tipo de equipo)</option>
+                  {checklistTemplates.map(t => (
+                    <option key={t.id} value={t.id}>
+                      {t.name} {t.equipment_type ? `(${t.equipment_type})` : '(General)'}
+                    </option>
                   ))}
                 </select>
               </div>

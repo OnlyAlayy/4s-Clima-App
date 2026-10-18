@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Building2, Plus, Search, Phone, MapPin, Archive, ArchiveRestore } from 'lucide-react';
+import { Building2, Plus, Search, Phone, MapPin, Archive, ArchiveRestore, Power, PowerOff } from 'lucide-react';
 import { supabase } from '@4s-clima/shared/supabase';
 import CreateClientModal from '../components/CreateClientModal';
+import { EditClientButton } from '../components/edit';
 
 /**
  * Página de gestión de clientes.
@@ -155,7 +156,7 @@ export default function ClientsPage() {
                       </span>
                     )}
                   </div>
-                  <div>
+                  <div className="flex items-center gap-2">
                     {(() => {
                       const debt = (client.work_orders || [])
                         .filter(o => o.payment_status === 'pending')
@@ -167,6 +168,18 @@ export default function ClientsPage() {
                         </span>
                       ) : null;
                     })()}
+                    <EditClientButton 
+                      client={client} 
+                      variant="icon" 
+                      onSuccess={() => loadClients(page)} 
+                    />
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); handleToggleActive(client); }}
+                      className={`flex-none p-1.5 rounded-lg border transition-colors ${client.active !== false ? 'bg-red-50 hover:bg-red-100 text-red-600 border-red-200 dark:bg-red-900/30 dark:hover:bg-red-900/50 dark:text-red-400 dark:border-red-800/30' : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-600 border-emerald-200 dark:bg-emerald-900/30 dark:hover:bg-emerald-900/50 dark:text-emerald-400 dark:border-emerald-800/30'}`}
+                      title={client.active !== false ? "Dar de baja cliente" : "Reactivar cliente"}
+                    >
+                      {client.active !== false ? <PowerOff size={16} /> : <Power size={16} />}
+                    </button>
                   </div>
                 </div>
               </div>
