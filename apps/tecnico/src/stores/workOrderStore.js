@@ -31,7 +31,7 @@ export const useWorkOrderStore = create((set, get) => ({
             equipment:equipment(id, type, brand, model)
           `)
           .eq('assigned_to', technicianId)
-          .in('status', [WORK_ORDER_STATUS.PENDING, WORK_ORDER_STATUS.IN_PROGRESS])
+          .in('status', [WORK_ORDER_STATUS.PENDING, WORK_ORDER_STATUS.TRAVELING, WORK_ORDER_STATUS.IN_PROGRESS])
           .order('scheduled_date', { ascending: true });
 
         if (error) throw error;
@@ -93,31 +93,108 @@ export const useWorkOrderStore = create((set, get) => ({
   },
 
   /**
-   * Marca una OT como "en progreso" (el técnico llegó a la planta).
+   * Inicia el viaje hacia el cliente (estado 'traveling').
+   * Enciende el Live Tracking GPS estilo delivery.
    */
-  startWorkOrder: async (orderId) => {
+  startTravel: async (orderId) => {
     const now = new Date().toISOString();
     try {
       if (navigator.onLine) {
+        const updatePayload = {
+          status: WORK_ORDER_STATUS.TRAVELING,
+          travel_started_at: now,
+        };
         const { error } = await supabase
           .from('work_orders')
-          .update({
-            status: WORK_ORDER_STATUS.IN_PROGRESS,
-            started_at: now,
-          })
+          .update(updatePayload)
           .eq('id', orderId);
 
-        if (error) throw error;
+        // Si la columna travel_started_at aún no fue migrada en DB, fallback con solo status
+        if (error && error.message?.includes('travel_started_at')) {
+          const retry = await supabase
+            .from('work_orders')
+            .update({ status: WORK_ORDER_STATUS.TRAVELING })
+            .eq('id', orderId);
+          if (retry.error) throw retry.error;
+        } else if (error) {
+          throw error;
+        }
       }
 
-      // Actualizar local siempre
+      // Actualizar local en IndexedDB siempre
       await db.workOrders.update(orderId, {
-        status: WORK_ORDER_STATUS.IN_PROGRESS,
-        started_at: now,
+        status: WORK_ORDER_STATUS.TRAVELING,
+        travel_started_at: now,
         synced: navigator.onLine,
       });
 
-      // Actualizar estado
+      // Actualizar estado en store
+      const currentOrder = get().currentOrder;
+      if (currentOrder?.id === orderId) {
+        set({
+          currentOrder: {
+            ...currentOrder,
+            status: WORK_ORDER_STATUS.TRAVELING,
+            travel_started_at: now,
+          },
+        });
+      }
+
+      get().refreshWorkOrders();
+    } catch (error) {
+      console.error('Error iniciando viaje de OT:', error);
+      await db.pendingSync.add({
+        table: 'work_orders',
+        action: 'update',
+        recordId: orderId,
+        data: { status: WORK_ORDER_STATUS.TRAVELING, travel_started_at: now },
+        created_at: now,
+      });
+    }
+  },
+
+  /**
+   * Registra la llegada a la planta del cliente (estado 'in_progress').
+   * Apaga el Live Tracking GPS para preservar batería e inicia el trabajo en sitio.
+   */
+  arriveAtPlant: async (orderId) => {
+    const now = new Date().toISOString();
+    try {
+      if (navigator.onLine) {
+        const updatePayload = {
+          status: WORK_ORDER_STATUS.IN_PROGRESS,
+          started_at: now,
+          arrived_at: now,
+        };
+        const { error } = await supabase
+          .from('work_orders')
+          .update(updatePayload)
+          .eq('id', orderId);
+
+        // Si la columna arrived_at aún no fue migrada en DB, fallback sin esa columna
+        if (error && error.message?.includes('arrived_at')) {
+          const retry = await supabase
+            .from('work_orders')
+            .update({
+              status: WORK_ORDER_STATUS.IN_PROGRESS,
+              started_at: now,
+            })
+            .eq('id', orderId);
+          if (retry.error) throw retry.error;
+        } else if (error) {
+          throw error;
+        }
+      }
+
+      // Actualizar local en IndexedDB siempre
+      await db.workOrders.update(orderId, {
+        status: WORK_ORDER_STATUS.IN_PROGRESS,
+        started_at: now,
+        arrived_at: now,
+        synced: navigator.onLine,
+      });
+
+      // Actualizar estado en store
       const currentOrder = get().currentOrder;
       if (currentOrder?.id === orderId) {
         set({
@@ -125,22 +202,29 @@ export const useWorkOrderStore = create((set, get) => ({
             ...currentOrder,
             status: WORK_ORDER_STATUS.IN_PROGRESS,
             started_at: now,
+            arrived_at: now,
           },
         });
       }
 
       get().refreshWorkOrders();
     } catch (error) {
-      console.error('Error iniciando OT:', error);
-      // Guardar para sync posterior
+      console.error('Error registrando llegada a planta:', error);
       await db.pendingSync.add({
         table: 'work_orders',
         action: 'update',
         recordId: orderId,
-        data: { status: WORK_ORDER_STATUS.IN_PROGRESS, started_at: now },
+        data: { status: WORK_ORDER_STATUS.IN_PROGRESS, started_at: now, arrived_at: now },
         created_at: now,
       });
     }
+  },
+
+  /**
+   * Alias de compatibilidad hacia arriveAtPlant.
+   */
+  startWorkOrder: async (orderId) => {
+    return get().arriveAtPlant(orderId);
   },
 
   /**

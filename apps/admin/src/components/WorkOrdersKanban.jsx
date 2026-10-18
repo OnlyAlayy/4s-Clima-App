@@ -7,7 +7,8 @@ import { supabase } from '@4s-clima/shared/supabase';
 
 const COLUMNS = [
   { id: WORK_ORDER_STATUS.PENDING, title: 'Pendientes', color: 'border-blue-500 bg-blue-50' },
-  { id: WORK_ORDER_STATUS.IN_PROGRESS, title: 'En Progreso', color: 'border-amber-500 bg-amber-50' },
+  { id: WORK_ORDER_STATUS.TRAVELING, title: 'En Camino', color: 'border-indigo-500 bg-indigo-50' },
+  { id: WORK_ORDER_STATUS.IN_PROGRESS, title: 'En Planta', color: 'border-amber-500 bg-amber-50' },
   { id: WORK_ORDER_STATUS.COMPLETED, title: 'Completadas', color: 'border-emerald-500 bg-emerald-50' }
 ];
 
@@ -19,6 +20,7 @@ export default function WorkOrdersKanban({ initialOrders, onOrderUpdated }) {
     // Group orders by status
     const newColumns = {
       [WORK_ORDER_STATUS.PENDING]: [],
+      [WORK_ORDER_STATUS.TRAVELING]: [],
       [WORK_ORDER_STATUS.IN_PROGRESS]: [],
       [WORK_ORDER_STATUS.COMPLETED]: [],
       [WORK_ORDER_STATUS.CANCELLED]: []

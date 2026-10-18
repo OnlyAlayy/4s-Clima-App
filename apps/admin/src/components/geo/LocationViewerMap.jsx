@@ -1,11 +1,13 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
+import L from 'leaflet';
 import { MapPin, Navigation, ExternalLink } from 'lucide-react';
+import { searchAddressCoordinates } from '@4s-clima/shared';
 import { createDestinationIcon } from './leafletIcons';
 
 /**
- * Componente visor de ubicación de solo lectura con fallback automático.
+ * Componente visor de ubicación de solo lectura con fallback automático y geocodificación.
  * 
  * Props:
  * - latitude: number|null
@@ -21,11 +23,35 @@ export default function LocationViewerMap({
   title = 'Destino',
   height = '180px',
 }) {
-  const hasCoordinates = Boolean(latitude && longitude);
-  const position = hasCoordinates ? [Number(latitude), Number(longitude)] : null;
+  const [geocodedPos, setGeocodedPos] = useState(null);
 
-  const mapsUrl = hasCoordinates
+  // Si no hay coordenadas precisas pero sí dirección en texto, geocodificar con OpenStreetMap
+  useEffect(() => {
+    if (latitude && longitude) {
+      setGeocodedPos(null);
+      return;
+    }
+    if (address && address.trim().length >= 3) {
+      let isMounted = true;
+      searchAddressCoordinates(address).then((res) => {
+        if (isMounted && res?.lat && res?.lng) {
+          setGeocodedPos([res.lat, res.lng]);
+        }
+      });
+      return () => {
+        isMounted = false;
+      };
+    }
+  }, [latitude, longitude, address]);
+
+  const hasExplicitCoords = Boolean(latitude && longitude);
+  const position = hasExplicitCoords ? [Number(latitude), Number(longitude)] : geocodedPos;
+  const hasCoordinates = Boolean(position);
+
+  const mapsUrl = hasExplicitCoords
     ? `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`
+    : position
+    ? `https://www.google.com/maps/search/?api=1&query=${position[0]},${position[1]}`
     : address
     ? `https://maps.google.com/?q=${encodeURIComponent(address)}`
     : null;

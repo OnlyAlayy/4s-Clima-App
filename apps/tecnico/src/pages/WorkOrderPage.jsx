@@ -18,16 +18,24 @@ import LiveTrackingSender from '../components/geo/LiveTrackingSender';
 export default function WorkOrderPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { currentOrder, isLoading, fetchWorkOrder, startWorkOrder } = useWorkOrderStore();
+  const { currentOrder, isLoading, fetchWorkOrder, startTravel, arriveAtPlant } = useWorkOrderStore();
   const [isStarting, setIsStarting] = useState(false);
+  const [techLocation, setTechLocation] = useState(null);
 
   useEffect(() => {
     fetchWorkOrder(id);
   }, [id, fetchWorkOrder]);
 
-  const handleStart = async () => {
+  const handleStartTravel = async () => {
     setIsStarting(true);
-    await startWorkOrder(id);
+    await startTravel(id);
+    await fetchWorkOrder(id);
+    setIsStarting(false);
+  };
+
+  const handleArriveAtPlant = async () => {
+    setIsStarting(true);
+    await arriveAtPlant(id);
     await fetchWorkOrder(id);
     setIsStarting(false);
   };
@@ -47,8 +55,9 @@ export default function WorkOrderPage() {
 
   const wo = currentOrder;
   const statusColors = getStatusColor(wo.status);
-  const isInProgress = wo.status === WORK_ORDER_STATUS.IN_PROGRESS;
   const isPending = !wo.status || wo.status === WORK_ORDER_STATUS.PENDING || wo.status === 'unassigned';
+  const isTraveling = wo.status === WORK_ORDER_STATUS.TRAVELING;
+  const isInProgress = wo.status === WORK_ORDER_STATUS.IN_PROGRESS;
   const isCompleted = wo.status === WORK_ORDER_STATUS.COMPLETED;
   const loc = resolveOrderLocation(wo);
 
@@ -70,9 +79,11 @@ export default function WorkOrderPage() {
             </h1>
             <div className="flex items-center gap-2 mt-0.5">
               <span className={`badge text-[10px] shadow-sm border ${
-                wo.status === WORK_ORDER_STATUS.IN_PROGRESS 
+                isTraveling
+                  ? 'bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400 dark:border-indigo-800 animate-pulse'
+                  : isInProgress 
                   ? 'bg-brand-50 text-brand-700 border-brand-200 dark:bg-brand-900/30 dark:text-brand-400 dark:border-brand-800' 
-                  : wo.status === WORK_ORDER_STATUS.COMPLETED
+                  : isCompleted
                   ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:border-emerald-800'
                   : 'bg-white text-gray-600 border-gray-200 dark:bg-slate-800 dark:text-gray-300 dark:border-slate-700'
               }`}>
@@ -137,21 +148,56 @@ export default function WorkOrderPage() {
             </div>
           )}
 
-          {/* Visor de mapa con destino y botón directo a Google Maps */}
+          {/* Visor de mapa con destino y técnico en vivo (ambos visibles en viaje) */}
           <LocationViewerMap
             latitude={loc.latitude}
             longitude={loc.longitude}
             address={loc.address}
             title={loc.label}
-            height="180px"
+            height={isTraveling ? "260px" : "180px"}
+            currentLocation={isTraveling ? techLocation : null}
           />
 
-          {/* Radar emisor de Live Tracking (activo en progreso) */}
+          {/* Radar emisor de Live Tracking: SOLO ACTIVO MIENTRAS VIAJA (traveling) */}
           <LiveTrackingSender
             orderId={wo.id}
-            isActive={isInProgress}
+            isActive={isTraveling}
             technicianName="Técnico"
+            onLocationUpdate={(coords) => setTechLocation(coords)}
           />
+
+          {/* Banner informativo de estado de viaje / en sitio */}
+          {isTraveling && (
+            <div className="mt-3 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/60 rounded-xl p-3 text-xs text-indigo-900 dark:text-indigo-200 flex items-center justify-between shadow-sm">
+              <div className="flex items-center gap-2">
+                <Navigation size={16} className="text-indigo-600 dark:text-indigo-400 animate-pulse shrink-0" />
+                <span>
+                  <strong>Viaje en curso:</strong> Tu ubicación se transmite en tiempo real al panel central.
+                </span>
+              </div>
+              {loc.address && (
+                <a
+                  href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(
+                    loc.latitude && loc.longitude ? `${loc.latitude},${loc.longitude}` : loc.address
+                  )}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-semibold text-[11px] shrink-0 transition-colors shadow-sm"
+                >
+                  Abrir GPS
+                </a>
+              )}
+            </div>
+          )}
+
+          {isInProgress && (
+            <div className="mt-3 bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/50 rounded-xl p-2.5 text-xs text-blue-800 dark:text-blue-300 flex items-center gap-2">
+              <Check size={14} className="text-blue-600 dark:text-blue-400 shrink-0" />
+              <span>
+                <strong>En sitio (Planta):</strong> GPS apagado para ahorrar batería y datos.
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Equipo */}
@@ -218,28 +264,49 @@ export default function WorkOrderPage() {
       {/* Acciones fijas en el bottom */}
       <div className="fixed bottom-0 left-0 right-0 px-4 pb-6 pt-4 bg-gradient-to-t from-gray-50 via-gray-50 dark:from-slate-950 dark:via-slate-950 to-transparent z-20 pointer-events-none">
         <div className="max-w-lg mx-auto pointer-events-auto">
-          {/* Botón iniciar trabajo */}
+          {/* PASO 1: Iniciar Viaje (Pasa a traveling y enciende el GPS) */}
           {isPending && (
             <button
-              onClick={handleStart}
+              onClick={handleStartTravel}
               disabled={isStarting}
-              className="btn-primary w-full shadow-lg shadow-brand-500/20"
+              className="btn-primary w-full shadow-lg shadow-indigo-500/25 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white flex items-center justify-center gap-2"
             >
               {isStarting ? (
                 <>
                   <div className="w-5 h-5 border-2 border-white/80 border-t-transparent rounded-full animate-spin" />
-                  Iniciando...
+                  Iniciando viaje...
                 </>
               ) : (
                 <>
-                  <Play size={20} />
-                  Llegada a Planta
+                  <Navigation size={20} />
+                  Iniciar Viaje (En Camino)
                 </>
               )}
             </button>
           )}
 
-          {/* Botón ir al checklist */}
+          {/* PASO 2: Llegada a Planta (Pasa a in_progress y apaga el GPS) */}
+          {isTraveling && (
+            <button
+              onClick={handleArriveAtPlant}
+              disabled={isStarting}
+              className="btn-primary w-full shadow-lg shadow-brand-500/25 bg-brand-600 hover:bg-brand-700 active:bg-brand-800 text-white flex items-center justify-center gap-2"
+            >
+              {isStarting ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-white/80 border-t-transparent rounded-full animate-spin" />
+                  Registrando llegada...
+                </>
+              ) : (
+                <>
+                  <Building2 size={20} />
+                  Llegada a Planta (En Sitio)
+                </>
+              )}
+            </button>
+          )}
+
+          {/* PASO 3: En progreso (Herramientas técnicas, checklist y extras) */}
           {isInProgress && (
             <div className="space-y-3">
               <button
@@ -262,7 +329,7 @@ export default function WorkOrderPage() {
             </div>
           )}
 
-          {/* Orden completada */}
+          {/* PASO 4: Orden completada */}
           {isCompleted && (
             <div className="bg-emerald-50 border border-emerald-200 rounded-2xl px-4 py-4 text-center shadow-sm">
               <p className="text-emerald-700 font-bold flex items-center justify-center gap-2">
@@ -277,12 +344,12 @@ export default function WorkOrderPage() {
             </div>
           )}
 
-          {/* Fallback si el estado es desconocido o no coincide con los 3 de arriba */}
-          {!isPending && !isInProgress && !isCompleted && (
+          {/* Fallback si el estado es desconocido */}
+          {!isPending && !isTraveling && !isInProgress && !isCompleted && (
             <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-4 text-center shadow-sm">
               <p className="text-amber-700 font-bold mb-2">Estado detectado: "{wo.status || 'ninguno'}"</p>
               <button
-                onClick={handleStart}
+                onClick={handleArriveAtPlant}
                 disabled={isStarting}
                 className="btn-primary w-full shadow-lg shadow-amber-500/20"
               >

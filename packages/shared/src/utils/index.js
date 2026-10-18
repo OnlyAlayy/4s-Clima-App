@@ -94,6 +94,11 @@ export function getStatusColor(status) {
       text: 'text-amber-800 dark:text-amber-400',
       dot: 'bg-amber-500',
     },
+    [WORK_ORDER_STATUS.TRAVELING]: {
+      bg: 'bg-indigo-100 dark:bg-indigo-900/30',
+      text: 'text-indigo-800 dark:text-indigo-300',
+      dot: 'bg-indigo-500 animate-pulse',
+    },
     [WORK_ORDER_STATUS.IN_PROGRESS]: {
       bg: 'bg-blue-100 dark:bg-blue-900/30',
       text: 'text-blue-800 dark:text-blue-400',

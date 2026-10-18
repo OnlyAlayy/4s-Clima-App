@@ -32,11 +32,14 @@ export default function DashboardPage() {
   }, [profile?.id, fetchWorkOrders]);
 
   // Agrupar OTs
+  const traveling = workOrders.filter(
+    (wo) => wo.status === WORK_ORDER_STATUS.TRAVELING
+  );
   const inProgress = workOrders.filter(
     (wo) => wo.status === WORK_ORDER_STATUS.IN_PROGRESS
   );
   const pending = workOrders.filter(
-    (wo) => wo.status === WORK_ORDER_STATUS.PENDING
+    (wo) => wo.status === WORK_ORDER_STATUS.PENDING || wo.status === 'unassigned' || !wo.status
   );
   
   const displayedPending = pending.slice(0, page * itemsPerPage);
@@ -77,11 +80,11 @@ export default function DashboardPage() {
           <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mt-1">Asignadas</span>
         </div>
         <div className="card flex flex-col items-center py-5">
-          <div className="w-12 h-12 rounded-2xl bg-amber-50 dark:bg-amber-900/30 flex items-center justify-center mb-3">
-            <Clock size={24} className="text-amber-600 dark:text-amber-400" />
+          <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center mb-3">
+            <Clock size={24} className="text-indigo-600 dark:text-indigo-400" />
           </div>
-          <span className="text-3xl font-extrabold text-slate-900 dark:text-white">{inProgress.length}</span>
-          <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mt-1">En Progreso</span>
+          <span className="text-3xl font-extrabold text-slate-900 dark:text-white">{traveling.length + inProgress.length}</span>
+          <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mt-1">En Curso</span>
         </div>
       </div>
 
@@ -107,12 +110,27 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Órdenes en progreso */}
+      {/* Órdenes en camino (viajando) */}
+      {traveling.length > 0 && (
+        <section className="mb-8">
+          <h2 className="text-sm font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+            <div className="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-ping"></div>
+            En Camino ({traveling.length})
+          </h2>
+          <div className="space-y-4">
+            {traveling.map((wo) => (
+              <WorkOrderCard key={wo.id} order={wo} onClick={() => navigate(`/orden/${wo.id}`)} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Órdenes en progreso (en planta) */}
       {inProgress.length > 0 && (
         <section className="mb-8">
           <h2 className="text-sm font-bold text-brand-600 uppercase tracking-wider mb-4 flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-brand-500 animate-pulse"></div>
-            En Progreso
+            En Planta ({inProgress.length})
           </h2>
           <div className="space-y-4">
             {inProgress.map((wo) => (
@@ -154,6 +172,7 @@ export default function DashboardPage() {
  * Card de orden de trabajo.
  */
 function WorkOrderCard({ order, onClick }) {
+  const isTraveling = order.status === WORK_ORDER_STATUS.TRAVELING;
   const isProgress = order.status === WORK_ORDER_STATUS.IN_PROGRESS;
   return (
     <button
@@ -163,7 +182,13 @@ function WorkOrderCard({ order, onClick }) {
       <div className="flex items-start justify-between mb-3">
         <div className="flex-1 min-w-0 pr-4">
           <div className="flex items-center gap-2 mb-1.5">
-            <span className={`badge ${isProgress ? 'bg-brand-50 text-brand-700 border border-brand-200 dark:bg-brand-900/30 dark:text-brand-400 dark:border-brand-800' : 'bg-gray-100 text-gray-600 border border-gray-200 dark:bg-slate-800 dark:text-gray-300 dark:border-slate-700'}`}>
+            <span className={`badge ${
+              isTraveling
+                ? 'bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400 dark:border-indigo-800'
+                : isProgress 
+                ? 'bg-brand-50 text-brand-700 border border-brand-200 dark:bg-brand-900/30 dark:text-brand-400 dark:border-brand-800' 
+                : 'bg-gray-100 text-gray-600 border border-gray-200 dark:bg-slate-800 dark:text-gray-300 dark:border-slate-700'
+            }`}>
               {getStatusLabel(order.status)}
             </span>
             <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">

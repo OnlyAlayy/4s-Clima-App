@@ -95,6 +95,8 @@ export default function CalendarPage() {
     let className = 'calendar-event-pending';
     if (event.resource.status === WORK_ORDER_STATUS.COMPLETED) {
       className = 'calendar-event-completed';
+    } else if (event.resource.status === WORK_ORDER_STATUS.TRAVELING) {
+      className = 'calendar-event-inprogress';
     } else if (event.resource.status === WORK_ORDER_STATUS.IN_PROGRESS) {
       className = 'calendar-event-inprogress';
     }
@@ -104,6 +106,7 @@ export default function CalendarPage() {
   const CustomAgendaEvent = ({ event }) => {
     let colorClass = 'bg-brand-500';
     if (event.resource.status === WORK_ORDER_STATUS.COMPLETED) colorClass = 'bg-emerald-500';
+    if (event.resource.status === WORK_ORDER_STATUS.TRAVELING) colorClass = 'bg-indigo-500';
     if (event.resource.status === WORK_ORDER_STATUS.IN_PROGRESS) colorClass = 'bg-amber-500';
 
     return (

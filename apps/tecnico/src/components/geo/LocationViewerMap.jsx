@@ -1,11 +1,31 @@
-import React from 'react';
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import React, { useState, useEffect, useRef } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
-import { MapPin, Navigation, ExternalLink } from 'lucide-react';
-import { createDestinationIcon } from './leafletIcons';
+import L from 'leaflet';
+import { MapPin, Navigation, ExternalLink, Activity } from 'lucide-react';
+import { searchAddressCoordinates, calculateDistance, formatDistance } from '@4s-clima/shared';
+import { createDestinationIcon, createTechnicianIcon } from './leafletIcons';
+
+function AutoFitBounds({ destination, techPosition }) {
+  const map = useMap();
+  const hasFittedRef = useRef(false);
+
+  useEffect(() => {
+    if (destination && techPosition) {
+      const bounds = L.latLngBounds([destination, techPosition]);
+      map.fitBounds(bounds, { padding: [35, 35], maxZoom: 16 });
+    } else if (destination && !hasFittedRef.current) {
+      map.setView(destination, 15);
+      hasFittedRef.current = true;
+    }
+  }, [destination, techPosition, map]);
+
+  return null;
+}
 
 /**
- * Componente visor de ubicación de solo lectura para la PWA del técnico con fallback automático.
+ * Componente visor de ubicación interactivo para la PWA del técnico con soporte dual:
+ * Muestra tanto la ubicación en vivo del técnico como el destino del cliente.
  */
 export default function LocationViewerMap({
   latitude,
@@ -13,25 +33,56 @@ export default function LocationViewerMap({
   address,
   title = 'Destino',
   height = '180px',
+  currentLocation = null, // { lat, lng, heading, speed }
 }) {
-  const hasCoordinates = Boolean(latitude && longitude);
-  const position = hasCoordinates ? [Number(latitude), Number(longitude)] : null;
+  const [geocodedPos, setGeocodedPos] = useState(null);
 
-  const mapsUrl = hasCoordinates
+  // Si no hay coordenadas precisas pero sí dirección en texto, geocodificar con OpenStreetMap
+  useEffect(() => {
+    if (latitude && longitude) {
+      setGeocodedPos(null);
+      return;
+    }
+    if (address && address.trim().length >= 3) {
+      let isMounted = true;
+      searchAddressCoordinates(address).then((res) => {
+        if (isMounted && res?.lat && res?.lng) {
+          setGeocodedPos([res.lat, res.lng]);
+        }
+      });
+      return () => {
+        isMounted = false;
+      };
+    }
+  }, [latitude, longitude, address]);
+
+  const hasExplicitCoords = Boolean(latitude && longitude);
+  const position = hasExplicitCoords ? [Number(latitude), Number(longitude)] : geocodedPos;
+  const techPos = currentLocation?.lat && currentLocation?.lng ? [currentLocation.lat, currentLocation.lng] : null;
+  const hasCoordinates = Boolean(position);
+
+  const mapsUrl = hasExplicitCoords
     ? `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`
+    : position
+    ? `https://www.google.com/maps/search/?api=1&query=${position[0]},${position[1]}`
     : address
     ? `https://maps.google.com/?q=${encodeURIComponent(address)}`
     : null;
+
+  const distanceMeters =
+    position && techPos ? calculateDistance(techPos[0], techPos[1], position[0], position[1]) : null;
+
+  const mapCenter = techPos || position;
 
   return (
     <div className="rounded-xl overflow-hidden border border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm my-3">
       {hasCoordinates ? (
         <div className="relative w-full" style={{ height }}>
           <MapContainer
-            center={position}
+            center={mapCenter}
             zoom={15}
             scrollWheelZoom={false}
-            dragging={false} // Evita bloquear el scroll del teléfono
+            dragging={true}
             style={{ height: '100%', width: '100%' }}
             className="z-0"
           >
@@ -39,6 +90,10 @@ export default function LocationViewerMap({
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
+
+            <AutoFitBounds destination={position} techPosition={techPos} />
+
+            {/* Pin de Destino */}
             <Marker position={position} icon={createDestinationIcon(title)}>
               <Popup>
                 <div className="text-xs">
@@ -47,7 +102,27 @@ export default function LocationViewerMap({
                 </div>
               </Popup>
             </Marker>
+
+            {/* Pin de la ubicación del técnico en vivo */}
+            {techPos && (
+              <Marker position={techPos} icon={createTechnicianIcon(currentLocation?.heading)}>
+                <Popup>
+                  <div className="text-xs">
+                    <p className="font-bold text-blue-700">Tu Ubicación (En Vivo)</p>
+                    <p className="text-gray-600">Velocidad: {currentLocation?.speed || 0} km/h</p>
+                  </div>
+                </Popup>
+              </Marker>
+            )}
           </MapContainer>
+
+          {/* Distancia restante calculada */}
+          {distanceMeters !== null && (
+            <div className="absolute bottom-2 left-2 z-[1000] bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm px-2.5 py-1 rounded-lg shadow-md border border-gray-200/80 dark:border-slate-700 text-xs font-bold text-indigo-700 dark:text-indigo-400 flex items-center gap-1.5">
+              <Navigation size={12} className="text-indigo-600 dark:text-indigo-400" />
+              <span>A {formatDistance(distanceMeters)} del destino</span>
+            </div>
+          )}
 
           {/* Botón flotante para abrir en Google Maps / Waze en el celular */}
           {mapsUrl && (

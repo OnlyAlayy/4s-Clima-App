@@ -3,7 +3,7 @@ import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { supabase } from '@4s-clima/shared/supabase';
-import { calculateDistance, formatDistance, DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM } from '@4s-clima/shared';
+import { calculateDistance, formatDistance, DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM, searchAddressCoordinates } from '@4s-clima/shared';
 import { Radio, Navigation, Clock, Activity, AlertCircle, ShieldCheck } from 'lucide-react';
 import { createDestinationIcon, createTechnicianIcon } from './leafletIcons';
 
@@ -33,28 +33,52 @@ function AutoFitBounds({ destination, techPosition }) {
  * - destinationCoords: { latitude, longitude } | null
  * - destinationAddress: string
  * - technicianName: string
- * - isOrderInProgress: boolean
+ * - isTraveling: boolean (activo únicamente durante el viaje hacia el cliente)
+ * - isOrderInProgress: boolean (compatibilidad hacia atrás)
  */
 export default function LiveTrackingViewer({
   orderId,
   destinationCoords,
   destinationAddress,
   technicianName = 'Técnico',
+  isTraveling = false,
   isOrderInProgress = false,
 }) {
   const [techLocation, setTechLocation] = useState(null); // { lat, lng, speed, heading, accuracy, timestamp }
   const [connectionStatus, setConnectionStatus] = useState('connecting'); // 'connecting' | 'listening' | 'idle'
   const [lastPingSecondsAgo, setLastPingSecondsAgo] = useState(null);
+  const [geocodedDest, setGeocodedDest] = useState(null);
+
+  const isListening = isTraveling || isOrderInProgress;
+
+  // Si no hay coordenadas precisas pero sí dirección en texto, geocodificar automáticamente
+  useEffect(() => {
+    if (destinationCoords?.latitude && destinationCoords?.longitude) {
+      setGeocodedDest(null);
+      return;
+    }
+    if (destinationAddress) {
+      let isMounted = true;
+      searchAddressCoordinates(destinationAddress).then((res) => {
+        if (isMounted && res?.lat && res?.lng) {
+          setGeocodedDest([res.lat, res.lng]);
+        }
+      });
+      return () => {
+        isMounted = false;
+      };
+    }
+  }, [destinationCoords?.latitude, destinationCoords?.longitude, destinationAddress]);
 
   const destPos =
     destinationCoords?.latitude && destinationCoords?.longitude
       ? [Number(destinationCoords.latitude), Number(destinationCoords.longitude)]
-      : null;
+      : geocodedDest;
 
   const techPos = techLocation ? [techLocation.lat, techLocation.lng] : null;
 
   useEffect(() => {
-    if (!orderId || !isOrderInProgress) {
+    if (!orderId || !isListening) {
       setConnectionStatus('idle');
       return;
     }
@@ -94,7 +118,7 @@ export default function LiveTrackingViewer({
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [orderId, isOrderInProgress]);
+  }, [orderId, isListening]);
 
   // Contador de segundos desde el último ping
   useEffect(() => {
@@ -137,9 +161,9 @@ export default function LiveTrackingViewer({
             <p className="text-xs text-gray-500 dark:text-gray-400">
               {techLocation
                 ? `Última señal recibida hace ${lastPingSecondsAgo !== null ? `${lastPingSecondsAgo}s` : 'instantes'}`
-                : isOrderInProgress
-                ? 'Esperando emisión de GPS desde el dispositivo del técnico...'
-                : 'La orden no está en curso (el radar se activa al iniciar el trabajo)'}
+                : isListening
+                ? 'Esperando emisión de GPS en vivo desde el vehículo del técnico...'
+                : 'El técnico no se encuentra en viaje (el radar solo se activa durante el traslado)'}
             </p>
           </div>
         </div>

@@ -79,7 +79,7 @@ export default function DashboardPage() {
           .eq('status', WORK_ORDER_STATUS.COMPLETED)
           .gte('completed_at', startOfLocalDayUTC),
         supabase.from('work_orders').select('*', { count: 'exact', head: true })
-          .eq('status', WORK_ORDER_STATUS.IN_PROGRESS),
+          .in('status', [WORK_ORDER_STATUS.TRAVELING, WORK_ORDER_STATUS.IN_PROGRESS]),
         supabase.from('extras').select('quantity, unit_price')
           .eq('billed', false),
         supabase.from('clients').select('*', { count: 'exact', head: true }).neq('active', false),

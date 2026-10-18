@@ -6,6 +6,7 @@
 /** Estados de una Orden de Trabajo */
 export const WORK_ORDER_STATUS = {
   PENDING: 'pending',
+  TRAVELING: 'traveling',
   IN_PROGRESS: 'in_progress',
   COMPLETED: 'completed',
   CANCELLED: 'cancelled',
@@ -62,7 +63,8 @@ export const EXTRA_UNITS = {
 /** Labels legibles para los estados de OT */
 export const WORK_ORDER_STATUS_LABELS = {
   [WORK_ORDER_STATUS.PENDING]: 'Pendiente',
-  [WORK_ORDER_STATUS.IN_PROGRESS]: 'En Progreso',
+  [WORK_ORDER_STATUS.TRAVELING]: 'En Camino',
+  [WORK_ORDER_STATUS.IN_PROGRESS]: 'En Planta',
   [WORK_ORDER_STATUS.COMPLETED]: 'Completada',
   [WORK_ORDER_STATUS.CANCELLED]: 'Cancelada',
 };

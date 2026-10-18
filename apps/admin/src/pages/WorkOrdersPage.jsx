@@ -298,7 +298,8 @@ export default function WorkOrdersPage() {
         >
           <option value="all">Todos los estados</option>
           <option value={WORK_ORDER_STATUS.PENDING}>Pendientes</option>
-          <option value={WORK_ORDER_STATUS.IN_PROGRESS}>En Progreso</option>
+          <option value={WORK_ORDER_STATUS.TRAVELING}>En Camino</option>
+          <option value={WORK_ORDER_STATUS.IN_PROGRESS}>En Planta</option>
           <option value={WORK_ORDER_STATUS.COMPLETED}>Completadas</option>
           <option value={WORK_ORDER_STATUS.CANCELLED}>Canceladas</option>
         </select>

@@ -4,7 +4,7 @@ import {
   ArrowLeft, Building2, MapPin, Phone, Clock, Wrench, User,
   Camera, FileSignature, ClipboardCheck, Package, CheckCircle2,
   XCircle, AlertCircle, Edit3, Trash2, Calendar, Hash, Thermometer,
-  ChevronDown, ChevronUp, ShieldCheck
+  ChevronDown, ChevronUp, ShieldCheck, Navigation
 } from 'lucide-react';
 import { supabase } from '@4s-clima/shared/supabase';
 import { formatDate, formatDateTime, formatCurrency, getStatusLabel, getStatusColor, resolveOrderLocation } from '@4s-clima/shared';
@@ -133,6 +133,7 @@ export default function WorkOrderDetailPage() {
   const extras = order.extras || [];
   const extrasTotal = extras.reduce((sum, e) => sum + (e.quantity * e.unit_price), 0);
   const loc = resolveOrderLocation(order);
+  const isTraveling = order.status === WORK_ORDER_STATUS.TRAVELING;
   const isInProgress = order.status === WORK_ORDER_STATUS.IN_PROGRESS;
 
   return (
@@ -182,15 +183,26 @@ export default function WorkOrderDetailPage() {
         </div>
       </div>
 
-      {/* Timeline */}
+      {/* Timeline Operativo (4 Fases) */}
       <div className="card p-6 mb-6">
         <h3 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider mb-4 flex items-center gap-2">
-          <Clock size={16} className="text-brand-500" /> Timeline
+          <Clock size={16} className="text-brand-500" /> Timeline Operativo
         </h3>
         <div className="flex items-center gap-0">
           {[
             { label: 'Creada', date: order.created_at, icon: Calendar, done: true },
-            { label: 'Iniciada', date: order.started_at, icon: Clock, done: !!order.started_at },
+            { 
+              label: 'En Camino', 
+              date: order.travel_started_at, 
+              icon: Navigation, 
+              done: !!order.travel_started_at || isTraveling || isInProgress || order.status === WORK_ORDER_STATUS.COMPLETED 
+            },
+            { 
+              label: 'En Planta', 
+              date: order.arrived_at || order.started_at, 
+              icon: Building2, 
+              done: !!(order.arrived_at || order.started_at) || isInProgress || order.status === WORK_ORDER_STATUS.COMPLETED 
+            },
             { label: 'Completada', date: order.completed_at, icon: CheckCircle2, done: !!order.completed_at },
           ].map((step, i, arr) => (
             <div key={i} className="flex items-center flex-1">
@@ -216,16 +228,40 @@ export default function WorkOrderDetailPage() {
         </div>
       </div>
 
-      {/* Radar de Live Tracking en Vivo (se activa automáticamente cuando la orden está en curso) */}
-      {isInProgress && (
+      {/* Radar de Live Tracking en Vivo (SOLO se muestra y escucha canal cuando la orden está en estado 'traveling') */}
+      {isTraveling && (
         <div className="mb-6">
           <LiveTrackingViewer
             orderId={order.id}
             destinationCoords={{ latitude: loc.latitude, longitude: loc.longitude }}
             destinationAddress={loc.address}
             technicianName={order.assigned?.name || 'Técnico'}
-            isOrderInProgress={isInProgress}
+            isTraveling={true}
           />
+        </div>
+      )}
+
+      {/* Si el técnico ya llegó a la planta (in_progress), avisar que el Live Tracking culminó y está trabajando en sitio */}
+      {isInProgress && (
+        <div className="card p-4 mb-6 bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/60 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-blue-500/10 dark:bg-blue-400/10 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+              <Building2 size={20} />
+            </div>
+            <div>
+              <h4 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                El técnico ya se encuentra en el lugar
+                <span className="badge bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300 text-[10px]">
+                  Trabajando en sitio
+                </span>
+              </h4>
+              <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
+                {order.arrived_at || order.started_at
+                  ? `Llegada registrada: ${formatDateTime(order.arrived_at || order.started_at)}`
+                  : 'Arribo a planta confirmado'} · Rastreo GPS desactivado para preservar batería.
+              </p>
+            </div>
+          </div>
         </div>
       )}
 
