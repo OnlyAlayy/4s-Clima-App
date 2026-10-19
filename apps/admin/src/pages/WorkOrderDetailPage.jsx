@@ -456,7 +456,16 @@ export default function WorkOrderDetailPage() {
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-gray-900 dark:text-white">{item.item_name}</p>
                         {item.category && <span className="text-[10px] text-gray-500 dark:text-gray-400 uppercase font-semibold">{item.category}</span>}
-                        {item.notes && <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 italic">"{item.notes}"</p>}
+                        {item.notes && (
+                          <div className="mt-1.5 flex items-start gap-1.5 p-2 rounded-lg bg-gray-100/80 dark:bg-slate-700/50 border border-gray-200/80 dark:border-slate-700/80">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-brand-600 dark:text-brand-400 shrink-0 mt-0.5">
+                              Observación / Acción:
+                            </span>
+                            <span className="text-xs text-gray-800 dark:text-gray-200 font-medium break-words">
+                              {item.notes}
+                            </span>
+                          </div>
+                        )}
                       </div>
                       <span className={`text-xs font-bold px-2 py-0.5 rounded ${
                         item.status === 'ok' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :

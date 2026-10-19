@@ -23,8 +23,18 @@ export {
 // Checklists predefinidos
 export {
   CHECKLIST_TEMPLATES,
+  OFFICIAL_4S_CHECKLIST_TEMPLATES,
   getChecklistByEquipmentType,
 } from './constants/checklists.js';
+
+// Catálogo Oficial de Materiales e Instalación
+export {
+  INSTALLATION_COMBOS_BY_CAPACITY,
+  CATALOG_CATEGORIES,
+  OFFICIAL_MATERIALS_CATALOG,
+  findSuggestedPrice,
+  calculateComboBudget,
+} from './constants/materialsCatalog.js';
 
 // Utilidades
 export {

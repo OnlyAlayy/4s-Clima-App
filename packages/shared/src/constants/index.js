@@ -37,6 +37,7 @@ export const USER_ROLES = {
 /** Tipos de equipo */
 export const EQUIPMENT_TYPES = {
   SPLIT: 'split',
+  COMERCIAL_LIVIANO: 'comercial_liviano',
   CENTRAL: 'central',
   CHILLER: 'chiller',
   VRV: 'vrv',
@@ -78,7 +79,8 @@ export const WORK_ORDER_TYPE_LABELS = {
 
 /** Labels legibles para los tipos de equipo */
 export const EQUIPMENT_TYPE_LABELS = {
-  [EQUIPMENT_TYPES.SPLIT]: 'Split',
+  [EQUIPMENT_TYPES.SPLIT]: 'Split Residencial',
+  [EQUIPMENT_TYPES.COMERCIAL_LIVIANO]: 'Comercial Liviano',
   [EQUIPMENT_TYPES.CENTRAL]: 'Central',
   [EQUIPMENT_TYPES.CHILLER]: 'Chiller',
   [EQUIPMENT_TYPES.VRV]: 'VRV/VRF',

@@ -225,7 +225,24 @@ export default function CreateWorkOrderModal({ isOpen, onClose, onCreated }) {
             {/* Equipo */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Equipo a mantener (Opcional)</label>
-              <select className="select" value={equipmentId} onChange={(e) => setEquipmentId(e.target.value)} disabled={!plantId || plantId === 'custom'}>
+              <select
+                className="select"
+                value={equipmentId}
+                onChange={(e) => {
+                  const eqId = e.target.value;
+                  setEquipmentId(eqId);
+                  if (eqId) {
+                    const selectedEq = equipment.find(item => item.id === eqId);
+                    if (selectedEq) {
+                      const matchingTpl = checklistTemplates.find(t => t.equipment_type === selectedEq.type);
+                      if (matchingTpl) {
+                        setChecklistTemplateId(matchingTpl.id);
+                      }
+                    }
+                  }
+                }}
+                disabled={!plantId || plantId === 'custom'}
+              >
                 <option value="">Aplica a toda la planta / Múltiples equipos</option>
                 {equipment.map(e => (
                   <option key={e.id} value={e.id}>
@@ -292,7 +309,7 @@ export default function CreateWorkOrderModal({ isOpen, onClose, onCreated }) {
                   <option value="">Por defecto (Según tipo de equipo)</option>
                   {checklistTemplates.map(t => (
                     <option key={t.id} value={t.id}>
-                      {t.name} {t.equipment_type ? `(${t.equipment_type})` : '(General)'}
+                      {t.name}
                     </option>
                   ))}
                 </select>

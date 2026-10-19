@@ -2,10 +2,11 @@ import { useEffect, useState, useMemo } from 'react';
 import { 
   DollarSign, Check, AlertCircle, FileText, TrendingUp, Wallet, Download,
   Search, Calendar, CreditCard, CheckSquare, Square, X, Filter, Building, Receipt, Layers,
-  MessageCircle, Eye, ChevronRight
+  MessageCircle, Eye, ChevronRight, Tag, Sparkles
 } from 'lucide-react';
 import { supabase } from '@4s-clima/shared/supabase';
 import { formatCurrency, formatDate } from '@4s-clima/shared/utils';
+import { findSuggestedPrice } from '@4s-clima/shared';
 import { generateReceiptPDF, generateAccountStatementPDF, openAndDownloadPDF } from '../services/pdfService';
 import { generateArcaInvoicePDF } from '../services/arcaInvoicePdf';
 import Swal from 'sweetalert2';
@@ -38,6 +39,7 @@ export default function FinancesPage() {
   const [basePrice, setBasePrice] = useState('');
   const [invoiceAmount, setInvoiceAmount] = useState('');
   const [invoiceConcept, setInvoiceConcept] = useState('');
+  const [extraPrices, setExtraPrices] = useState({});
 
   // Modal Enriquecido de Registro de Cobro ("Marcar Pagado" y Recibo X)
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
@@ -333,27 +335,59 @@ export default function FinancesPage() {
 
   const canConsolidateBilling = unbilledSelected.length > 1 && uniqueClientsInUnbilled.length === 1;
 
-  // Modal Facturación Individual
+  // Modal Facturación Individual con Auto-Tasación de Extras Oficiales
   const openFacturaModal = (order) => {
-    const extrasTotal = (order.extras || []).reduce((sum, e) => sum + (e.quantity * e.unit_price), 0);
     setSelectedOrder(order);
     setBatchOrdersToInvoice([]);
     setBasePrice('');
-    setInvoiceAmount(extrasTotal > 0 ? extrasTotal.toString() : '');
+
+    const initialPrices = {};
+    (order.extras || []).forEach(e => {
+      if (e.unit_price && Number(e.unit_price) > 0) {
+        initialPrices[e.id] = Number(e.unit_price);
+      } else {
+        const suggested = findSuggestedPrice(e.description);
+        initialPrices[e.id] = suggested ? suggested.unit_price : 0;
+      }
+    });
+    setExtraPrices(initialPrices);
+
+    const extrasTotal = (order.extras || []).reduce((sum, e) => {
+      const p = initialPrices[e.id] !== undefined ? initialPrices[e.id] : (e.unit_price || 0);
+      return sum + ((Number(e.quantity) || 1) * Number(p || 0));
+    }, 0);
+
+    setInvoiceAmount(extrasTotal > 0 ? extrasTotal.toFixed(2) : '');
     setInvoiceConcept(order.observations || 'Mantenimiento Preventivo y Correctivo de Climatización');
     setIsModalOpen(true);
   };
 
-  // Modal Facturación en Lote (Consolidada)
+  // Modal Facturación en Lote con Auto-Tasación
   const openBatchFacturaModal = (batch) => {
     if (!batch || batch.length === 0) return;
     const allExtras = batch.flatMap(o => o.extras || []);
-    const extrasTotal = allExtras.reduce((sum, e) => sum + (e.quantity * e.unit_price), 0);
     
     setSelectedOrder(batch[0]);
     setBatchOrdersToInvoice(batch);
     setBasePrice('');
-    setInvoiceAmount(extrasTotal > 0 ? extrasTotal.toString() : '');
+
+    const initialPrices = {};
+    allExtras.forEach(e => {
+      if (e.unit_price && Number(e.unit_price) > 0) {
+        initialPrices[e.id] = Number(e.unit_price);
+      } else {
+        const suggested = findSuggestedPrice(e.description);
+        initialPrices[e.id] = suggested ? suggested.unit_price : 0;
+      }
+    });
+    setExtraPrices(initialPrices);
+
+    const extrasTotal = allExtras.reduce((sum, e) => {
+      const p = initialPrices[e.id] !== undefined ? initialPrices[e.id] : (e.unit_price || 0);
+      return sum + ((Number(e.quantity) || 1) * Number(p || 0));
+    }, 0);
+
+    setInvoiceAmount(extrasTotal > 0 ? extrasTotal.toFixed(2) : '');
     setInvoiceConcept(`Servicio de Climatización - Lote de ${batch.length} OTs`);
     setIsModalOpen(true);
   };
@@ -364,8 +398,30 @@ export default function FinancesPage() {
     const activeExtras = batchOrdersToInvoice.length > 0
       ? batchOrdersToInvoice.flatMap(o => o.extras || [])
       : (selectedOrder?.extras || []);
-    const extrasTotal = activeExtras.reduce((sum, e) => sum + (e.quantity * e.unit_price), 0);
-    setInvoiceAmount((base + extrasTotal).toString());
+    const extrasTotal = activeExtras.reduce((sum, e) => {
+      const p = parseFloat(extraPrices[e.id]) || 0;
+      return sum + ((parseFloat(e.quantity) || 1) * p);
+    }, 0);
+    const totalNet = base + extrasTotal;
+    setInvoiceAmount(totalNet > 0 ? totalNet.toFixed(2) : '');
+  };
+
+  const handleExtraPriceChange = (extraId, priceVal) => {
+    const newPrices = { ...extraPrices, [extraId]: priceVal };
+    setExtraPrices(newPrices);
+
+    const base = parseFloat(basePrice) || 0;
+    const activeExtras = batchOrdersToInvoice.length > 0
+      ? batchOrdersToInvoice.flatMap(o => o.extras || [])
+      : (selectedOrder?.extras || []);
+
+    const newExtrasTotal = activeExtras.reduce((sum, e) => {
+      const p = e.id === extraId ? (parseFloat(priceVal) || 0) : (parseFloat(newPrices[e.id]) || 0);
+      return sum + ((parseFloat(e.quantity) || 1) * p);
+    }, 0);
+
+    const totalNet = base + newExtrasTotal;
+    setInvoiceAmount(totalNet > 0 ? totalNet.toFixed(2) : '');
   };
 
   const confirmFacturar = async () => {
@@ -424,6 +480,25 @@ export default function FinancesPage() {
               }).eq('id', secOrder.id);
             }
           }
+
+          // Actualizar precios confirmados de extras y marcarlos como facturados (billed = true)
+          const activeExtras = batchOrdersToInvoice.length > 0
+            ? batchOrdersToInvoice.flatMap(o => o.extras || [])
+            : (selectedOrder?.extras || []);
+
+          for (const extra of activeExtras) {
+            const finalPrice = extraPrices[extra.id] !== undefined 
+              ? parseFloat(extraPrices[extra.id]) || 0 
+              : parseFloat(extra.unit_price) || 0;
+            
+            await supabase
+              .from('extras')
+              .update({
+                unit_price: finalPrice,
+                billed: true
+              })
+              .eq('id', extra.id);
+          }
           
           Swal.fire({
             icon: 'success',
@@ -435,6 +510,7 @@ export default function FinancesPage() {
           setSelectedOrder(null);
           setBatchOrdersToInvoice([]);
           setSelectedOrderIds([]);
+          setExtraPrices({});
           loadFinances();
         } else {
           return Swal.fire('Error de AFIP', 'El servidor respondió con error: ' + (afipData.error || JSON.stringify(afipData)), 'error');
@@ -1765,7 +1841,7 @@ export default function FinancesPage() {
             </div>
             
             <div className="p-6 max-h-[65vh] overflow-y-auto space-y-4">
-              {/* Desglose de Extras */}
+              {/* Desglose y Auto-Tasación de Extras Oficiales */}
               {(() => {
                 const activeExtras = batchOrdersToInvoice.length > 1
                   ? batchOrdersToInvoice.flatMap(o => o.extras || [])
@@ -1773,29 +1849,85 @@ export default function FinancesPage() {
 
                 if (activeExtras.length === 0) return null;
 
+                const currentExtrasTotal = activeExtras.reduce((s, e) => {
+                  const p = extraPrices[e.id] !== undefined ? (parseFloat(extraPrices[e.id]) || 0) : (parseFloat(e.unit_price) || 0);
+                  return s + ((parseFloat(e.quantity) || 1) * p);
+                }, 0);
+
                 return (
                   <div className="mb-2">
-                    <h4 className="text-xs font-semibold uppercase tracking-wider text-gray-700 dark:text-gray-300 mb-2">
-                      Extras y Repuestos Reportados
-                    </h4>
-                    <div className="bg-gray-50 dark:bg-slate-800/50 rounded-xl p-3.5 space-y-2 border border-gray-100 dark:border-slate-800">
-                      {activeExtras.map(e => (
-                        <div key={e.id} className="flex justify-between items-center text-xs">
-                          <div className="flex-1 pr-2">
-                            <span className="font-medium text-gray-800 dark:text-gray-200">{e.description}</span>
-                            <span className="text-gray-400 dark:text-gray-500 ml-1.5">
-                              ({e.quantity} {e.unit} x {formatCurrency(e.unit_price)})
-                            </span>
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
+                        <Tag size={13} className="text-indigo-600 dark:text-indigo-400" />
+                        Extras y Materiales Reportados
+                      </h4>
+                      <span className="text-[11px] text-indigo-600 dark:text-indigo-400 font-medium">
+                        Auto-Tasación Oficial SEP 26
+                      </span>
+                    </div>
+
+                    <div className="bg-gray-50 dark:bg-slate-800/60 rounded-xl p-3 space-y-2.5 border border-gray-200 dark:border-slate-700/80">
+                      {activeExtras.map(e => {
+                        const suggested = findSuggestedPrice(e.description);
+                        const currentPrice = extraPrices[e.id] !== undefined ? extraPrices[e.id] : (e.unit_price || '');
+                        const lineTotal = (parseFloat(e.quantity) || 1) * (parseFloat(currentPrice) || 0);
+
+                        return (
+                          <div key={e.id} className="p-2.5 bg-white dark:bg-slate-900 rounded-lg border border-gray-200 dark:border-slate-800 space-y-2 shadow-xs">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-xs">
+                              <div>
+                                <span className="font-semibold text-gray-900 dark:text-white">{e.description}</span>
+                                <span className="text-gray-500 dark:text-gray-400 ml-1.5 font-mono">
+                                  ({e.quantity} {e.unit})
+                                </span>
+                              </div>
+                              {suggested && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleExtraPriceChange(e.id, suggested.unit_price)}
+                                  className="self-start sm:self-auto inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 transition-colors"
+                                  title="Click para aplicar precio oficial del catálogo"
+                                >
+                                  <Sparkles size={11} />
+                                  Catálogo: ${suggested.unit_price.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                                </button>
+                              )}
+                            </div>
+
+                            <div className="flex items-center justify-between gap-3 pt-1.5 border-t border-gray-100 dark:border-slate-800">
+                              <div className="flex items-center gap-1.5">
+                                <label className="text-[11px] text-gray-500 dark:text-gray-400 whitespace-nowrap font-medium">
+                                  Precio Unit. Neto:
+                                </label>
+                                <div className="relative">
+                                  <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs">$</span>
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    value={currentPrice}
+                                    onChange={(ev) => handleExtraPriceChange(e.id, ev.target.value)}
+                                    placeholder="0.00"
+                                    className="w-28 pl-5 pr-2 py-1 text-xs font-semibold rounded-lg border border-gray-300 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                  />
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <span className="text-[10px] text-gray-400 block">Subtotal</span>
+                                <span className="text-xs font-bold text-gray-900 dark:text-white font-mono">
+                                  {formatCurrency(lineTotal)}
+                                </span>
+                              </div>
+                            </div>
                           </div>
-                          <span className="font-semibold text-gray-900 dark:text-white">
-                            {formatCurrency(e.quantity * e.unit_price)}
-                          </span>
-                        </div>
-                      ))}
-                      <div className="border-t border-gray-200 dark:border-slate-700 pt-2 mt-1 flex justify-between font-bold text-xs">
-                        <span className="text-gray-700 dark:text-gray-300">Subtotal Extras (Neto):</span>
-                        <span className="text-gray-900 dark:text-white">
-                          {formatCurrency(activeExtras.reduce((s, e) => s + (e.quantity * e.unit_price), 0))}
+                        );
+                      })}
+
+                      <div className="border-t border-gray-200 dark:border-slate-700 pt-2 flex justify-between items-center text-xs">
+                        <span className="font-semibold text-gray-700 dark:text-gray-300">
+                          Subtotal Extras Tasados (Neto):
+                        </span>
+                        <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400 font-mono">
+                          {formatCurrency(currentExtrasTotal)}
                         </span>
                       </div>
                     </div>

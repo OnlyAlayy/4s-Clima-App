@@ -23,7 +23,7 @@ export default function ChecklistPage() {
   const navigate = useNavigate();
   const { currentOrder, fetchWorkOrder, isLoading } = useWorkOrderStore();
   const [items, setItems] = useState([]);
-  const [expandedNote, setExpandedNote] = useState(null);
+  const [expandedNotes, setExpandedNotes] = useState({});
   const [notes, setNotes] = useState({});
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [isSubmittingFinal, setIsSubmittingFinal] = useState(false);
@@ -79,14 +79,36 @@ export default function ChecklistPage() {
         }
       }
 
-      // Si no hay plantilla específica en la orden, buscar la plantilla activa más reciente creada en el admin
+      // Si no hay plantilla específica en la orden, buscar por tipo de equipo en la DB
+      if (!template && currentOrder.equipment?.type) {
+        try {
+          const { data: eqTpls } = await supabase
+            .from('checklist_templates')
+            .select('*')
+            .eq('equipment_type', currentOrder.equipment.type)
+            .eq('active', true)
+            .limit(1);
+
+          if (eqTpls && eqTpls.length > 0) {
+            const tpl = eqTpls[0];
+            template = {
+              name: tpl.name,
+              categories: Array.isArray(tpl.sections) ? tpl.sections : tpl.categories || [],
+            };
+          }
+        } catch (err) {
+          console.warn('No se pudo cargar plantilla por equipment_type:', err);
+        }
+      }
+
+      // Si aún no hay plantilla, buscar la plantilla activa más reciente creada en el admin
       if (!template) {
         try {
           const { data: activeTpls } = await supabase
             .from('checklist_templates')
             .select('*')
             .eq('active', true)
-            .order('created_at', { ascending: false })
+            .order('name')
             .limit(1);
 
           if (activeTpls && activeTpls.length > 0) {
@@ -101,7 +123,7 @@ export default function ChecklistPage() {
         }
       }
 
-      // Si aún no hay plantilla, usar fallback por tipo de equipo
+      // Fallback local garantizado desde shared constants (100% offline-first)
       if (!template) {
         template = getChecklistByEquipmentType(currentOrder.equipment?.type);
       }
@@ -147,6 +169,45 @@ export default function ChecklistPage() {
     if (isSubmitted) return;
     setNotes((prev) => ({ ...prev, [itemId]: note }));
   }, [isSubmitted]);
+
+  // Placeholder dinámico según el tipo de pregunta
+  const getDynamicPlaceholder = (itemName) => {
+    if (!itemName) return 'Observación / acción...';
+    const lower = itemName.toLowerCase();
+    if (lower.includes('amper')) {
+      return 'Ej: 8.5 A — Observación / acción';
+    }
+    if (lower.includes('volt')) {
+      return 'Ej: 220 V — Observación / acción';
+    }
+    if (lower.includes('resultado')) {
+      return 'Indicar resultado u observación / acción...';
+    }
+    return 'Observación / acción...';
+  };
+
+  // Determina si el campo de texto de notas debe mostrarse abierto
+  const isNoteOpen = (item) => {
+    if (expandedNotes[item.id] !== undefined) {
+      return expandedNotes[item.id];
+    }
+    if (notes[item.id] && String(notes[item.id]).trim().length > 0) {
+      return true;
+    }
+    const lower = (item.item_name || '').toLowerCase();
+    if (lower.includes('amper') || lower.includes('volt') || lower.includes('resultado')) {
+      return true;
+    }
+    return false;
+  };
+
+  const toggleNoteExpanded = (item) => {
+    const currentOpen = isNoteOpen(item);
+    setExpandedNotes((prev) => ({
+      ...prev,
+      [item.id]: !currentOpen,
+    }));
+  };
 
   // Construir datos consolidados
   const buildChecklistData = () => {
@@ -413,7 +474,7 @@ export default function ChecklistPage() {
           <span className="w-3.5 h-3.5 rounded bg-emerald-100 border border-emerald-300 dark:bg-emerald-950/40 dark:border-emerald-700 shadow-sm" /> OK
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="w-3.5 h-3.5 rounded bg-amber-100 border border-amber-300 dark:bg-amber-950/40 dark:border-amber-700 shadow-sm" /> Atención
+          <span className="w-3.5 h-3.5 rounded bg-amber-100 border border-amber-300 dark:bg-amber-950/40 dark:border-amber-700 shadow-sm" /> Observación
         </span>
         <span className="flex items-center gap-1.5">
           <span className="w-3.5 h-3.5 rounded bg-red-100 border border-red-300 dark:bg-red-950/40 dark:border-red-700 shadow-sm" /> Falla
@@ -433,14 +494,21 @@ export default function ChecklistPage() {
             </h2>
             <div className="space-y-2.5">
               {catItems.map((item) => (
-                <div key={item.id} id={`checklist-item-${item.id}`}>
+                <div key={item.id} id={`checklist-item-${item.id}`} className="space-y-1.5">
                   <div
                     className="checklist-row shadow-sm"
                     data-status={item.status}
                   >
-                    <span className="text-sm font-medium text-slate-800 dark:text-slate-200 flex-1 leading-snug">
-                      {item.item_name}
-                    </span>
+                    <div className="flex-1 min-w-0 pr-2">
+                      <span className="text-sm font-medium text-slate-800 dark:text-slate-200 block leading-snug">
+                        {item.item_name}
+                      </span>
+                      {!isNoteOpen(item) && notes[item.id] && (
+                        <span className="text-xs text-brand-600 dark:text-brand-400 font-semibold truncate block mt-0.5">
+                          Nota: {notes[item.id]}
+                        </span>
+                      )}
+                    </div>
 
                     {/* Botones de estado */}
                     <div className="flex items-center gap-1.5 flex-shrink-0">
@@ -451,6 +519,7 @@ export default function ChecklistPage() {
                         onClick={() => toggleStatus(item.id, CHECKLIST_STATUS.OK)}
                         color="emerald"
                         disabled={isSubmitted}
+                        label="OK"
                       />
                       <StatusButton
                         icon={<AlertTriangle size={14} />}
@@ -459,6 +528,7 @@ export default function ChecklistPage() {
                         onClick={() => toggleStatus(item.id, CHECKLIST_STATUS.WARNING)}
                         color="amber"
                         disabled={isSubmitted}
+                        label="Observación"
                       />
                       <StatusButton
                         icon={<X size={16} />}
@@ -467,6 +537,7 @@ export default function ChecklistPage() {
                         onClick={() => toggleStatus(item.id, CHECKLIST_STATUS.FAIL)}
                         color="red"
                         disabled={isSubmitted}
+                        label="Falla"
                       />
                       <StatusButton
                         icon={<Minus size={14} />}
@@ -475,34 +546,48 @@ export default function ChecklistPage() {
                         onClick={() => toggleStatus(item.id, CHECKLIST_STATUS.NA)}
                         color="gray"
                         disabled={isSubmitted}
+                        label="N/A"
                       />
-                      {/* Botón Nota */}
+                      {/* Botón Nota / Observación */}
                       <button
                         type="button"
-                        onClick={() => setExpandedNote(expandedNote === item.id ? null : item.id)}
-                        className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all shadow-sm border
-                          ${notes[item.id]
-                            ? 'bg-brand-50 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400 border-brand-200 dark:border-brand-800'
+                        onClick={() => toggleNoteExpanded(item)}
+                        className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all shadow-sm border
+                          ${notes[item.id] || isNoteOpen(item)
+                            ? 'bg-brand-50 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400 border-brand-300 dark:border-brand-700'
                             : 'bg-white dark:bg-slate-900 text-gray-400 dark:text-gray-500 border-gray-200 dark:border-slate-700 active:bg-gray-50 dark:active:bg-slate-800'
                           }`}
-                        aria-label="Agregar nota"
+                        title="Observación / acción"
+                        aria-label="Agregar observación / acción"
                       >
-                        <MessageSquare size={16} />
+                        <MessageSquare size={15} />
                       </button>
                     </div>
                   </div>
 
-                  {/* Campo de nota expandible */}
-                  {expandedNote === item.id && (
-                    <div className="mt-2 ml-4 animate-fade-in pr-2">
-                      <textarea
-                        placeholder="Agregar observación..."
-                        value={notes[item.id] || ''}
-                        onChange={(e) => updateNote(item.id, e.target.value)}
-                        disabled={isSubmitted}
-                        className="input text-sm min-h-[60px] resize-none"
-                        rows={2}
-                      />
+                  {/* Campo de texto de Observación / acción debajo de la pregunta */}
+                  {isNoteOpen(item) && (
+                    <div className="ml-3 mr-1 animate-fade-in">
+                      <div className="relative flex items-center">
+                        <input
+                          type="text"
+                          placeholder={getDynamicPlaceholder(item.item_name)}
+                          value={notes[item.id] || ''}
+                          onChange={(e) => updateNote(item.id, e.target.value)}
+                          disabled={isSubmitted}
+                          className="input text-xs py-2 pl-3 pr-8 w-full rounded-xl bg-gray-50/90 dark:bg-slate-800/60 border-gray-200 dark:border-slate-700 focus:bg-white dark:focus:bg-slate-900 transition-all font-medium text-slate-800 dark:text-slate-100 placeholder:text-gray-400 dark:placeholder:text-gray-500"
+                        />
+                        {notes[item.id] && !isSubmitted && (
+                          <button
+                            type="button"
+                            onClick={() => updateNote(item.id, '')}
+                            className="absolute right-2.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 p-0.5"
+                            title="Borrar texto"
+                          >
+                            <X size={13} />
+                          </button>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -616,12 +701,12 @@ export default function ChecklistPage() {
 /**
  * Botón de estado individual del checklist con soporte para disabled.
  */
-function StatusButton({ icon, active, onClick, color, disabled }) {
+function StatusButton({ icon, active, onClick, color, disabled, label }) {
   const colorClasses = {
-    emerald: active ? 'bg-emerald-500 text-slate-900 dark:text-slate-100' : 'bg-emerald-500/10 text-emerald-500/50',
-    amber: active ? 'bg-amber-500 text-slate-900 dark:text-slate-100' : 'bg-amber-500/10 text-amber-500/50',
-    red: active ? 'bg-red-500 text-slate-900 dark:text-slate-100' : 'bg-red-500/10 text-red-500/50',
-    gray: active ? 'bg-gray-500 text-slate-900 dark:text-slate-100' : 'bg-gray-500/10 text-gray-500/50',
+    emerald: active ? 'bg-emerald-500 text-slate-900 dark:text-slate-100 ring-2 ring-emerald-500/30' : 'bg-emerald-500/10 text-emerald-500/60',
+    amber: active ? 'bg-amber-500 text-slate-900 dark:text-slate-100 ring-2 ring-amber-500/30' : 'bg-amber-500/10 text-amber-500/60',
+    red: active ? 'bg-red-500 text-slate-900 dark:text-slate-100 ring-2 ring-red-500/30' : 'bg-red-500/10 text-red-500/60',
+    gray: active ? 'bg-gray-500 text-slate-900 dark:text-slate-100 ring-2 ring-gray-500/30' : 'bg-gray-500/10 text-gray-500/60',
   };
 
   return (
@@ -629,6 +714,7 @@ function StatusButton({ icon, active, onClick, color, disabled }) {
       type="button"
       onClick={onClick}
       disabled={disabled}
+      title={label}
       className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-150
         active:scale-90 ${colorClasses[color]} ${disabled ? 'cursor-default opacity-80 active:scale-100' : ''}`}
       aria-pressed={active}

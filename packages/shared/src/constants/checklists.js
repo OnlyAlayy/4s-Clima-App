@@ -1,232 +1,141 @@
 /**
- * Templates de checklist por tipo de equipo.
- * Cada template define las categorías y los ítems que el técnico debe verificar.
- * 
- * Estos templates se usan para generar los checklist_items al crear una OT.
+ * Templates de checklist oficiales 4S Clima por rango de frigorías y tipo de equipo.
+ * Cada template define las categorías (Revisión Previa y Revisión Posterior)
+ * y los ítems exactos que el técnico debe verificar e inspeccionar.
  */
 
 import { EQUIPMENT_TYPES } from './index.js';
 
 export const CHECKLIST_TEMPLATES = {
+  // FICHA 1: Residencial · 3.000 a 6.000 FG · Departamentos y casas
   [EQUIPMENT_TYPES.SPLIT]: {
-    name: 'Mantenimiento Preventivo - Split',
+    name: 'Residencial · 3.000 a 6.000 FG · Departamentos y casas',
+    equipment_type: EQUIPMENT_TYPES.SPLIT,
+    description: 'Ficha oficial 4S Clima para equipos residenciales split de 3.000 a 6.000 FG.',
     categories: [
       {
-        name: 'Unidad Interior',
+        name: 'A. REVISIÓN PREVIA A LA INTERVENCIÓN',
         items: [
-          'Limpieza de filtros',
-          'Limpieza de turbina',
-          'Limpieza de bandeja de condensado',
-          'Verificación de drenaje',
-          'Control de temperatura de inyección',
-          'Verificación de funcionamiento del control remoto',
+          'Equipo sin daños visibles y con accesorios/componentes principales completos.',
+          'Modelo, capacidad, tensión y refrigerante identificados y acordes al equipo/pedido.',
+          'Ubicación, fijaciones, nivelación y soporte adecuados; acceso de mantenimiento disponible.',
+          'Espacios de ventilación libres, sin obstrucciones ni recirculación de aire.',
+          'Alimentación eléctrica disponible y compatible con placa del equipo.',
+          'Protecciones eléctricas, puesta a tierra y cableado verificables/adecuados.',
+          'Tuberías/interconexiones dentro de límites del fabricante, aisladas y sin daños visibles.',
+          'Drenaje de condensado previsto con pendiente y descarga segura.',
+          'Acceso y condiciones de trabajo seguros; permisos/requisitos del edificio verificados si aplica.',
+          'Consumo Eléctrico en Amperes (Revisión Previa)',
+          'Tensión Volt (Revisión Previa)',
+          'Resultado previo (Se puede intervenir / Con observaciones / No se puede intervenir)',
         ],
       },
       {
-        name: 'Unidad Exterior',
+        name: 'B. REVISIÓN POSTERIOR A LA INTERVENCIÓN',
         items: [
-          'Limpieza de serpentina condensadora',
-          'Verificación de presiones de trabajo',
-          'Control de consumo eléctrico',
-          'Verificación de estado de ventilador',
-          'Inspección de cañerías y aislación',
-          'Verificación de soportes y vibraciones',
-        ],
-      },
-      {
-        name: 'Sistema Eléctrico',
-        items: [
-          'Verificación de tensión de alimentación',
-          'Control de contactores y relés',
-          'Revisión de cableado y borneras',
-          'Verificación de puesta a tierra',
+          'Unidad interior y exterior correctamente fijadas, niveladas y con espacios libres.',
+          'Interconexiones frigoríficas realizadas según especificación; aislación continua y protegida.',
+          'Prueba de hermeticidad y vacío realizadas según procedimiento del fabricante, cuando corresponda.',
+          'Conexiones eléctricas firmes; protecciones y puesta a tierra verificadas.',
+          'Drenaje probado; evacúa correctamente y no presenta pérdidas ni goteos.',
+          'Perforaciones, pasamuros, sellados y terminaciones completadas.',
+          'Unidad probada en frío y calor cuando corresponda; sin alarmas ni ruidos/vibraciones anormales.',
+          'Control remoto/comandos operativos y funcionamiento básico verificado.',
+          'Filtros, uso básico y limpieza explicados al usuario/cliente.',
+          'Área de trabajo limpia; observaciones y pendientes comunicados.',
+          'Consumo Eléctrico en Amperes (Revisión Posterior)',
+          'Tensión Volt (Revisión Posterior)',
+          'RESULTADO FINAL (Apto para Start Up o entrega / Apto con observaciones / No apto: requiere correcciones)',
         ],
       },
     ],
   },
 
+  // FICHA 2: Comercial Liviano · 12.000 a 18.000 FG · Locales, oficinas y estaciones de servicio
+  [EQUIPMENT_TYPES.COMERCIAL_LIVIANO]: {
+    name: 'Comercial Liviano · 12.000 a 18.000 FG · Locales, oficinas y estaciones de servicio',
+    equipment_type: EQUIPMENT_TYPES.COMERCIAL_LIVIANO,
+    description: 'Ficha oficial 4S Clima para equipos comerciales livianos de 12.000 a 18.000 FG.',
+    categories: [
+      {
+        name: 'A. REVISIÓN PREVIA A LA INTERVENCIÓN',
+        items: [
+          'Recepción y estado del equipo: Unidad sin daños visibles de transporte (golpes, aletas dobladas, fugas de aceite) y con accesorios completos.',
+          'Placa de identificación: Modelo, N.º de serie, capacidad, tensión/fases y refrigerante identificados y coincidentes con el pedido.',
+          'Emplazamiento y soportes: Ubicación de unidades adecuada, nivelada, sobre soportes o losa aptos para el peso y con espacio para mantenimiento.',
+          'Ventilación y entorno: Espacios libres sin obstrucciones ni riesgo de recirculación de aire caliente en unidad exterior.',
+          'Suministro eléctrico y protecciones: Alimentación eléctrica independiente desde tablero propio, con cableado y protecciones dimensionados.',
+          'Dispositivos de protección (Trifásicos): Protector de secuencia y falta de fase previsto/instalado según corresponda.',
+          'Tuberías y recorridos: Interconexiones frigoríficas dentro de límites de longitud/desnivel del fabricante, sin tensiones mecánicas.',
+          'Drenaje de condensado: Pendiente y trazado continuo previsto sin riesgo de goteo o molestia a terceros.',
+          'Entornos especiales / Estaciones de servicio: Distancias de seguridad respecto a zonas clasificadas, surtidores y venteros verificadas.',
+          'Seguridad y coordinación: Permisos de trabajo, EPP y horarios coordinados para no interferir con la operación comercial del local.',
+          'Consumo Eléctrico en Amperes (Revisión Previa)',
+          'Tensión Volt (Revisión Previa)',
+          'Resultado previo (Se puede intervenir / Con observaciones / No se puede intervenir)',
+        ],
+      },
+      {
+        name: 'B. REVISIÓN POSTERIOR A LA INTERVENCIÓN',
+        items: [
+          'Fijación y protecciones: Unidades firmemente aseguradas, con antivibradores y protección física/anti-vandalismo o anticorrosiva si aplica.',
+          'Interconexiones y aislación: Cañerías ejecutadas según especificación, con aislación térmica continua y protegida de la intemperie/UV.',
+          'Hermeticidad y vacío: Prueba de presión/hermeticidad con nitrógeno y vacío realizados respetando el procedimiento del fabricante.',
+          'Conexiones eléctricas y control: Bornes atornillados; cable de comando/termostato separado de potencia e instalado correctamente.',
+          'Drenaje probado: Evacuación de condensado probada con agua; funciona correctamente, sin filtraciones ni desbordes.',
+          'Conductos y aire (si aplica): Ductos aislados y sellados, rejillas y difusores montados y retorno libre de obstrucciones.',
+          'Sellados y terminaciones: Perforaciones, pasamuros y sellados exteriores correctamente finalizados.',
+          'Prueba de funcionamiento: Equipo probado en frío/calor; parámetros eléctricos normales, sin ruidos, vibraciones ni alarmas.',
+          'Control y mandos: Comando cableado / control remoto totalmente operativo y configurado.',
+          'Capacitación y entrega: Uso del equipo, limpieza de filtros y mantenimientos explicados al encargado; sitio limpio.',
+          'Consumo Eléctrico en Amperes (Revisión Posterior)',
+          'Tensión Volt (Revisión Posterior)',
+          'RESULTADO FINAL (Apto para Start Up o entrega / Apto con observaciones / No apto: requiere correcciones)',
+        ],
+      },
+    ],
+  },
+
+  // FICHA 3: Equipos Centrales · Más de 18.000 FG · Comerciales e Industriales
   [EQUIPMENT_TYPES.CENTRAL]: {
-    name: 'Mantenimiento Preventivo - Equipo Central',
+    name: 'Equipos Centrales · Más de 18.000 FG · Comerciales e Industriales',
+    equipment_type: EQUIPMENT_TYPES.CENTRAL,
+    description: 'Ficha oficial 4S Clima para equipos centrales mayores a 18.000 FG (Comerciales e Industriales).',
     categories: [
       {
-        name: 'Unidad Evaporadora',
+        name: 'A. REVISIÓN PREVIA A LA INTERVENCIÓN',
         items: [
-          'Limpieza de filtros de aire',
-          'Limpieza de serpentina evaporadora',
-          'Verificación de bandeja de condensado',
-          'Control de temperatura de inyección',
-          'Verificación de caudal de aire',
-          'Inspección de dampers',
+          'Recepción e izaje: Equipo sin daños de transporte; plan de izaje (grúa, aparejos, barras distanciadoras) definido e inspeccionado.',
+          'Placa de identificación y componentes: Modelo, serie, capacidad, tensión y componentes coincidentes con especificación técnica.',
+          'Base estructural y antivibradores: Roof, curb o estructura calculada para peso en operación; antivibradores listos para montaje.',
+          'Emplazamiento y accesos: Nivelación adecuada, accesos seguros para mantenimiento (escaleras, pasarelas, líneas de vida en cubierta).',
+          'Espacio y recirculación: Distancias mínimas del fabricante respetadas; libre de barreras que causen recirculación de aire de condensación.',
+          'Acometida eléctrica y protecciones: Tablero principal con seccionador a la vista, protecciones dimensionadas, secuencia/falta de fase y tierra.',
+          'Circuito hidráulico / primario (si aplica): Bombas montadas con sentido de giro, filtro en retorno, flujostato, vaso de expansión y manómetros.',
+          'Tuberías / Conductos (Previa): Límites de longitud/desnivel respetados; conductos de impulsión/retorno sellados y soportados sin tensión.',
+          'Drenaje e imprevistos: Red de condensado prevista con pendiente, sifón adecuado a la presión del ventilador y descarga segura.',
+          'Documentación previa: Planos conforme a obra y esquemas eléctricos disponibles en sitio.',
+          'Consumo Eléctrico en Amperes (Revisión Previa)',
+          'Tensión Volt (Revisión Previa)',
+          'Resultado previo (Se puede intervenir / Con observaciones / No se puede intervenir)',
         ],
       },
       {
-        name: 'Unidad Condensadora',
+        name: 'B. REVISIÓN POSTERIOR A LA INTERVENCIÓN',
         items: [
-          'Limpieza de serpentina condensadora',
-          'Verificación de presiones de trabajo',
-          'Control de nivel de aceite del compresor',
-          'Verificación de válvulas de servicio',
-          'Control de recalentamiento y subenfriamiento',
-          'Medición de consumo eléctrico',
-        ],
-      },
-      {
-        name: 'Ductos y Distribución',
-        items: [
-          'Inspección de ductos y juntas',
-          'Verificación de difusores y rejillas',
-          'Control de caudal en bocas',
-          'Verificación de aislación térmica',
-        ],
-      },
-      {
-        name: 'Sistema Eléctrico y Control',
-        items: [
-          'Verificación de tablero eléctrico',
-          'Control de contactores y protecciones',
-          'Revisión de termostato/controlador',
-          'Verificación de puesta a tierra',
-          'Control de secuencia de arranque',
-        ],
-      },
-    ],
-  },
-
-  [EQUIPMENT_TYPES.CHILLER]: {
-    name: 'Mantenimiento Preventivo - Chiller',
-    categories: [
-      {
-        name: 'Circuito de Refrigeración',
-        items: [
-          'Verificación de presiones de trabajo',
-          'Control de temperatura de evaporación',
-          'Control de temperatura de condensación',
-          'Verificación de recalentamiento',
-          'Verificación de subenfriamiento',
-          'Control de nivel de aceite',
-          'Análisis de aceite (si corresponde)',
-        ],
-      },
-      {
-        name: 'Circuito Hidráulico',
-        items: [
-          'Verificación de caudal de agua',
-          'Control de temperaturas entrada/salida',
-          'Verificación de presión diferencial',
-          'Inspección de bombas de circulación',
-          'Verificación de válvulas y filtros',
-          'Control de nivel de agua en tanque',
-        ],
-      },
-      {
-        name: 'Torre de Enfriamiento',
-        items: [
-          'Limpieza de relleno',
-          'Verificación de ventiladores',
-          'Control de tratamiento de agua',
-          'Inspección de bandejas',
-          'Verificación de purga automática',
-        ],
-      },
-      {
-        name: 'Sistema Eléctrico y Control',
-        items: [
-          'Verificación de tablero de potencia',
-          'Control de protecciones eléctricas',
-          'Revisión de controlador/PLC',
-          'Verificación de sensores y sondas',
-          'Control de alarmas y seguridades',
-        ],
-      },
-    ],
-  },
-
-  [EQUIPMENT_TYPES.VRV]: {
-    name: 'Mantenimiento Preventivo - VRV/VRF',
-    categories: [
-      {
-        name: 'Unidades Interiores',
-        items: [
-          'Limpieza de filtros de aire',
-          'Limpieza de serpentinas',
-          'Verificación de drenajes',
-          'Control de funcionamiento de louvers',
-          'Verificación de controles remotos',
-          'Lectura de códigos de error',
-        ],
-      },
-      {
-        name: 'Unidad Exterior',
-        items: [
-          'Limpieza de serpentina condensadora',
-          'Verificación de presiones de trabajo',
-          'Control de consumo por compresor',
-          'Verificación de válvulas de expansión',
-          'Inspección de acumulador de líquido',
-          'Control de nivel de aceite',
-        ],
-      },
-      {
-        name: 'Sistema de Control',
-        items: [
-          'Verificación de comunicación entre unidades',
-          'Lectura de diagnósticos del sistema',
-          'Control de direcciones de red',
-          'Verificación de controlador centralizado',
-          'Backup de configuración',
-        ],
-      },
-    ],
-  },
-
-  [EQUIPMENT_TYPES.FAN_COIL]: {
-    name: 'Mantenimiento Preventivo - Fan Coil',
-    categories: [
-      {
-        name: 'General',
-        items: [
-          'Limpieza de filtros',
-          'Limpieza de serpentina',
-          'Verificación de bandeja de condensado',
-          'Control de drenaje',
-          'Verificación de velocidades del ventilador',
-          'Control de válvula de 2/3 vías',
-          'Verificación de termostato',
-        ],
-      },
-    ],
-  },
-
-  [EQUIPMENT_TYPES.ROOF_TOP]: {
-    name: 'Mantenimiento Preventivo - Roof Top',
-    categories: [
-      {
-        name: 'Sección de Aire',
-        items: [
-          'Limpieza/cambio de filtros',
-          'Limpieza de serpentina evaporadora',
-          'Verificación de dampers de aire exterior',
-          'Control de correas y poleas',
-          'Verificación de motor del ventilador',
-        ],
-      },
-      {
-        name: 'Sección de Refrigeración',
-        items: [
-          'Limpieza de serpentina condensadora',
-          'Verificación de presiones de trabajo',
-          'Control de consumo eléctrico',
-          'Verificación de estado del compresor',
-          'Control de carga de refrigerante',
-        ],
-      },
-      {
-        name: 'Eléctrico y Control',
-        items: [
-          'Verificación de tablero eléctrico',
-          'Control de contactores y relés',
-          'Verificación de termostato/controlador',
-          'Control de secuencia de operación',
+          'Anclaje y antivibración: Equipo asegurado sobre antivibradores ajustados y con conexiones flexibles montadas en tuberías/ductos.',
+          'Interconexiones y aislamiento: Cañerías/ductos aislados térmicamente; trazados exteriores protegidos UV y con cable calefactor (si aplica).',
+          'Hermeticidad, vacío o barrido: Prueba de nitrógeno/vacío completada; o circuito hidráulico lavado, purgado y probado a presión.',
+          'Conexiones eléctricas y potencia: Torques de ajuste verificados; arrancadores de bombas/compresores y enclavamientos de flujo operativos.',
+          'Drenaje probado: Trampa de agua/sifón cargado y probado; drenaje evacúa libremente sin filtraciones.',
+          'Sistema de aire y filtros: Filtros de aire limpios e instalados; dampers de aire exterior/retorno ajustados.',
+          'Control, BMS y sensores: Sensores de temperatura/presión, cableado de comunicación y señales al BMS/supervisión probados (si aplica).',
+          'Arranque y parámetros: Prueba de marcha realizada; presiones, temperaturas, sentido de giro y consumos eléctricos dentro de norma.',
+          'Documentación final: Esquemas eléctricos definitivos y protocolos de prueba completados y entregados.',
+          'Limpieza y recepción: Área de trabajo limpia, sin restos de obra; pendientes comunicados formalmente.',
+          'Consumo Eléctrico en Amperes (Revisión Posterior)',
+          'Tensión Volt (Revisión Posterior)',
+          'RESULTADO FINAL (Apto para Start Up o entrega / Apto con observaciones / No apto: requiere correcciones)',
         ],
       },
     ],
@@ -234,10 +143,35 @@ export const CHECKLIST_TEMPLATES = {
 };
 
 /**
+ * Array con las 3 plantillas oficiales de 4S Clima para inicialización o siembras en BD.
+ */
+export const OFFICIAL_4S_CHECKLIST_TEMPLATES = [
+  CHECKLIST_TEMPLATES[EQUIPMENT_TYPES.SPLIT],
+  CHECKLIST_TEMPLATES[EQUIPMENT_TYPES.COMERCIAL_LIVIANO],
+  CHECKLIST_TEMPLATES[EQUIPMENT_TYPES.CENTRAL],
+];
+
+/**
  * Obtiene el template de checklist para un tipo de equipo.
  * @param {string} equipmentType - Tipo de equipo (de EQUIPMENT_TYPES)
- * @returns {object|null} Template del checklist o null si no existe
+ * @returns {object|null} Template del checklist o fallback oficial a Split Residencial
  */
 export function getChecklistByEquipmentType(equipmentType) {
-  return CHECKLIST_TEMPLATES[equipmentType] || CHECKLIST_TEMPLATES[EQUIPMENT_TYPES.SPLIT] || null;
+  if (!equipmentType) {
+    return CHECKLIST_TEMPLATES[EQUIPMENT_TYPES.SPLIT];
+  }
+  
+  if (CHECKLIST_TEMPLATES[equipmentType]) {
+    return CHECKLIST_TEMPLATES[equipmentType];
+  }
+  
+  // Mapeos adicionales según categoría
+  if (['chiller', 'vrv', 'roof_top'].includes(equipmentType)) {
+    return CHECKLIST_TEMPLATES[EQUIPMENT_TYPES.CENTRAL];
+  }
+  if (['fan_coil'].includes(equipmentType)) {
+    return CHECKLIST_TEMPLATES[EQUIPMENT_TYPES.COMERCIAL_LIVIANO];
+  }
+
+  return CHECKLIST_TEMPLATES[EQUIPMENT_TYPES.SPLIT];
 }

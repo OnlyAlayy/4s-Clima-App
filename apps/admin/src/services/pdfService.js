@@ -273,17 +273,18 @@ export const generateWorkOrderPDF = async (wo) => {
     doc.text("TAREAS REALIZADAS (CHECKLIST)", 15, currentY);
     currentY += 4;
 
-    const checklistData = wo.checklist_items.map(item => {
+    const sortedItems = [...wo.checklist_items].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+    const checklistData = sortedItems.map(item => {
       let statusStr = "N/A";
       if (item.status === 'ok') statusStr = 'OK';
-      else if (item.status === 'warning') statusStr = 'Atención';
+      else if (item.status === 'warning') statusStr = 'Observación';
       else if (item.status === 'fail') statusStr = 'Falla';
       return [item.item_name, statusStr, item.notes || '-'];
     });
 
     autoTable(doc, {
       startY: currentY,
-      head: [['Tarea', 'Estado', 'Observaciones']],
+      head: [['Tarea / Inspección', 'Estado', 'Observación / Acción']],
       body: checklistData,
       theme: 'grid',
       headStyles: { fillColor: [241, 245, 249], textColor: [51, 65, 85], fontStyle: 'bold' },
