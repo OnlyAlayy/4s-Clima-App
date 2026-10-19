@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { supabase } from '@4s-clima/shared/supabase';
 import toast from 'react-hot-toast';
 
-function urlBase64ToUint8Array(base64String) {
+export function urlBase64ToUint8Array(base64String) {
   const padding = '='.repeat((4 - base64String.length % 4) % 4);
   const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
   const rawData = window.atob(base64);
@@ -13,47 +13,86 @@ function urlBase64ToUint8Array(base64String) {
   return outputArray;
 }
 
+/**
+ * Función exportada para suscribir o sincronizar la suscripción Web Push
+ * vinculada al usuario logueado. Requiere ser llamada desde un gesto de usuario
+ * si el permiso no está otorgado.
+ */
+export async function registerPushSubscription(userId) {
+  if (!('Notification' in window) || !('serviceWorker' in navigator)) {
+    throw new Error('Este navegador o dispositivo no soporta Notificaciones Push.');
+  }
+
+  const permission = await Notification.requestPermission();
+  if (permission !== 'granted') {
+    throw new Error('Permiso de notificaciones no concedido.');
+  }
+
+  const registration = await navigator.serviceWorker.ready;
+  const vapidPublicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY;
+  if (!vapidPublicKey) {
+    throw new Error('Falta configurar VITE_VAPID_PUBLIC_KEY en .env');
+  }
+
+  // Obtener suscripción existente o crear una nueva
+  let subscription = await registration.pushManager.getSubscription();
+  if (!subscription) {
+    subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(vapidPublicKey)
+    });
+  }
+
+  const subJSON = subscription.toJSON();
+  if (!subJSON.endpoint || !subJSON.keys?.p256dh || !subJSON.keys?.auth) {
+    throw new Error('No se pudo generar la clave de suscripción Web Push en el dispositivo.');
+  }
+
+  const { error: upsertError } = await supabase.from('push_subscriptions').upsert({
+    user_id: userId,
+    endpoint: subJSON.endpoint,
+    p256dh: subJSON.keys.p256dh,
+    auth: subJSON.keys.auth,
+    updated_at: new Date().toISOString()
+  }, { onConflict: 'endpoint' });
+
+  if (upsertError) throw upsertError;
+
+  return subscription;
+}
+
 export function useRealtimeNotifications(profile) {
   useEffect(() => {
     if (!profile || !profile.id) return;
     const userId = profile.id;
 
-    // Solicitar permiso para notificaciones
-    if ('Notification' in window && Notification.permission !== 'denied') {
-      Notification.requestPermission().then(async (permission) => {
-        if (permission === 'granted' && 'serviceWorker' in navigator) {
-          try {
-            const registration = await navigator.serviceWorker.ready;
-            
-            // Suscribirse al Push Service del navegador (FCM/Apple)
-            const vapidPublicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY;
-            if (!vapidPublicKey) {
-               console.warn("Falta VITE_VAPID_PUBLIC_KEY en .env");
-               return;
-            }
+    // Sincronización silenciosa ÚNICAMENTE si el permiso YA FUE otorgado previamente por el usuario
+    if ('Notification' in window && Notification.permission === 'granted' && 'serviceWorker' in navigator) {
+      navigator.serviceWorker.ready.then(async (registration) => {
+        try {
+          const vapidPublicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY;
+          if (!vapidPublicKey) return;
 
-            const subscription = await registration.pushManager.subscribe({
+          let subscription = await registration.pushManager.getSubscription();
+          if (!subscription) {
+            subscription = await registration.pushManager.subscribe({
               userVisibleOnly: true,
               applicationServerKey: urlBase64ToUint8Array(vapidPublicKey)
             });
+          }
 
-            // Parsear la suscripción y guardarla en Supabase
-            const subJSON = subscription.toJSON();
-            
-            const { error: upsertError } = await supabase.from('push_subscriptions').upsert({
+          const subJSON = subscription.toJSON();
+          if (subJSON.endpoint && subJSON.keys) {
+            await supabase.from('push_subscriptions').upsert({
               user_id: userId,
               endpoint: subJSON.endpoint,
               p256dh: subJSON.keys.p256dh,
-              auth: subJSON.keys.auth
+              auth: subJSON.keys.auth,
+              updated_at: new Date().toISOString()
             }, { onConflict: 'endpoint' });
-            
-            if (upsertError) throw upsertError;
-
-            console.log("Web Push Subscription registrada en DB");
-          } catch (err) {
-            console.error('Error registrando Web Push:', err);
-            toast.error("Error registrando notificaciones: " + err.message);
           }
+        } catch (err) {
+          console.warn('[useRealtimeNotifications] Verificación silenciosa de push:', err);
         }
       });
     }
@@ -70,7 +109,7 @@ export function useRealtimeNotifications(profile) {
           filter: `assigned_to=eq.${userId}`
         },
         (payload) => {
-          console.log('Nueva orden recibida por realtime:', payload);
+          console.log('[Realtime] Nueva orden recibida:', payload);
           const newOrder = payload.new;
           showNotification(
             'Nueva Orden de Trabajo',
@@ -88,24 +127,29 @@ export function useRealtimeNotifications(profile) {
           filter: `assigned_to=eq.${userId}`
         },
         (payload) => {
-          console.log('Orden actualizada por realtime:', payload);
+          console.log('[Realtime] Orden actualizada:', payload);
           const newOrder = payload.new;
           const oldOrder = payload.old;
-          
-          if (!oldOrder) return; // Si no hay old (a veces supabase no manda old si no hay REPLICA IDENTITY FULL, pero por defecto envia el id)
-          
+
           let title = '';
           let body = '';
 
+          // Detectar reasignación a este técnico
+          if (oldOrder && oldOrder.assigned_to && oldOrder.assigned_to !== userId) {
+            title = 'Nueva Orden Asignada';
+            body = `Se te reasignó la orden ${newOrder.order_number || 'N/D'}.`;
+          }
           // Detectar cancelación
-          if (newOrder.status === 'cancelled' && oldOrder.status !== 'cancelled') {
+          else if (newOrder.status === 'cancelled' && (!oldOrder || oldOrder.status !== 'cancelled')) {
             title = 'Orden Cancelada';
             body = `La orden ${newOrder.order_number || 'N/D'} fue cancelada.`;
           }
           // Detectar cambio de fecha/hora
           else if (
-            (newOrder.scheduled_date && newOrder.scheduled_date !== oldOrder.scheduled_date) ||
-            (newOrder.scheduled_time && newOrder.scheduled_time !== oldOrder.scheduled_time)
+            oldOrder && (
+              (newOrder.scheduled_date && newOrder.scheduled_date !== oldOrder.scheduled_date) ||
+              (newOrder.scheduled_time && newOrder.scheduled_time !== oldOrder.scheduled_time)
+            )
           ) {
             title = 'Reprogramación';
             body = `La orden ${newOrder.order_number || 'N/D'} fue reprogramada.`;
@@ -113,14 +157,14 @@ export function useRealtimeNotifications(profile) {
 
           if (title) {
             showNotification(title, body);
-            window.dispatchEvent(new CustomEvent('work_orders_updated'));
           }
+          window.dispatchEvent(new CustomEvent('work_orders_updated'));
         }
       )
       .subscribe();
 
     function showNotification(title, body) {
-      toast.success(`${title}\n${body}`, { 
+      toast.success(`${title}\n${body}`, {
         duration: 5000,
         style: {
           borderRadius: '16px',
@@ -133,16 +177,20 @@ export function useRealtimeNotifications(profile) {
       });
 
       if ('Notification' in window && Notification.permission === 'granted') {
-        const notification = new Notification(title, {
-          body,
-          icon: '/icons/icon-192.png',
-          badge: '/icons/icon-192.png',
-          vibrate: [200, 100, 200]
-        });
-        notification.onclick = () => {
-          window.focus();
-          notification.close();
-        };
+        try {
+          const notification = new Notification(title, {
+            body,
+            icon: '/icons/icon-192.png',
+            badge: '/icons/icon-192.png',
+            vibrate: [200, 100, 200]
+          });
+          notification.onclick = () => {
+            window.focus();
+            notification.close();
+          };
+        } catch (e) {
+          console.warn('[Realtime] Notificación de ventana falló:', e);
+        }
       }
     }
 

@@ -5,10 +5,15 @@ import { createClient } from '@supabase/supabase-js';
 
 export default async function handler(req, res) {
   // CORS configuration
-  res.setHeader('Access-Control-Allow-Credentials', true);
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  const origin = req.headers.origin;
+  if (origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+  } else {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+  }
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
-  res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
+  res.setHeader('Access-Control-Allow-Headers', 'Authorization, X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
 
   if (req.method === 'OPTIONS') {
     res.status(200).end();
@@ -54,34 +59,51 @@ export default async function handler(req, res) {
       return res.status(403).json({ error: 'Prohibido: Solo administradores o propietarios pueden facturar.' });
     }
 
-    // 2. Procesar solicitud de factura
-    const amount = req.body.amount || 0;
+    // 2. Procesar solicitud de factura A (Responsable Inscripto)
     const orderId = req.body.orderId;
     if (!orderId) {
       return res.status(400).json({ error: 'Falta orderId' });
     }
 
-    // 2.5 Fetch Client Data from DB
+    const rawAmount = req.body.netAmount !== undefined ? req.body.netAmount : req.body.amount;
+    const impNeto = Number(Number(rawAmount || 0).toFixed(2));
+    if (isNaN(impNeto) || impNeto <= 0) {
+      return res.status(400).json({ error: 'Monto neto a facturar inválido (debe ser mayor a 0).' });
+    }
+    const impIVA = Number((impNeto * 0.21).toFixed(2));
+    const impTotal = Number((impNeto + impIVA).toFixed(2));
+
+    const isCreditNote = req.body.isCreditNote === true;
+    const associatedInvoice = req.body.associatedInvoice; // Required if isCreditNote
+
+    // 2.5 Fetch Client & Order Data from DB (Idempotencia y validación fiscal)
     const { data: orderData, error: orderError } = await supabase
       .from('work_orders')
-      .select('client_id, clients(cuit)')
+      .select('client_id, observations, afip_cae, afip_voucher_number, clients(cuit, name)')
       .eq('id', orderId)
       .single();
       
     if (orderError || !orderData) {
       return res.status(404).json({ error: 'Orden de trabajo no encontrada' });
     }
-    
-    let docTipo = 99; // Consumidor Final / Sin Identificar
-    let docNro = 0;
-    let condicionIva = 5; // Consumidor Final
 
-    const clientCuit = orderData.clients?.cuit;
-    if (clientCuit && clientCuit.replace(/\D/g, '').length === 11) {
-      docTipo = 80; // CUIT
-      docNro = parseInt(clientCuit.replace(/\D/g, ''), 10);
-      condicionIva = 1; // IVA Responsable Inscripto (Default para CUIT en pruebas)
+    // Prevención de Doble Facturación (Idempotencia)
+    if (orderData.afip_cae && !isCreditNote) {
+      return res.status(409).json({ 
+        error: `Esta orden ya cuenta con una Factura AFIP emitida (Comprobante: ${orderData.afip_voucher_number || 'A-00001-N/D'}, CAE: ${orderData.afip_cae}). Operación cancelada para evitar duplicación fiscal.` 
+      });
     }
+    
+    // Validación estricta de CUIT para Factura A (DocTipo 80)
+    const clientCuit = (orderData.clients?.cuit || '').replace(/\D/g, '');
+    if (!clientCuit || clientCuit.length !== 11) {
+      return res.status(400).json({ 
+        error: 'Para emitir Factura A, el cliente debe poseer un CUIT válido de 11 dígitos registrado.' 
+      });
+    }
+    const docTipo = 80; // CUIT
+    const docNro = parseInt(clientCuit, 10);
+    const condicionIva = 1; // 1 = IVA Responsable Inscripto (RG 5616)
     
     // In Vercel, we need to extract certificates from env vars and write to /tmp
     // For local testing, we can use the env vars if present, otherwise fallback to local files if they exist
@@ -92,7 +114,7 @@ export default async function handler(req, res) {
       fs.writeFileSync(certPath, process.env.AFIP_CERT_PEM.replace(/\\n/g, '\n'));
       fs.writeFileSync(keyPath, process.env.AFIP_KEY_PEM.replace(/\\n/g, '\n'));
     } else {
-      // Fallback for local testing if env vars aren't set (assuming we are running from project root somehow)
+      // Fallback for local testing if env vars aren't set
       if (fs.existsSync('afip_certificado.crt')) {
         fs.copyFileSync('afip_certificado.crt', certPath);
         fs.copyFileSync('afip_privada.key', keyPath);
@@ -112,63 +134,54 @@ export default async function handler(req, res) {
 
     const date = new Date(Date.now() - ((new Date()).getTimezoneOffset() * 60000)).toISOString().split('T')[0].replace(/-/g, '');
 
-    const isCreditNote = req.body.isCreditNote === true;
-    const associatedInvoice = req.body.associatedInvoice; // Required if isCreditNote
-
-    const cbteTipo = isCreditNote ? 13 : 11; // 11 = Factura C, 13 = Nota de Crédito C
-    const lastVoucher = await afip.ElectronicBilling.getLastVoucher(1, cbteTipo);
+    const ptoVta = parseInt(process.env.AFIP_PTO_VTA || '1', 10);
+    const cbteTipo = isCreditNote ? 3 : 1; // 1 = Factura A, 3 = Nota de Crédito A
+    const lastVoucher = await afip.ElectronicBilling.getLastVoucher(ptoVta, cbteTipo);
+    const voucherNumber = lastVoucher + 1;
+    const formattedVoucherNumber = `A-${String(ptoVta).padStart(5, '0')}-${String(voucherNumber).padStart(8, '0')}`;
 
     const data = {
       'CantReg' 	: 1,  
-      'PtoVta' 	: 1,  
+      'PtoVta' 	: ptoVta,  
       'CbteTipo' 	: cbteTipo,
-      'Concepto' 	: 3,  
+      'Concepto' 	: 3, // Productos y Servicios
       'DocTipo' 	: docTipo, 
       'DocNro' 	: docNro,  
-      'CbteDesde' 	: lastVoucher + 1,
-      'CbteHasta' 	: lastVoucher + 1,
+      'CbteDesde' 	: voucherNumber,
+      'CbteHasta' 	: voucherNumber,
       'CbteFch' 	: parseInt(date),
-      'ImpTotal' 	: amount, 
+      'ImpTotal' 	: impTotal, 
       'ImpTotConc' 	: 0,   
-      'ImpNeto' 	: amount, 
+      'ImpNeto' 	: impNeto, 
       'ImpOpEx' 	: 0,   
-      'ImpIVA' 	: 0,   
+      'ImpIVA' 	: impIVA,   
       'ImpTrib' 	: 0,   
       'FchServDesde' 	: parseInt(date),
       'FchServHasta' 	: parseInt(date),
       'FchVtoPago' 	: parseInt(date),
       'MonId' 	: 'PES', 
       'MonCotiz' 	: 1,
-      'CondicionIVAReceptorId': condicionIva
+      'CondicionIVAReceptorId': condicionIva,
+      'Iva': [
+        {
+          'Id': 5, // 21% en AFIP/ARCA
+          'BaseImp': impNeto,
+          'Importe': impIVA
+        }
+      ]
     };
 
     if (isCreditNote && associatedInvoice) {
       data['CbtesAsoc'] = [
         {
-          'Tipo' 		: 11, // Factura C original
-          'PtoVta' 	: 1,
-          'Nro' 		: associatedInvoice
+          'Tipo' 	: 1, // Factura A original
+          'PtoVta' 	: ptoVta,
+          'Nro' 	: associatedInvoice
         }
       ];
     }
 
-    let result;
-    try {
-      result = await afip.ElectronicBilling.createVoucher(data);
-    } catch (err) {
-      // Si AFIP rechaza el CUIT porque no existe en los padrones de AFIP (código 10015)
-      if (err.message && (err.message.includes('10015') || err.message.includes('padrones de AFIP')) && data.DocTipo === 80) {
-        console.warn(`CUIT ${data.DocNro} no registrado en AFIP (10015). Reintentando automáticamente como Consumidor Final...`);
-        data.DocTipo = 99;
-        data.DocNro = 0;
-        data.CondicionIVAReceptorId = 5;
-        result = await afip.ElectronicBilling.createVoucher(data);
-      } else {
-        throw err;
-      }
-    }
-
-    const voucherNumber = lastVoucher + 1;
+    const result = await afip.ElectronicBilling.createVoucher(data);
     const cae = result.CAE;
 
     // 3. Guardar en base de datos atómicamente desde el backend
@@ -181,18 +194,28 @@ export default async function handler(req, res) {
       voucher_type: isCreditNote ? 'credit_note' : 'invoice',
       voucher_number: voucherNumber,
       cae: cae.toString(),
-      amount: amount
+      amount: impTotal
     });
 
     if (insertError) {
       console.error('Error guardando en afip_vouchers:', insertError);
-      // Opcional: Podríamos intentar anular en AFIP, pero al menos informamos
       return res.status(500).json({ error: 'Factura generada en AFIP pero falló al guardar en historial: ' + insertError.message });
     }
 
+    const customObs = req.body.observations;
+    const finalObservations = customObs !== undefined
+      ? customObs
+      : orderData.observations;
+
     const updateData = isCreditNote 
       ? { payment_status: 'unbilled', total_amount: 0, afip_voucher_number: null, afip_cae: null }
-      : { payment_status: 'pending', total_amount: amount, afip_voucher_number: voucherNumber.toString(), afip_cae: cae.toString() };
+      : { 
+          payment_status: 'pending', 
+          total_amount: impTotal, 
+          afip_voucher_number: formattedVoucherNumber, 
+          afip_cae: cae.toString(),
+          observations: finalObservations
+        };
 
     const { error: updateError } = await authSupabase.from('work_orders').update(updateData).eq('id', orderId);
     if (updateError) {
@@ -203,13 +226,20 @@ export default async function handler(req, res) {
       success: true,
       voucher: {
         number: voucherNumber,
+        formatted_number: formattedVoucherNumber,
         cae: cae,
-        cae_expiration: result.CAEFchVto
+        cae_expiration: result.CAEFchVto,
+        net_amount: impNeto,
+        iva_amount: impIVA,
+        total_amount: impTotal
       }
     });
 
   } catch (error) {
     console.error('AFIP Error:', error);
-    res.status(500).json({ error: error.message || 'Error interno al generar factura' });
+    const clientMessage = error.message?.includes('/tmp') || error.message?.includes('PEM') || error.message?.includes('ENOENT')
+      ? 'Error de comunicación o certificados con los servidores de AFIP/ARCA.'
+      : (error.message || 'Error interno al procesar comprobante fiscal');
+    res.status(500).json({ error: clientMessage });
   }
 }

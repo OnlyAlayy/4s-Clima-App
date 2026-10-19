@@ -6,7 +6,8 @@ import {
 } from 'lucide-react';
 import { supabase } from '@4s-clima/shared/supabase';
 import { formatCurrency, formatDate } from '@4s-clima/shared/utils';
-import { generateInvoicePDF, generateReceiptPDF, generateAccountStatementPDF, openAndDownloadPDF } from '../services/pdfService';
+import { generateReceiptPDF, generateAccountStatementPDF, openAndDownloadPDF } from '../services/pdfService';
+import { generateArcaInvoicePDF } from '../services/arcaInvoicePdf';
 import Swal from 'sweetalert2';
 
 export default function FinancesPage() {
@@ -36,6 +37,7 @@ export default function FinancesPage() {
   const [batchOrdersToInvoice, setBatchOrdersToInvoice] = useState([]);
   const [basePrice, setBasePrice] = useState('');
   const [invoiceAmount, setInvoiceAmount] = useState('');
+  const [invoiceConcept, setInvoiceConcept] = useState('');
 
   // Modal Enriquecido de Registro de Cobro ("Marcar Pagado" y Recibo X)
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
@@ -338,6 +340,7 @@ export default function FinancesPage() {
     setBatchOrdersToInvoice([]);
     setBasePrice('');
     setInvoiceAmount(extrasTotal > 0 ? extrasTotal.toString() : '');
+    setInvoiceConcept(order.observations || 'Mantenimiento Preventivo y Correctivo de Climatización');
     setIsModalOpen(true);
   };
 
@@ -351,6 +354,7 @@ export default function FinancesPage() {
     setBatchOrdersToInvoice(batch);
     setBasePrice('');
     setInvoiceAmount(extrasTotal > 0 ? extrasTotal.toString() : '');
+    setInvoiceConcept(`Servicio de Climatización - Lote de ${batch.length} OTs`);
     setIsModalOpen(true);
   };
 
@@ -367,8 +371,10 @@ export default function FinancesPage() {
   const confirmFacturar = async () => {
     if (!selectedOrder) return;
     
-    const amount = parseFloat(invoiceAmount);
-    if (isNaN(amount) || amount <= 0) return Swal.fire('Monto inválido', 'Por favor, ingresá un monto mayor a 0', 'warning');
+    const netAmount = parseFloat(invoiceAmount);
+    if (isNaN(netAmount) || netAmount <= 0) {
+      return Swal.fire('Monto inválido', 'Por favor, ingresá un importe neto mayor a 0', 'warning');
+    }
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -380,13 +386,28 @@ export default function FinancesPage() {
           'Content-Type': 'application/json',
           'Authorization': token ? `Bearer ${token}` : ''
         },
-        body: JSON.stringify({ amount, orderId: selectedOrder.id })
+        body: JSON.stringify({ 
+          netAmount, 
+          amount: netAmount, 
+          orderId: selectedOrder.id,
+          observations: invoiceConcept 
+        })
       });
       
       if (afipRes.ok) {
         const afipData = await afipRes.json();
         if (afipData.success) {
-          const afipMsg = `Nro: ${afipData.voucher.number}<br/>CAE: ${afipData.voucher.cae}`;
+          const formattedNum = afipData.voucher.formatted_number || `A-00004-${String(afipData.voucher.number).padStart(8, '0')}`;
+          const totalConIva = afipData.voucher.total_amount || Number((netAmount * 1.21).toFixed(2));
+          const afipMsg = `
+            <div class="text-left text-sm space-y-1.5 p-2 bg-slate-50 dark:bg-slate-800 rounded-lg">
+              <p><strong>N° Comprobante:</strong> ${formattedNum}</p>
+              <p><strong>CAE:</strong> ${afipData.voucher.cae}</p>
+              <p><strong>Neto Gravado:</strong> $${netAmount.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</p>
+              <p><strong>IVA (21%):</strong> $${(netAmount * 0.21).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</p>
+              <p class="text-indigo-600 dark:text-indigo-400 font-bold"><strong>Total c/IVA:</strong> $${totalConIva.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</p>
+            </div>
+          `;
 
           // Si era facturación en lote, vinculamos el voucher a las órdenes secundarias también
           if (batchOrdersToInvoice.length > 1) {
@@ -394,18 +415,19 @@ export default function FinancesPage() {
             for (const secOrder of secondaryOrders) {
               await supabase.from('work_orders').update({
                 payment_status: 'pending',
-                afip_voucher_number: afipData.voucher.number.toString(),
+                total_amount: totalConIva,
+                afip_voucher_number: formattedNum,
                 afip_cae: afipData.voucher.cae.toString(),
                 observations: secOrder.observations 
-                  ? `${secOrder.observations}\n[Facturada en Lote con OT ${selectedOrder.order_number || selectedOrder.id.slice(0,8)} - Factura Nro ${afipData.voucher.number}]`
-                  : `[Facturada en Lote con OT ${selectedOrder.order_number || selectedOrder.id.slice(0,8)} - Factura Nro ${afipData.voucher.number}]`
+                  ? `${secOrder.observations}\n[Facturada en Lote con OT ${selectedOrder.order_number || selectedOrder.id.slice(0,8)} - Factura Nro ${formattedNum}]`
+                  : `[Facturada en Lote con OT ${selectedOrder.order_number || selectedOrder.id.slice(0,8)} - Factura Nro ${formattedNum}]`
               }).eq('id', secOrder.id);
             }
           }
           
           Swal.fire({
             icon: 'success',
-            title: batchOrdersToInvoice.length > 1 ? '¡Factura de Lote Generada!' : '¡Factura Generada!',
+            title: batchOrdersToInvoice.length > 1 ? '¡Factura A de Lote Generada!' : '¡Factura A Generada!',
             html: afipMsg
           });
           
@@ -415,7 +437,7 @@ export default function FinancesPage() {
           setSelectedOrderIds([]);
           loadFinances();
         } else {
-          return Swal.fire('Error de AFIP', 'El servidor respondió con error: ' + JSON.stringify(afipData), 'error');
+          return Swal.fire('Error de AFIP', 'El servidor respondió con error: ' + (afipData.error || JSON.stringify(afipData)), 'error');
         }
       } else {
         const errText = await afipRes.text();
@@ -709,10 +731,10 @@ export default function FinancesPage() {
 
   const handleDownloadPDF = async (order) => {
     try {
-      await openAndDownloadPDF(generateInvoicePDF(order));
+      await openAndDownloadPDF(generateArcaInvoicePDF(order));
     } catch (err) {
-      console.error("Error al generar Factura PDF:", err);
-      Swal.fire("Error", "Hubo un problema al generar la Factura PDF.", "error");
+      console.error("Error al generar Factura A PDF:", err);
+      Swal.fire("Error", "Hubo un problema al generar la Factura A PDF.", "error");
     }
   };
 
@@ -1718,19 +1740,20 @@ export default function FinancesPage() {
         </div>
       )}
 
-      {/* MODAL DE FACTURACIÓN AFIP (INDIVIDUAL O CONSOLIDADA) */}
+      {/* MODAL DE FACTURACIÓN AFIP (FACTURA A - RESPONSABLE INSCRIPTO) */}
       {isModalOpen && selectedOrder && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden border border-gray-100 dark:border-slate-800">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden border border-gray-100 dark:border-slate-800">
             <div className="px-6 py-4 border-b border-gray-100 dark:border-slate-800 bg-gray-50/50 dark:bg-slate-800/50 flex items-center justify-between">
               <div>
-                <h3 className="text-lg font-bold text-gray-900 dark:text-white">
-                  {batchOrdersToInvoice.length > 1 ? 'Facturar Lote de OTs' : 'Emitir Factura AFIP'}
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                  <span className="w-6 h-6 rounded-md bg-indigo-600 text-white flex items-center justify-center text-xs font-black">A</span>
+                  {batchOrdersToInvoice.length > 1 ? 'Facturar Lote (Factura A)' : 'Emitir Factura A (ARCA / AFIP)'}
                 </h3>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                   {batchOrdersToInvoice.length > 1
                     ? `${batchOrdersToInvoice.length} órdenes de ${selectedOrder.client?.name}`
-                    : `Orden ${selectedOrder.order_number || selectedOrder.id.slice(0,8)} - ${selectedOrder.client?.name}`}
+                    : `OT ${selectedOrder.order_number || selectedOrder.id.slice(0,8)} · ${selectedOrder.client?.name} (CUIT: ${selectedOrder.client?.cuit || 'Sin CUIT'})`}
                 </p>
               </div>
               <button 
@@ -1741,7 +1764,7 @@ export default function FinancesPage() {
               </button>
             </div>
             
-            <div className="p-6 max-h-[60vh] overflow-y-auto space-y-4">
+            <div className="p-6 max-h-[65vh] overflow-y-auto space-y-4">
               {/* Desglose de Extras */}
               {(() => {
                 const activeExtras = batchOrdersToInvoice.length > 1
@@ -1755,7 +1778,7 @@ export default function FinancesPage() {
                     <h4 className="text-xs font-semibold uppercase tracking-wider text-gray-700 dark:text-gray-300 mb-2">
                       Extras y Repuestos Reportados
                     </h4>
-                    <div className="bg-gray-50 dark:bg-slate-800/50 rounded-xl p-3.5 space-y-2.5 border border-gray-100 dark:border-slate-800">
+                    <div className="bg-gray-50 dark:bg-slate-800/50 rounded-xl p-3.5 space-y-2 border border-gray-100 dark:border-slate-800">
                       {activeExtras.map(e => (
                         <div key={e.id} className="flex justify-between items-center text-xs">
                           <div className="flex-1 pr-2">
@@ -1769,8 +1792,8 @@ export default function FinancesPage() {
                           </span>
                         </div>
                       ))}
-                      <div className="border-t border-gray-200 dark:border-slate-700 pt-2 mt-2 flex justify-between font-bold text-xs">
-                        <span className="text-gray-700 dark:text-gray-300">Subtotal Extras:</span>
+                      <div className="border-t border-gray-200 dark:border-slate-700 pt-2 mt-1 flex justify-between font-bold text-xs">
+                        <span className="text-gray-700 dark:text-gray-300">Subtotal Extras (Neto):</span>
                         <span className="text-gray-900 dark:text-white">
                           {formatCurrency(activeExtras.reduce((s, e) => s + (e.quantity * e.unit_price), 0))}
                         </span>
@@ -1780,39 +1803,85 @@ export default function FinancesPage() {
                 );
               })()}
 
-              {/* Servicio Base */}
+              {/* Concepto / Observaciones en la Factura */}
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider text-gray-700 dark:text-gray-300 mb-1.5">
-                  Mano de Obra / Servicio Base ($)
+                  Concepto / Observaciones en Factura
+                </label>
+                <input 
+                  type="text"
+                  className="w-full px-3.5 py-2 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  placeholder="Ej: ACT MANT IPC JULIO 2.1% o Mantenimiento Preventivo"
+                  value={invoiceConcept}
+                  onChange={(e) => setInvoiceConcept(e.target.value)}
+                />
+              </div>
+
+              {/* Servicio Base (Neto) */}
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-gray-700 dark:text-gray-300 mb-1.5">
+                  Mano de Obra / Servicio Base (Neto sin IVA) ($)
                 </label>
                 <div className="relative">
                   <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
                   <input 
                     type="number"
-                    className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
-                    placeholder="Ej: 50000"
+                    step="0.01"
+                    className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                    placeholder="Ej: 187305.41"
                     value={basePrice}
                     onChange={(e) => handleBasePriceChange(e.target.value)}
                   />
                 </div>
               </div>
 
-              {/* Total Final */}
-              <div className="pt-3 border-t border-gray-100 dark:border-slate-800">
-                <label className="block text-xs font-bold text-brand-700 dark:text-brand-400 mb-1.5">
-                  Total Final a Facturar ($)
+              {/* Importe Neto Total */}
+              <div>
+                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5">
+                  Importe Neto a Facturar (Bruto sin IVA) ($)
                 </label>
                 <div className="relative">
-                  <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-500" size={18} />
+                  <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
                   <input 
                     type="number"
-                    className="w-full pl-9 pr-3 py-2.5 text-lg font-bold border border-brand-200 focus:border-brand-500 dark:border-brand-800/50 bg-brand-50/20 dark:bg-slate-900 rounded-xl text-brand-700 dark:text-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                    step="0.01"
+                    className="w-full pl-9 pr-3 py-2 text-base font-semibold border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                     value={invoiceAmount}
                     onChange={(e) => setInvoiceAmount(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && confirmFacturar()}
                   />
                 </div>
               </div>
+
+              {/* Desglose Matemático en Tiempo Real (Neto + IVA 21% = Total) */}
+              {(() => {
+                const netNum = parseFloat(invoiceAmount) || 0;
+                const ivaNum = Number((netNum * 0.21).toFixed(2));
+                const totNum = Number((netNum + ivaNum).toFixed(2));
+
+                return (
+                  <div className="bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/60 rounded-xl p-4 space-y-2">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-gray-600 dark:text-gray-400 font-medium">Bruto (Neto Gravado):</span>
+                      <span className="font-semibold text-gray-900 dark:text-white font-mono">
+                        ${netNum.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-gray-600 dark:text-gray-400 font-medium">IVA (21%):</span>
+                      <span className="font-semibold text-gray-900 dark:text-white font-mono">
+                        ${ivaNum.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                    <div className="border-t border-indigo-200 dark:border-indigo-800/80 pt-2 flex justify-between items-center">
+                      <span className="text-sm font-bold text-indigo-900 dark:text-indigo-200">Total a Facturar (c/IVA):</span>
+                      <span className="text-lg font-black text-indigo-700 dark:text-indigo-300 font-mono">
+                        ${totNum.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
             <div className="px-6 py-4 bg-gray-50 dark:bg-slate-800/50 border-t border-gray-100 dark:border-slate-800 flex justify-end gap-3">
@@ -1824,10 +1893,10 @@ export default function FinancesPage() {
               </button>
               <button 
                 onClick={confirmFacturar}
-                className="btn-primary"
-                disabled={!invoiceAmount}
+                className="btn-primary bg-indigo-600 hover:bg-indigo-700 text-white"
+                disabled={!invoiceAmount || parseFloat(invoiceAmount) <= 0}
               >
-                Confirmar Factura
+                Confirmar Factura A
               </button>
             </div>
           </div>

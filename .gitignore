@@ -8,10 +8,24 @@ dist/
 build/
 .turbo/
 
-# Environment
+# Environment & Secrets
 .env
 .env.local
 .env.*.local
+*.secrets
+supabase/.env.secrets
+
+# Certificates and Private Keys
+*.key
+*.crt
+*.csr
+*.pem
+
+# Local Test & Utility Scripts
+test-*.mjs
+test_*.js
+write_secrets.js
+generate_keys.js
 
 # IDE
 .vscode/

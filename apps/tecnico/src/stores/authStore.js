@@ -2,6 +2,20 @@ import { create } from 'zustand';
 import { supabase } from '@4s-clima/shared/supabase';
 import { clearLocalDatabase } from '../services/offlineDb';
 
+const handleUserDeviceIsolation = async (newUserId) => {
+  if (!newUserId) return;
+  try {
+    const lastUserId = localStorage.getItem('last_offline_user_id');
+    if (lastUserId && lastUserId !== newUserId) {
+      console.log('[Auth] Distinto técnico detectado en este dispositivo. Purgando caché local...');
+      await clearLocalDatabase().catch(console.warn);
+    }
+    localStorage.setItem('last_offline_user_id', newUserId);
+  } catch (err) {
+    console.warn('[Auth] Error aislando almacenamiento local:', err);
+  }
+};
+
 /**
  * Store de autenticación con Zustand.
  * Maneja login, logout, sesión persistente y perfil del usuario.
@@ -29,6 +43,7 @@ export const useAuthStore = create((set, get) => ({
       const { data: { session } } = await Promise.race([sessionPromise, timeoutPromise]);
       
       if (session?.user) {
+        await handleUserDeviceIsolation(session.user.id);
         const profile = await get().fetchProfile(session.user.id);
         
         if (profile && !profile.active) {
@@ -44,6 +59,7 @@ export const useAuthStore = create((set, get) => ({
       // Escuchar cambios de auth
       supabase.auth.onAuthStateChange(async (event, session) => {
         if (event === 'SIGNED_IN' && session?.user) {
+          await handleUserDeviceIsolation(session.user.id);
           const profile = await get().fetchProfile(session.user.id);
           if (profile && !profile.active) {
             await get().logout();
@@ -52,6 +68,7 @@ export const useAuthStore = create((set, get) => ({
             set({ user: session.user, profile });
           }
         } else if (event === 'SIGNED_OUT') {
+          localStorage.removeItem('last_offline_user_id');
           await clearLocalDatabase().catch(console.warn);
           set({ user: null, profile: null });
         }
@@ -99,6 +116,7 @@ export const useAuthStore = create((set, get) => ({
         throw new Error('Tu cuenta ha sido desactivada por un administrador.');
       }
 
+      await handleUserDeviceIsolation(data.user.id);
       set({ user: data.user, profile, isLoading: false });
       return { success: true };
     } catch (error) {
@@ -130,6 +148,7 @@ export const useAuthStore = create((set, get) => ({
     } finally {
       if (shouldClear) {
         set({ user: null, profile: null });
+        localStorage.removeItem('last_offline_user_id');
         await clearLocalDatabase().catch(console.warn);
       }
     }

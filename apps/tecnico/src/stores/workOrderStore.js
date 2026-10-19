@@ -49,8 +49,11 @@ export const useWorkOrderStore = create((set, get) => ({
       }
     } catch (error) {
       console.error('Error cargando OTs:', error);
-      // Fallback a IndexedDB en caso de error
-      const cached = await db.workOrders.toArray();
+      // Fallback seguro a IndexedDB en caso de error (filtrando por el técnico actual)
+      const cached = await db.workOrders
+        .where('assigned_to')
+        .equals(technicianId)
+        .toArray();
       set({ workOrders: cached, isLoading: false, error: error.message });
     }
   },

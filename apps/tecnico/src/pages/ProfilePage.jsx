@@ -1,11 +1,13 @@
 import { useNavigate } from 'react-router-dom';
-import { LogOut, User, Wifi, WifiOff, HardDrive, RefreshCw, Sun, Moon } from 'lucide-react';
+import { LogOut, User, Wifi, WifiOff, HardDrive, RefreshCw, Sun, Moon, Bell, BellRing, BellOff, CheckCircle2, AlertTriangle, Send } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { useWorkOrderStore } from '../stores/workOrderStore';
 import { clearLocalDatabase, getPendingSyncCount } from '../services/offlineDb';
 import { useDarkMode } from '../hooks/useDarkMode';
+import { registerPushSubscription } from '../hooks/useRealtimeNotifications';
 import { useState, useEffect } from 'react';
+import toast from 'react-hot-toast';
 
 /**
  * Página de perfil del técnico.
@@ -19,8 +21,18 @@ export default function ProfilePage() {
   const { isDark, toggleDarkMode } = useDarkMode();
   const [pendingCount, setPendingCount] = useState(0);
 
+  // Estado de Web Push
+  const [pushPermission, setPushPermission] = useState(() => {
+    return 'Notification' in window ? Notification.permission : 'denied';
+  });
+  const [isRegisteringPush, setIsRegisteringPush] = useState(false);
+  const [isTestingPush, setIsTestingPush] = useState(false);
+
   useEffect(() => {
     getPendingSyncCount().then(setPendingCount);
+    if ('Notification' in window) {
+      setPushPermission(Notification.permission);
+    }
   }, [isSyncing]);
 
   const handleLogout = async () => {
@@ -38,6 +50,46 @@ export default function ProfilePage() {
     await syncPendingData();
     const count = await getPendingSyncCount();
     setPendingCount(count);
+  };
+
+  const handleEnablePush = async () => {
+    if (!profile?.id) return;
+    setIsRegisteringPush(true);
+    try {
+      await registerPushSubscription(profile.id);
+      setPushPermission(Notification.permission);
+      toast.success('¡Dispositivo vinculado con éxito para recibir alertas push!');
+    } catch (err) {
+      console.error('Error al registrar push:', err);
+      setPushPermission('Notification' in window ? Notification.permission : 'denied');
+      toast.error(err.message || 'Error al solicitar permisos de notificación');
+    } finally {
+      setIsRegisteringPush(false);
+    }
+  };
+
+  const handleTestNotification = async () => {
+    setIsTestingPush(true);
+    try {
+      if ('serviceWorker' in navigator) {
+        const reg = await navigator.serviceWorker.ready;
+        reg.showNotification('4S Clima - Notificación de Prueba', {
+          body: '¡Sonido y vibración verificados! Tu celular está listo para recibir órdenes.',
+          icon: '/icons/icon-192.png',
+          badge: '/icons/icon-192.png',
+          vibrate: [200, 100, 200, 100, 200],
+          data: '/perfil'
+        });
+        toast.success('¡Notificación enviada! Deberías escuchar y sentir la vibración en tu dispositivo.');
+      } else {
+        toast.error('Service Worker no disponible en este navegador');
+      }
+    } catch (err) {
+      console.error('Error en prueba local:', err);
+      toast.error('Error al disparar prueba: ' + err.message);
+    } finally {
+      setIsTestingPush(false);
+    }
   };
 
   return (
@@ -133,6 +185,72 @@ export default function ProfilePage() {
             >
               <div className="w-4 h-4 bg-white rounded-full shadow-sm" />
             </button>
+          </div>
+        </div>
+
+        {/* Notificaciones Push en este Dispositivo */}
+        <div className="card">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 flex items-center gap-2">
+              <Bell size={16} className="text-brand-500" /> Notificaciones Push
+            </h3>
+            {pushPermission === 'granted' ? (
+              <span className="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 text-xs flex items-center gap-1">
+                <CheckCircle2 size={12} /> Activas y Suscriptas
+              </span>
+            ) : pushPermission === 'denied' ? (
+              <span className="badge bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 text-xs flex items-center gap-1">
+                <AlertTriangle size={12} /> Bloqueadas
+              </span>
+            ) : (
+              <span className="badge bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 text-xs flex items-center gap-1">
+                <BellOff size={12} /> Sin Activar
+              </span>
+            )}
+          </div>
+
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-4 leading-relaxed">
+            Permite que el sistema te alerte con sonido y vibración en este celular cuando te asignen una orden de trabajo, incluso si la app está cerrada o la pantalla bloqueada.
+          </p>
+
+          <div className="flex flex-col gap-2.5">
+            <button
+              onClick={handleEnablePush}
+              disabled={isRegisteringPush}
+              className="btn-primary w-full py-2.5 text-xs font-semibold flex items-center justify-center gap-2"
+            >
+              {isRegisteringPush ? (
+                <>
+                  <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Vinculando dispositivo...
+                </>
+              ) : (
+                <>
+                  <BellRing size={15} />
+                  {pushPermission === 'granted' ? 'Re-vincular / Actualizar este Celular' : 'Activar / Vincular este Celular'}
+                </>
+              )}
+            </button>
+
+            {pushPermission === 'granted' && (
+              <button
+                onClick={handleTestNotification}
+                disabled={isTestingPush}
+                className="btn-secondary w-full py-2.5 text-xs font-semibold flex items-center justify-center gap-2 border-gray-200 dark:border-slate-700 text-gray-700 dark:text-gray-200"
+              >
+                {isTestingPush ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
+                    Enviando prueba...
+                  </>
+                ) : (
+                  <>
+                    <Send size={14} />
+                    Enviar Notificación de Prueba (Sonido / Vibración)
+                  </>
+                )}
+              </button>
+            )}
           </div>
         </div>
 
