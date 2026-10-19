@@ -158,13 +158,21 @@ export default function PhotosPage() {
   // pero idealmente sugerimos que cargue).
   const hasAnyPhoto = photos.before || photos.after || photos.issue;
 
+  const handleBack = () => {
+    if (window.history.state && window.history.state.idx > 0) {
+      navigate(-1);
+    } else {
+      navigate(`/orden/${id}`, { replace: true });
+    }
+  };
+
   return (
     <div className="page-container pb-24">
       {/* Header */}
       <div className="page-header">
         <div className="flex items-center gap-3">
           <button
-            onClick={() => navigate(-1)}
+            onClick={handleBack}
             className="w-10 h-10 rounded-xl bg-white dark:bg-slate-900 flex items-center justify-center border border-gray-200 dark:border-slate-700 active:bg-gray-50 dark:active:bg-slate-800 transition-colors shadow-sm"
           >
             <ArrowLeft size={20} className="text-gray-700 dark:text-gray-300" />

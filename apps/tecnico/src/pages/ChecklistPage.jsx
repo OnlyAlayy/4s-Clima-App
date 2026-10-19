@@ -338,13 +338,21 @@ export default function ChecklistPage() {
   const progress = total > 0 ? Math.round((completed / total) * 100) : 100;
   const allDone = total > 0 && completed === total;
 
+  const handleBack = () => {
+    if (window.history.state && window.history.state.idx > 0) {
+      navigate(-1);
+    } else {
+      navigate(`/orden/${id}`, { replace: true });
+    }
+  };
+
   return (
     <div className="page-container">
       {/* Header */}
       <div className="page-header bg-white/90 dark:bg-slate-950/90 backdrop-blur-xl border-b border-gray-200 dark:border-slate-800">
         <div className="flex items-center gap-3 mb-4 mt-2">
           <button
-            onClick={() => navigate(-1)}
+            onClick={handleBack}
             className="w-10 h-10 rounded-xl bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 flex items-center justify-center active:bg-gray-100 dark:active:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors shadow-sm"
             aria-label="Volver"
           >
