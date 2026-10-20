@@ -116,10 +116,11 @@ serve(async (req) => {
       production: false
     });
 
+    const roundCurrency = (val: number | string) => Math.round((Number(val) + Number.EPSILON) * 100) / 100;
     const rawNet = body.netAmount !== undefined ? body.netAmount : (body.amount || 100);
-    const impNeto = Number(Number(rawNet).toFixed(2));
-    const impIVA = Number((impNeto * 0.21).toFixed(2));
-    const impTotal = Number((impNeto + impIVA).toFixed(2));
+    const impNeto = roundCurrency(rawNet);
+    const impIVA = roundCurrency(impNeto * 0.21);
+    const impTotal = roundCurrency(impNeto + impIVA);
 
     const clientCuit = (body.clientCuit || '').toString().replace(/\D/g, '');
     const docTipo = clientCuit.length === 11 ? 80 : 99;

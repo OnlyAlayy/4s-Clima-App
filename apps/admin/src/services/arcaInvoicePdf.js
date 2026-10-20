@@ -1,7 +1,7 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import QRCode from 'qrcode';
-import { formatDate } from '@4s-clima/shared/utils';
+import { formatDate, roundCurrency } from '@4s-clima/shared/utils';
 import { WORK_ORDER_TYPE_LABELS } from '@4s-clima/shared/constants';
 
 /**
@@ -124,19 +124,19 @@ export const generateArcaInvoicePDF = async (wo, customData = {}) => {
   let impIVA = 0;
 
   if (customData.netAmount !== undefined && Number(customData.netAmount) > 0) {
-    impNeto = Number(Number(customData.netAmount).toFixed(2));
-    impIVA = Number((impNeto * 0.21).toFixed(2));
-    impTotal = Number((impNeto + impIVA).toFixed(2));
+    impNeto = roundCurrency(customData.netAmount);
+    impIVA = roundCurrency(impNeto * 0.21);
+    impTotal = roundCurrency(impNeto + impIVA);
   } else if (wo.total_amount && Number(wo.total_amount) > 0) {
-    impTotal = Number(Number(wo.total_amount).toFixed(2));
-    impNeto = Number((impTotal / 1.21).toFixed(2));
-    impIVA = Number((impTotal - impNeto).toFixed(2));
+    impTotal = roundCurrency(wo.total_amount);
+    impNeto = roundCurrency(impTotal / 1.21);
+    impIVA = roundCurrency(impTotal - impNeto);
   } else {
     // Cálculo a partir de extras si no hay monto fijo
     const extrasTotal = (wo.extras || []).reduce((sum, e) => sum + (e.quantity * e.unit_price), 0);
-    impNeto = extrasTotal > 0 ? Number(extrasTotal.toFixed(2)) : 187305.41;
-    impIVA = Number((impNeto * 0.21).toFixed(2));
-    impTotal = Number((impNeto + impIVA).toFixed(2));
+    impNeto = extrasTotal > 0 ? roundCurrency(extrasTotal) : 187305.41;
+    impIVA = roundCurrency(impNeto * 0.21);
+    impTotal = roundCurrency(impNeto + impIVA);
   }
 
   const cae = wo.afip_cae || customData.cae || '74391823791823';

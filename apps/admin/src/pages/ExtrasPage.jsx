@@ -36,24 +36,8 @@ export default function ExtrasPage() {
   const [activeTab, setActiveTab] = useState('cotizador'); // 'cotizador' | 'catalogo' | 'parametros' | 'reportados'
 
   // --- Estado para Motor Dinámico de Costos (Hoja 1) ---
-  const [pricingParams, setPricingParams] = useState(() => {
-    try {
-      const saved = localStorage.getItem('4s_pricing_parameters');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        // Si contenía valores alterados de la prueba anterior (+5%), limpiamos para restaurar el original exacto del Excel
-        if (parsed.copperPricePerKg !== 40000 || parsed.pipeMarginGM !== 1.40 || parsed.wasteFactor !== 0.05) {
-          localStorage.removeItem('4s_pricing_parameters');
-          return DEFAULT_PRICING_PARAMETERS;
-        }
-        return parsed;
-      }
-    } catch (e) {
-      console.warn('Error reading saved pricing parameters:', e);
-    }
-    return DEFAULT_PRICING_PARAMETERS;
-  });
-
+  const [pricingParams, setPricingParams] = useState(DEFAULT_PRICING_PARAMETERS);
+  const [isLoadingParams, setIsLoadingParams] = useState(true);
   const [isSavingParams, setIsSavingParams] = useState(false);
   const [saveFeedback, setSaveFeedback] = useState('');
   const [supplierSection, setSupplierSection] = useState('copper'); // 'copper' | 'labor' | 'insulation' | 'hoses' | 'cables' | 'brackets'
@@ -80,31 +64,42 @@ export default function ExtrasPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [filter, setFilter] = useState('unbilled'); // 'all' | 'unbilled' | 'billed'
 
-  // Cargar parámetros remotos de Supabase si existen y están vigentes
+  // Cargar parámetros remotos de Supabase como Única Fuente de Verdad
   useEffect(() => {
     async function fetchRemoteParams() {
+      setIsLoadingParams(true);
       try {
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from('pricing_parameters')
           .select('parameters')
           .eq('id', 'default')
           .maybeSingle();
 
+        if (error) {
+          console.error('Error fetching pricing_parameters from Supabase:', error);
+          return;
+        }
+
         if (data?.parameters) {
-          // Solo aplicar si no son datos alterados de test
-          if (data.parameters.copperPricePerKg === 40000 && data.parameters.pipeMarginGM === 1.40) {
-            setPricingParams(data.parameters);
-            try {
-              localStorage.setItem('4s_pricing_parameters', JSON.stringify(data.parameters));
-            } catch (e) { }
-          }
+          setPricingParams(data.parameters);
+        } else if (isOwner) {
+          // Si la tabla está vacía en BD y el usuario es Owner, inicializar con los parámetros oficiales
+          await supabase
+            .from('pricing_parameters')
+            .upsert({
+              id: 'default',
+              parameters: DEFAULT_PRICING_PARAMETERS,
+              updated_at: new Date().toISOString(),
+            });
         }
       } catch (err) {
-        // Fallback en localStorage
+        console.error('Error in fetchRemoteParams:', err);
+      } finally {
+        setIsLoadingParams(false);
       }
     }
     fetchRemoteParams();
-  }, []);
+  }, [isOwner]);
 
   useEffect(() => {
     loadExtras();
@@ -231,41 +226,53 @@ export default function ExtrasPage() {
     setIsSavingParams(true);
     setSaveFeedback('');
     try {
-      localStorage.setItem('4s_pricing_parameters', JSON.stringify(pricingParams));
+      const { error } = await supabase
+        .from('pricing_parameters')
+        .upsert({
+          id: 'default',
+          parameters: pricingParams,
+          updated_at: new Date().toISOString(),
+        });
 
-      try {
-        await supabase
-          .from('pricing_parameters')
-          .upsert({
-            id: 'default',
-            parameters: pricingParams,
-            updated_at: new Date().toISOString(),
-          });
-      } catch (e) {
-        console.warn('Supabase sync optional:', e);
-      }
+      if (error) throw error;
 
-      setSaveFeedback('¡Parámetros de costos guardados exitosamente!');
+      setSaveFeedback('¡Parámetros de costos guardados exitosamente en la Base de Datos!');
       setTimeout(() => setSaveFeedback(''), 4000);
     } catch (err) {
       console.error('Error saving parameters:', err);
+      alert('Error al guardar los parámetros en el servidor: ' + (err.message || err));
     } finally {
       setIsSavingParams(false);
     }
   };
 
-  const handleResetToFactoryDefaults = () => {
+  const handleResetToFactoryDefaults = async () => {
     if (!isOwner) {
       alert('Acceso Denegado: Solo el usuario con rol Propietario (Owner) puede restablecer los parámetros.');
       return;
     }
-    if (window.confirm('¿Restablecer todos los costos y parámetros a los valores oficiales de fábrica del Excel?')) {
-      setPricingParams(DEFAULT_PRICING_PARAMETERS);
+    if (window.confirm('¿Restablecer todos los costos y parámetros a los valores oficiales de fábrica del Excel y sincronizar en el servidor?')) {
+      setIsSavingParams(true);
       try {
-        localStorage.setItem('4s_pricing_parameters', JSON.stringify(DEFAULT_PRICING_PARAMETERS));
-      } catch (e) { }
-      setSaveFeedback('Valores oficiales de fábrica restablecidos con éxito.');
-      setTimeout(() => setSaveFeedback(''), 4000);
+        const { error } = await supabase
+          .from('pricing_parameters')
+          .upsert({
+            id: 'default',
+            parameters: DEFAULT_PRICING_PARAMETERS,
+            updated_at: new Date().toISOString(),
+          });
+
+        if (error) throw error;
+
+        setPricingParams(DEFAULT_PRICING_PARAMETERS);
+        setSaveFeedback('Valores oficiales de fábrica restablecidos y sincronizados en la Base de Datos con éxito.');
+        setTimeout(() => setSaveFeedback(''), 4000);
+      } catch (err) {
+        console.error('Error resetting parameters:', err);
+        alert('Error al restablecer en el servidor: ' + (err.message || err));
+      } finally {
+        setIsSavingParams(false);
+      }
     }
   };
 

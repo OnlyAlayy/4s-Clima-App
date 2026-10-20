@@ -61,6 +61,18 @@ export function formatCurrency(amount) {
 }
 
 /**
+ * Redondeo contable estricto a 2 decimales para prevención de errores IEEE 754.
+ * Cumple con validaciones de ARCA/AFIP: ImpTotal = ImpNeto + ImpIVA.
+ * @param {number|string} value
+ * @returns {number}
+ */
+export function roundCurrency(value) {
+  const num = Number(value);
+  if (isNaN(num)) return 0;
+  return Math.round((num + Number.EPSILON) * 100) / 100;
+}
+
+/**
  * Genera un número de orden de trabajo con formato OT-YYYYMMDD-XXXX.
  * @returns {string}
  */

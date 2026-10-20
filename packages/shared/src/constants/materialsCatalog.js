@@ -10,6 +10,8 @@
  * 5. Ajuste masivo por inflación en cascada.
  */
 
+import { roundCurrency } from '../utils/index.js';
+
 export const CATALOG_CATEGORIES = {
   COMBOS: 'Combos por Frigorías (3000 a 18000 FG)',
   COPPER_PIPES: 'Caños de Cobre',
@@ -124,7 +126,7 @@ export function calculateCopperPipePrice(params, sizeKey) {
   if (!kg) return 0;
   const netCopperKg = p.copperPricePerKg * (1 - p.copperDiscount);
   const price = (netCopperKg * kg * p.vatFactor) / 15;
-  return Number(price.toFixed(2));
+  return roundCurrency(price);
 }
 
 /**
@@ -196,7 +198,7 @@ export function calculateArmoredPipePrice(params, capacityKey) {
 
   const baseCombo = liquidPipe + gasPipe + liquidIns + gasIns + hose + cable + tapeCost;
   const finalPrice = baseCombo * (1 + p.wasteFactor) * p.pipeMarginGM;
-  return Number(finalPrice.toFixed(2));
+  return roundCurrency(finalPrice);
 }
 
 /**
@@ -205,7 +207,7 @@ export function calculateArmoredPipePrice(params, capacityKey) {
 export function calculateLaborPrice(params, capacityKey) {
   const p = params || DEFAULT_PRICING_PARAMETERS;
   const base = p.baseLabor[capacityKey] || 0;
-  return Number((base * p.laborMarginGM).toFixed(2));
+  return roundCurrency(base * p.laborMarginGM);
 }
 
 /**
@@ -213,7 +215,7 @@ export function calculateLaborPrice(params, capacityKey) {
  */
 export function calculateUninstallationPrice(params, capacityKey) {
   const labor = calculateLaborPrice(params, capacityKey);
-  return Number((labor * 0.50).toFixed(2));
+  return roundCurrency(labor * 0.50);
 }
 
 /**
@@ -455,41 +457,41 @@ export function applyInflationAdjustment(params, percentage) {
   const mult = 1 + (percentage / 100);
 
   // 1. Cobre base
-  p.copperPricePerKg = Number((p.copperPricePerKg * mult).toFixed(2));
+  p.copperPricePerKg = roundCurrency(p.copperPricePerKg * mult);
 
   // 2. Caños rígidos
   for (const k in p.rigidPipes) {
-    p.rigidPipes[k] = Number((p.rigidPipes[k] * mult).toFixed(2));
+    p.rigidPipes[k] = roundCurrency(p.rigidPipes[k] * mult);
   }
 
   // 3. Aislaciones Bellini
   for (const k in p.insulationBellini) {
-    p.insulationBellini[k] = Number((p.insulationBellini[k] * mult).toFixed(2));
+    p.insulationBellini[k] = roundCurrency(p.insulationBellini[k] * mult);
   }
 
   // 4. Mangueras Reld
   for (const k in p.hosesReld) {
-    p.hosesReld[k] = Number((p.hosesReld[k] * mult).toFixed(2));
+    p.hosesReld[k] = roundCurrency(p.hosesReld[k] * mult);
   }
 
   // 5. Cables Reld
   for (const k in p.cablesReld) {
-    p.cablesReld[k] = Number((p.cablesReld[k] * mult).toFixed(2));
+    p.cablesReld[k] = roundCurrency(p.cablesReld[k] * mult);
   }
 
   // 6. Cintas Reld
   for (const k in p.tapesReld) {
-    p.tapesReld[k] = Number((p.tapesReld[k] * mult).toFixed(2));
+    p.tapesReld[k] = roundCurrency(p.tapesReld[k] * mult);
   }
 
   // 7. Ménsulas y Fijaciones
   for (const k in p.bracketsAndFixings) {
-    p.bracketsAndFixings[k] = Number((p.bracketsAndFixings[k] * mult).toFixed(2));
+    p.bracketsAndFixings[k] = roundCurrency(p.bracketsAndFixings[k] * mult);
   }
 
   // 8. Mano de obra base instalador
   for (const k in p.baseLabor) {
-    p.baseLabor[k] = Number((p.baseLabor[k] * mult).toFixed(2));
+    p.baseLabor[k] = roundCurrency(p.baseLabor[k] * mult);
   }
 
   return p;
@@ -607,16 +609,16 @@ export function calculateComboBudget(capacityKey, quantities = {}, combosByCapac
     },
   ];
 
-  const subtotalNeto = lineItems.reduce((acc, it) => acc + it.subtotalNeto, 0);
-  const ivaAmount = Number((subtotalNeto * 0.21).toFixed(2));
-  const totalConIva = Number((subtotalNeto + ivaAmount).toFixed(2));
+  const subtotalNeto = roundCurrency(lineItems.reduce((acc, it) => acc + it.subtotalNeto, 0));
+  const ivaAmount = roundCurrency(subtotalNeto * 0.21);
+  const totalConIva = roundCurrency(subtotalNeto + ivaAmount);
 
   return {
     capacityKey,
     capacityLabel: combo.label,
     pipeSpecs: combo.pipeSpecs,
     lineItems,
-    subtotalNeto: Number(subtotalNeto.toFixed(2)),
+    subtotalNeto,
     ivaAmount,
     totalConIva,
   };

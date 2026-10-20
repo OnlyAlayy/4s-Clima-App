@@ -65,13 +65,14 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Falta orderId' });
     }
 
+    const roundCurrency = (val) => Math.round((Number(val) + Number.EPSILON) * 100) / 100;
     const rawAmount = req.body.netAmount !== undefined ? req.body.netAmount : req.body.amount;
-    const impNeto = Number(Number(rawAmount || 0).toFixed(2));
+    const impNeto = roundCurrency(rawAmount || 0);
     if (isNaN(impNeto) || impNeto <= 0) {
       return res.status(400).json({ error: 'Monto neto a facturar inválido (debe ser mayor a 0).' });
     }
-    const impIVA = Number((impNeto * 0.21).toFixed(2));
-    const impTotal = Number((impNeto + impIVA).toFixed(2));
+    const impIVA = roundCurrency(impNeto * 0.21);
+    const impTotal = roundCurrency(impNeto + impIVA);
 
     const isCreditNote = req.body.isCreditNote === true;
     const associatedInvoice = req.body.associatedInvoice; // Required if isCreditNote

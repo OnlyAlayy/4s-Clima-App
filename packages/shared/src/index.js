@@ -27,7 +27,14 @@ export {
   getChecklistByEquipmentType,
 } from './constants/checklists.js';
 
-// Catálogo Oficial y Motor Dinámico de Costos e Inflación (Hoja 1 de Walter)
+// Catálogo Técnico Sanitizado para Técnicos (Sin Precios ni Márgenes)
+export {
+  TECHNICAL_CAPACITY_OPTIONS,
+  TECHNICAL_COMBOS_BY_CAPACITY,
+  getTechnicalMaterialChips,
+} from './constants/technicalMaterials.js';
+
+// Catálogo Oficial y Motor Dinámico de Costos e Inflación (Hoja 1 de Walter - Administración)
 export {
   INSTALLATION_COMBOS_BY_CAPACITY,
   CATALOG_CATEGORIES,
@@ -50,6 +57,7 @@ export {
   formatTime,
   formatDateTime,
   formatCurrency,
+  roundCurrency,
   generateOrderNumber,
   getStatusLabel,
   getStatusColor,

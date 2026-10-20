@@ -4,7 +4,7 @@ import { ArrowLeft, Plus, Package, Trash2, Zap } from 'lucide-react';
 import { useWorkOrderStore } from '../stores/workOrderStore';
 import { supabase } from '@4s-clima/shared/supabase';
 import { db } from '../services/offlineDb';
-import { INSTALLATION_COMBOS_BY_CAPACITY } from '@4s-clima/shared';
+import { TECHNICAL_CAPACITY_OPTIONS, getTechnicalMaterialChips } from '@4s-clima/shared';
 
 const UNIT_OPTIONS = [
   { value: 'unidad', label: 'Unidad' },
@@ -108,8 +108,6 @@ export default function ExtrasPage() {
     }
   };
 
-  const currentCombo = INSTALLATION_COMBOS_BY_CAPACITY[selectedCapacity] || INSTALLATION_COMBOS_BY_CAPACITY['3000'];
-
   return (
     <div className="page-container flex flex-col min-h-screen">
       <div className="page-header">
@@ -121,8 +119,8 @@ export default function ExtrasPage() {
             <ArrowLeft size={20} className="text-gray-700 dark:text-gray-300" />
           </button>
           <div className="flex-1">
-            <h1 className="text-lg font-bold text-slate-900 dark:text-white">Materiales Extra</h1>
-            <p className="text-xs text-gray-500 dark:text-gray-400">Registrar repuestos o insumos de instalación</p>
+            <h1 className="text-lg font-bold text-slate-900 dark:text-white">Relevamiento de Materiales</h1>
+            <p className="text-xs text-gray-500 dark:text-gray-400">Registrar insumos utilizados para cotización de Administración</p>
           </div>
         </div>
       </div>
@@ -141,13 +139,13 @@ export default function ExtrasPage() {
           <div>
             <span className="text-[10px] uppercase font-bold text-gray-400 block mb-1.5">Capacidad:</span>
             <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-              {Object.entries(INSTALLATION_COMBOS_BY_CAPACITY).map(([key, combo]) => (
+              {TECHNICAL_CAPACITY_OPTIONS.map((combo) => (
                 <button
-                  key={key}
+                  key={combo.key}
                   type="button"
-                  onClick={() => setSelectedCapacity(key)}
+                  onClick={() => setSelectedCapacity(combo.key)}
                   className={`px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-all border
-                    ${selectedCapacity === key
+                    ${selectedCapacity === combo.key
                       ? 'bg-brand-500 text-white border-brand-500 shadow-sm'
                       : 'bg-white dark:bg-slate-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-slate-700 hover:border-brand-300'
                     }`}
@@ -160,43 +158,7 @@ export default function ExtrasPage() {
 
           {/* Chips de Materiales Estándar */}
           <div className="flex flex-wrap gap-1.5 pt-1">
-            {[
-              {
-                label: `Caño (${currentCombo.pipeSpecs})`,
-                desc: `Metros de Caño (${currentCombo.pipeSpecs} - ${currentCombo.label})`,
-                unit: 'metro',
-              },
-              {
-                label: currentCombo.items.bracket.label,
-                desc: currentCombo.items.bracket.label,
-                unit: 'unidad',
-              },
-              {
-                label: 'Patas Ménsula',
-                desc: 'Patas Ménsula',
-                unit: 'unidad',
-              },
-              {
-                label: currentCombo.items.floorLegs.label,
-                desc: currentCombo.items.floorLegs.label,
-                unit: 'unidad',
-              },
-              {
-                label: 'Kit Fijación',
-                desc: 'Kit Fijación (Tarugos y Bulones)',
-                unit: 'unidad',
-              },
-              {
-                label: 'M.O. Instalación',
-                desc: `Mano de Obra Instalación ${currentCombo.label}`,
-                unit: 'unidad',
-              },
-              {
-                label: 'Desinstalación',
-                desc: `Desinstalación ${currentCombo.label} (50% M.O.)`,
-                unit: 'unidad',
-              },
-            ].map((chip) => (
+            {getTechnicalMaterialChips(selectedCapacity).map((chip) => (
               <button
                 key={chip.desc}
                 type="button"

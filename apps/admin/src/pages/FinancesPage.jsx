@@ -5,7 +5,7 @@ import {
   MessageCircle, Eye, ChevronRight, Tag, Sparkles
 } from 'lucide-react';
 import { supabase } from '@4s-clima/shared/supabase';
-import { formatCurrency, formatDate } from '@4s-clima/shared/utils';
+import { formatCurrency, formatDate, roundCurrency } from '@4s-clima/shared/utils';
 import { findSuggestedPrice } from '@4s-clima/shared';
 import { generateReceiptPDF, generateAccountStatementPDF, openAndDownloadPDF } from '../services/pdfService';
 import { generateArcaInvoicePDF } from '../services/arcaInvoicePdf';
@@ -455,7 +455,7 @@ export default function FinancesPage() {
         const afipData = await afipRes.json();
         if (afipData.success) {
           const formattedNum = afipData.voucher.formatted_number || `A-00004-${String(afipData.voucher.number).padStart(8, '0')}`;
-          const totalConIva = afipData.voucher.total_amount || Number((netAmount * 1.21).toFixed(2));
+          const totalConIva = afipData.voucher.total_amount || roundCurrency(netAmount * 1.21);
           const afipMsg = `
             <div class="text-left text-sm space-y-1.5 p-2 bg-slate-50 dark:bg-slate-800 rounded-lg">
               <p><strong>N° Comprobante:</strong> ${formattedNum}</p>
@@ -488,9 +488,11 @@ export default function FinancesPage() {
             : (selectedOrder?.extras || []);
 
           for (const extra of activeExtras) {
-            const finalPrice = extraPrices[extra.id] !== undefined 
-              ? parseFloat(extraPrices[extra.id]) || 0 
-              : parseFloat(extra.unit_price) || 0;
+            const finalPrice = roundCurrency(
+              extraPrices[extra.id] !== undefined 
+                ? parseFloat(extraPrices[extra.id]) || 0 
+                : parseFloat(extra.unit_price) || 0
+            );
             
             await supabase
               .from('extras')
@@ -1984,9 +1986,9 @@ export default function FinancesPage() {
 
               {/* Desglose Matemático en Tiempo Real (Neto + IVA 21% = Total) */}
               {(() => {
-                const netNum = parseFloat(invoiceAmount) || 0;
-                const ivaNum = Number((netNum * 0.21).toFixed(2));
-                const totNum = Number((netNum + ivaNum).toFixed(2));
+                const netNum = roundCurrency(parseFloat(invoiceAmount) || 0);
+                const ivaNum = roundCurrency(netNum * 0.21);
+                const totNum = roundCurrency(netNum + ivaNum);
 
                 return (
                   <div className="bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/60 rounded-xl p-4 space-y-2">

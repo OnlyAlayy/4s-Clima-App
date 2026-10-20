@@ -330,7 +330,7 @@ export default function WorkOrderPage() {
                 className="btn-secondary w-full"
               >
                 <Package size={20} className="text-gray-500" />
-                Agregar Material Extra
+                Relevar Materiales / Insumos
                 <ChevronRight size={18} className="text-gray-500 ml-auto" />
               </button>
             </div>
