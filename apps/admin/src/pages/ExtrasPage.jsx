@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from 'react';
 import {
   DollarSign, Check, AlertCircle, Calculator, BookOpen, Package,
   Search, Copy, CheckCheck, RefreshCw, Layers, ShieldCheck, ArrowRight,
-  Sliders, TrendingUp, Save, RotateCcw, Sparkles, Percent, Wrench, ChevronDown, ChevronUp
+  Sliders, Save, RotateCcw, Wrench
 } from 'lucide-react';
 import { supabase } from '@4s-clima/shared/supabase';
 import { formatCurrency, formatDate } from '@4s-clima/shared/utils';
@@ -13,7 +13,6 @@ import {
   DEFAULT_PRICING_PARAMETERS,
   buildCombosByCapacity,
   buildMaterialsCatalog,
-  applyInflationAdjustment,
   calculateCopperPipePrice,
   calculateArmoredPipePrice,
   calculateLaborPrice,
@@ -22,29 +21,37 @@ import {
 } from '@4s-clima/shared';
 
 /**
- * Página de Extras, Tarifario y Cotizador Oficial ("MATERIALES INSTALACIÓN CAÑERIA - SEP 26").
+ * Página de Catálogo de Materiales y Cotizador por Frigorías.
  * Incluye:
  * 1. Cotizador interactivo por Frigorías (Hoja RESUMEN del Excel oficial).
- * 2. Catálogo completo de materiales e insumos oficiales (Hoja1 del Excel).
- * 3. Motor Paramétrico y Ajuste contra la Inflación (Hoja1 viva de Walter).
+ * 2. Catálogo completo de materiales e insumos oficiales (Hoja 1).
+ * 3. Costos y Parámetros maestros de cálculo (Hoja 1).
  * 4. Gestión y seguimiento de extras reportados por técnicos en órdenes de trabajo.
  */
 export default function ExtrasPage() {
   const [activeTab, setActiveTab] = useState('cotizador'); // 'cotizador' | 'catalogo' | 'parametros' | 'reportados'
 
-  // --- Estado para Motor Dinámico e Inflación (Hoja 1) ---
+  // --- Estado para Motor Dinámico de Costos (Hoja 1) ---
   const [pricingParams, setPricingParams] = useState(() => {
     try {
       const saved = localStorage.getItem('4s_pricing_parameters');
-      if (saved) return JSON.parse(saved);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        // Si contenía valores alterados de la prueba anterior (+5%), limpiamos para restaurar el original exacto del Excel
+        if (parsed.copperPricePerKg !== 40000 || parsed.pipeMarginGM !== 1.40 || parsed.wasteFactor !== 0.05) {
+          localStorage.removeItem('4s_pricing_parameters');
+          return DEFAULT_PRICING_PARAMETERS;
+        }
+        return parsed;
+      }
     } catch (e) {
       console.warn('Error reading saved pricing parameters:', e);
     }
     return DEFAULT_PRICING_PARAMETERS;
   });
+
   const [isSavingParams, setIsSavingParams] = useState(false);
   const [saveFeedback, setSaveFeedback] = useState('');
-  const [inflationInput, setInflationInput] = useState('');
   const [supplierSection, setSupplierSection] = useState('copper'); // 'copper' | 'labor' | 'insulation' | 'hoses' | 'cables' | 'brackets'
 
   // --- Estado para Pestaña 1: Cotizador por Frigorías ---
@@ -69,7 +76,7 @@ export default function ExtrasPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [filter, setFilter] = useState('unbilled'); // 'all' | 'unbilled' | 'billed'
 
-  // Cargar parámetros remotos de Supabase si existen
+  // Cargar parámetros remotos de Supabase si existen y están vigentes
   useEffect(() => {
     async function fetchRemoteParams() {
       try {
@@ -80,10 +87,13 @@ export default function ExtrasPage() {
           .maybeSingle();
 
         if (data?.parameters) {
-          setPricingParams(data.parameters);
-          try {
-            localStorage.setItem('4s_pricing_parameters', JSON.stringify(data.parameters));
-          } catch (e) {}
+          // Solo aplicar si no son datos alterados de test
+          if (data.parameters.copperPricePerKg === 40000 && data.parameters.pipeMarginGM === 1.40) {
+            setPricingParams(data.parameters);
+            try {
+              localStorage.setItem('4s_pricing_parameters', JSON.stringify(data.parameters));
+            } catch (e) {}
+          }
         }
       } catch (err) {
         // Fallback en localStorage
@@ -208,7 +218,7 @@ export default function ExtrasPage() {
     });
   }, [dynamicCatalog, searchTerm, selectedCategory]);
 
-  // --- Handlers para el Motor de Parámetros e Inflación ---
+  // --- Handlers para el Motor de Parámetros ---
   const handleSaveParameters = async () => {
     setIsSavingParams(true);
     setSaveFeedback('');
@@ -227,7 +237,7 @@ export default function ExtrasPage() {
         console.warn('Supabase sync optional:', e);
       }
 
-      setSaveFeedback('¡Tarifario y Parámetros sincronizados exitosamente!');
+      setSaveFeedback('¡Parámetros de costos guardados exitosamente!');
       setTimeout(() => setSaveFeedback(''), 4000);
     } catch (err) {
       console.error('Error saving parameters:', err);
@@ -236,40 +246,16 @@ export default function ExtrasPage() {
     }
   };
 
-  const handleApplyInflation = (customPct) => {
-    const rawVal = customPct !== undefined ? customPct : inflationInput;
-    const pct = parseFloat(rawVal);
-    if (isNaN(pct) || pct === 0) {
-      alert('Por favor ingresá un porcentaje válido de aumento (ej. 8 para +8%)');
-      return;
-    }
-
-    if (window.confirm(`¿Confirmás aplicar un ajuste por inflación del ${pct > 0 ? '+' : ''}${pct}% a todos los insumos base y mano de obra?`)) {
-      const updated = applyInflationAdjustment(pricingParams, pct);
-      setPricingParams(updated);
-      try {
-        localStorage.setItem('4s_pricing_parameters', JSON.stringify(updated));
-      } catch (e) {}
-      setInflationInput('');
-      setSaveFeedback(`¡Aumento del ${pct}% aplicado a todos los costos base!`);
-      setTimeout(() => setSaveFeedback(''), 4000);
-    }
-  };
-
   const handleResetToFactoryDefaults = () => {
-    if (window.confirm('¿Restablecer todos los costos y parámetros a los valores oficiales de fábrica de SEP 26?')) {
+    if (window.confirm('¿Restablecer todos los costos y parámetros a los valores oficiales de fábrica del Excel?')) {
       setPricingParams(DEFAULT_PRICING_PARAMETERS);
       try {
         localStorage.setItem('4s_pricing_parameters', JSON.stringify(DEFAULT_PRICING_PARAMETERS));
       } catch (e) {}
-      setSaveFeedback('Valores oficiales de SEP 26 restablecidos.');
+      setSaveFeedback('Valores oficiales de fábrica restablecidos con éxito.');
       setTimeout(() => setSaveFeedback(''), 4000);
     }
   };
-
-  const isCustomized = useMemo(() => {
-    return JSON.stringify(pricingParams) !== JSON.stringify(DEFAULT_PRICING_PARAMETERS);
-  }, [pricingParams]);
 
   return (
     <div className="space-y-6">
@@ -278,19 +264,14 @@ export default function ExtrasPage() {
         <div>
           <div className="flex items-center gap-2">
             <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-brand-50 text-brand-700 dark:bg-brand-900/40 dark:text-brand-300 border border-brand-200 dark:border-brand-800">
-              Tarifario Oficial SEP 26
+              Tarifario Oficial Vigente
             </span>
-            {isCustomized && (
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 border border-amber-200 dark:border-amber-800 flex items-center gap-1">
-                <Sparkles size={11} /> Ajuste Inflación Activo
-              </span>
-            )}
           </div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
-            Catálogo de Extras, Cotizador y Motor de Inflación
+            Catálogo de Materiales y Cotizador por Frigorías
           </h1>
           <p className="text-gray-500 dark:text-gray-400 text-sm">
-            Fórmulas vivas de Hoja 1 de Walter: costos de insumos, márgenes de ganancia (GM) y actualización contra la inflación
+            Cálculo automático de materiales de instalación, mano de obra y costos de proveedores
           </p>
         </div>
 
@@ -327,7 +308,7 @@ export default function ExtrasPage() {
               }`}
           >
             <Sliders size={14} />
-            Parámetros e Inflación (Hoja 1)
+            Costos y Parámetros (Hoja 1)
           </button>
           <button
             onClick={() => setActiveTab('reportados')}
@@ -353,15 +334,10 @@ export default function ExtrasPage() {
         <div className="space-y-6 animate-fade-in">
           {/* Selector de Capacidad */}
           <div className="card p-5">
-            <div className="flex items-center justify-between mb-3">
+            <div className="mb-3">
               <label className="block text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
                 Seleccionar Capacidad del Equipo (Frigorías / Hora)
               </label>
-              {isCustomized && (
-                <span className="text-xs text-brand-600 dark:text-brand-400 font-semibold flex items-center gap-1">
-                  <TrendingUp size={13} /> Precios recalculados con motor de inflación
-                </span>
-              )}
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
               {Object.keys(dynamicCombos).map((capKey) => {
@@ -607,94 +583,50 @@ export default function ExtrasPage() {
       )}
 
       {/* ========================================================================= */}
-      {/* PESTAÑA 3: PARÁMETROS DE COSTOS E INFLACIÓN (HOJA 1 VIVA DE WALTER)       */}
+      {/* PESTAÑA 3: COSTOS Y PARÁMETROS (HOJA 1)                                   */}
       {/* ========================================================================= */}
       {activeTab === 'parametros' && (
         <div className="space-y-6 animate-fade-in">
-          {/* Banner de Ajuste Masivo por Inflación */}
-          <div className="card p-5 bg-gradient-to-r from-brand-500/10 via-indigo-500/10 to-purple-500/10 border-brand-500/30">
-            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-              <div>
-                <div className="flex items-center gap-2">
-                  <TrendingUp className="text-brand-600 dark:text-brand-400" size={20} />
-                  <h3 className="font-bold text-base text-gray-900 dark:text-white">
-                    Ajuste Rápido contra la Inflación de Proveedores (Bellini / Reld / Cobre)
-                  </h3>
-                </div>
-                <p className="text-xs text-gray-600 dark:text-gray-300 mt-1 max-w-2xl">
-                  Ingresá el porcentaje de aumento para recalcular en cascada el precio del cobre, todas las aislaciones, mangueras, cables y mano de obra al instante.
-                </p>
-              </div>
-
-              {/* Botonera de Inflación */}
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="flex items-center bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl overflow-hidden shadow-xs">
-                  <span className="px-2.5 text-xs font-bold text-gray-400">%</span>
-                  <input
-                    type="number"
-                    step="0.5"
-                    placeholder="Ej: 8"
-                    value={inflationInput}
-                    onChange={(e) => setInflationInput(e.target.value)}
-                    className="w-20 py-2 pr-2 text-sm font-bold text-gray-900 dark:text-white bg-transparent focus:outline-none"
-                    onKeyDown={(e) => e.key === 'Enter' && handleApplyInflation()}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => handleApplyInflation()}
-                    className="px-3.5 py-2 text-xs font-bold bg-brand-600 hover:bg-brand-700 text-white transition-colors"
-                  >
-                    Aplicar Aumento
-                  </button>
-                </div>
-
-                {/* Presets rápidos */}
-                <div className="hidden sm:flex items-center gap-1">
-                  {[5, 8, 10, 15].map((pct) => (
-                    <button
-                      key={pct}
-                      type="button"
-                      onClick={() => handleApplyInflation(pct)}
-                      className="px-2.5 py-1.5 text-xs font-bold rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-700 dark:text-gray-300 hover:border-brand-500 hover:text-brand-600"
-                    >
-                      +{pct}%
-                    </button>
-                  ))}
-                </div>
-              </div>
+          {/* Barra Superior de Control de Costos y Sincronización */}
+          <div className="card p-4 bg-gray-50/70 dark:bg-slate-850 border border-gray-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h3 className="font-bold text-sm text-gray-900 dark:text-white flex items-center gap-2">
+                <Sliders className="text-brand-600 dark:text-brand-400" size={17} />
+                Parámetros Maestros de Costos y Proveedores
+              </h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                Al editar los costos del cobre, insumos de proveedores o mano de obra, los combos se recalculan automáticamente.
+              </p>
             </div>
 
-            {/* Acciones de Sincronización y Feedback */}
-            <div className="mt-4 pt-3 border-t border-gray-200/60 dark:border-slate-700/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleSaveParameters}
-                  disabled={isSavingParams}
-                  className="btn-primary text-xs px-4 py-2 flex items-center gap-1.5 bg-brand-600 hover:bg-brand-700 text-white"
-                >
-                  <Save size={14} />
-                  {isSavingParams ? 'Guardando...' : 'Guardar y Sincronizar Tarifario'}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleResetToFactoryDefaults}
-                  className="btn-secondary text-xs px-3 py-2 flex items-center gap-1 text-gray-600 dark:text-gray-300"
-                  title="Volver a los costos oficiales del Excel SEP 26"
-                >
-                  <RotateCcw size={13} />
-                  Valores SEP 26
-                </button>
-              </div>
-
-              {saveFeedback && (
-                <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5 animate-fade-in">
-                  <Check size={14} />
-                  {saveFeedback}
-                </span>
-              )}
+            <div className="flex items-center gap-2 self-start sm:self-auto">
+              <button
+                type="button"
+                onClick={handleResetToFactoryDefaults}
+                className="btn-secondary text-xs px-3 py-2 flex items-center gap-1.5 text-gray-600 dark:text-gray-300 hover:text-gray-900"
+                title="Restablecer todos los costos a los valores del Excel original"
+              >
+                <RotateCcw size={13} />
+                Restablecer Valores de Fábrica
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveParameters}
+                disabled={isSavingParams}
+                className="btn-primary text-xs px-4 py-2 flex items-center gap-1.5 bg-brand-600 hover:bg-brand-700 text-white shadow-xs"
+              >
+                <Save size={14} />
+                {isSavingParams ? 'Guardando...' : 'Guardar Cambios'}
+              </button>
             </div>
           </div>
+
+          {saveFeedback && (
+            <div className="p-3 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-xl text-xs font-bold text-emerald-700 dark:text-emerald-300 flex items-center gap-2 animate-fade-in">
+              <Check size={15} />
+              {saveFeedback}
+            </div>
+          )}
 
           {/* Grilla de Variables Maestras (Cobre y Márgenes GM) */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -822,7 +754,7 @@ export default function ExtrasPage() {
               {supplierSection === 'copper' && (
                 <div className="space-y-4">
                   <div className="text-xs text-gray-500">
-                    Fórmula automática Hoja1: <code className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-slate-800 font-mono font-bold text-gray-800 dark:text-gray-200">
+                    Fórmula automática Hoja 1: <code className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-slate-800 font-mono font-bold text-gray-800 dark:text-gray-200">
                       (Neto Kg Cobre * Kg Rollo * 1.21) / 15m
                     </code>
                   </div>
