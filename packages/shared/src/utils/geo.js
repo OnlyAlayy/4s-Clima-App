@@ -125,3 +125,133 @@ export async function searchAddressCoordinates(addressText) {
   }
   return null;
 }
+
+/**
+ * Calcula el tiempo estimado de llegada (ETA) en minutos.
+ * Aplica factor de ruteo urbano (~1.32x sobre distancia esférica)
+ * y pondera velocidad instantánea con baseline urbano argentino (26-28 km/h).
+ * 
+ * @param {number} distanceMeters - Distancia en metros
+ * @param {number} currentSpeedKmh - Velocidad actual reportada por GPS (opcional)
+ * @returns {number|null} Minutos estimados de viaje
+ */
+export function calculateEtaMinutes(distanceMeters, currentSpeedKmh = 0) {
+  if (distanceMeters == null || distanceMeters < 0) return null;
+  if (distanceMeters < 120) return 1; // Prácticamente en destino
+
+  const speed = Number(currentSpeedKmh) || 0;
+  // Si el móvil va a velocidad vehicular (>15 km/h), ponderamos 40% velocidad real + 60% baseline
+  const effectiveSpeed = speed > 15 ? Math.min(speed * 0.4 + 28 * 0.6, 75) : 26;
+
+  // Factor de ruteo vehicular urbano
+  const routedDistanceKm = (distanceMeters / 1000) * 1.32;
+  const hours = routedDistanceKm / effectiveSpeed;
+  return Math.max(1, Math.round(hours * 60));
+}
+
+/**
+ * Formatea el ETA en minutos a texto amigable ("~8 min", "1 h 15 min").
+ */
+export function formatEta(etaMinutes) {
+  if (etaMinutes == null) return '—';
+  if (etaMinutes < 1) return '< 1 min';
+  if (etaMinutes < 60) return `~${etaMinutes} min`;
+  const hours = Math.floor(etaMinutes / 60);
+  const mins = etaMinutes % 60;
+  return `~${hours} h ${mins > 0 ? `${mins} min` : ''}`;
+}
+
+/**
+ * Calcula la hora estimada de arribo (Date) a partir del ETA en minutos.
+ */
+export function calculateEstimatedArrival(etaMinutes) {
+  if (etaMinutes == null) return null;
+  return new Date(Date.now() + etaMinutes * 60 * 1000);
+}
+
+/**
+ * Evalúa si el arribo proyectado está a tiempo o demorado respecto a la hora programada.
+ * 
+ * @param {string} scheduledDate - Fecha YYYY-MM-DD
+ * @param {string} scheduledTime - Hora HH:mm o HH:mm:ss
+ * @param {number} etaMinutes - Minutos estimados de viaje
+ * @returns {Object} { status: 'on_time'|'delayed'|'unknown', delayMinutes: number, label: string }
+ */
+export function evaluateSchedulePunctuality(scheduledDate, scheduledTime, etaMinutes) {
+  if (!scheduledDate || !scheduledTime || etaMinutes == null) {
+    return { status: 'unknown', delayMinutes: 0, label: 'En viaje' };
+  }
+
+  try {
+    const timeParts = scheduledTime.slice(0, 5).split(':');
+    const target = new Date(scheduledDate);
+    // Si la fecha solo trae YYYY-MM-DD, new Date() lo interpreta en UTC
+    const [y, m, d] = scheduledDate.split('-').map(Number);
+    target.setFullYear(y, m - 1, d);
+    target.setHours(parseInt(timeParts[0], 10), parseInt(timeParts[1], 10), 0, 0);
+
+    const projectedArrival = new Date(Date.now() + etaMinutes * 60 * 1000);
+    const diffMs = projectedArrival.getTime() - target.getTime();
+    const diffMins = Math.round(diffMs / 60000);
+
+    // Margen de tolerancia de cortesía: 12 minutos
+    if (diffMins > 12) {
+      return {
+        status: 'delayed',
+        delayMinutes: diffMins,
+        label: `Demorado (+${diffMins} min)`,
+      };
+    }
+
+    return {
+      status: 'on_time',
+      delayMinutes: 0,
+      label: 'En horario programado',
+    };
+  } catch {
+    return { status: 'unknown', delayMinutes: 0, label: 'En viaje' };
+  }
+}
+
+/**
+ * Determina si el técnico se encuentra en la geocerca de proximidad (< 150m) de la planta o cliente.
+ */
+export function isNearDestination(distanceMeters, radiusMeters = 150) {
+  return distanceMeters !== null && distanceMeters !== undefined && distanceMeters <= radiusMeters;
+}
+
+/**
+ * Genera el enlace de WhatsApp para enviar el aviso de arribo y estado de viaje al cliente.
+ */
+export function generateWhatsAppTrackingUrl({
+  phone,
+  technicianName,
+  clientName,
+  orderNumber,
+  address,
+  distanceMeters,
+  etaMinutes,
+}) {
+  const etaText = etaMinutes ? formatEta(etaMinutes) : '';
+  const distText = distanceMeters !== null ? formatDistance(distanceMeters) : '';
+  const arrivalTime = etaMinutes
+    ? new Date(Date.now() + etaMinutes * 60 * 1000).toLocaleTimeString('es-AR', {
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : '';
+
+  let message = `¡Hola! Te informamos desde *4S Clima* que nuestro técnico *${technicianName || 'asignado'}* se encuentra en viaje hacia tus instalaciones.`;
+  if (clientName) message += `\n🏢 *Destino:* ${clientName}`;
+  if (address) message += ` (${address})`;
+  if (orderNumber) message += `\n📋 *Orden:* #${orderNumber}`;
+  if (distText) message += `\n📍 *Distancia actual:* ${distText}`;
+  if (etaText && arrivalTime) message += `\n⏱️ *Llegada estimada:* ${etaText} (aprox. ${arrivalTime} hs)`;
+  message += `\n\n_Centro de Despacho Operativo — 4S Clima._`;
+
+  const cleanPhone = (phone || '').replace(/[^0-9]/g, '');
+  const encodedText = encodeURIComponent(message);
+  return cleanPhone
+    ? `https://wa.me/${cleanPhone}?text=${encodedText}`
+    : `https://wa.me/?text=${encodedText}`;
+}

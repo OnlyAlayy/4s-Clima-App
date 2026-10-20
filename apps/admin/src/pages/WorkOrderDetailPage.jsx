@@ -233,6 +233,11 @@ export default function WorkOrderDetailPage() {
         <div className="mb-6">
           <LiveTrackingViewer
             orderId={order.id}
+            orderNumber={order.order_number}
+            clientName={order.client?.name || order.plant?.name || ''}
+            clientPhone={order.client?.phone || order.plant?.contact_phone || ''}
+            scheduledDate={order.scheduled_date}
+            scheduledTime={order.scheduled_time}
             destinationCoords={{ latitude: loc.latitude, longitude: loc.longitude }}
             destinationAddress={loc.address}
             technicianName={order.assigned?.name || 'Técnico'}

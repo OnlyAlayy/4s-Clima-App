@@ -11,6 +11,11 @@ import {
   DEFAULT_MAP_ZOOM,
   resolveOrderLocation,
   searchAddressCoordinates,
+  calculateEtaMinutes,
+  formatEta,
+  evaluateSchedulePunctuality,
+  isNearDestination,
+  generateWhatsAppTrackingUrl,
 } from '@4s-clima/shared';
 import { WORK_ORDER_STATUS } from '@4s-clima/shared/constants';
 import { useDarkMode } from '../hooks/useDarkMode';
@@ -30,6 +35,11 @@ import {
   ShieldCheck,
   AlertCircle,
   Compass,
+  Battery,
+  BatteryCharging,
+  Share2,
+  Car,
+  Wrench,
 } from 'lucide-react';
 
 // Tiles OpenStreetMap estándar y limpios sin marcas de agua
@@ -262,6 +272,9 @@ export default function FleetRadarMap() {
               lng: Number(data.lng),
               speed: data.speed || 0,
               heading: data.heading || null,
+              battery: data.battery ?? null,
+              batteryCharging: data.batteryCharging ?? false,
+              incident: data.incident || null,
               timestamp: new Date(data.timestamp || Date.now()),
               orderId: order.id,
             },
@@ -313,6 +326,27 @@ export default function FleetRadarMap() {
           ? calculateDistance(techCoords[0], techCoords[1], destCoords[0], destCoords[1])
           : null;
 
+      // ETA y Puntualidad
+      const etaMinutes =
+        distanceMeters !== null
+          ? calculateEtaMinutes(distanceMeters, live?.speed)
+          : null;
+
+      const punctuality =
+        activeOrder?.scheduled_date && activeOrder?.scheduled_time && etaMinutes !== null
+          ? evaluateSchedulePunctuality(activeOrder.scheduled_date, activeOrder.scheduled_time, etaMinutes)
+          : null;
+
+      const isNear = isNearDestination(distanceMeters, 150);
+
+      const estimatedArrivalTime =
+        etaMinutes !== null
+          ? new Date(Date.now() + etaMinutes * 60 * 1000).toLocaleTimeString('es-AR', {
+              hour: '2-digit',
+              minute: '2-digit',
+            })
+          : null;
+
       const hasActiveWork =
         activeOrder !== null &&
         (activeOrder.status === WORK_ORDER_STATUS.TRAVELING ||
@@ -327,6 +361,10 @@ export default function FleetRadarMap() {
         techCoords,
         liveTelemetry: live || null,
         distanceMeters,
+        etaMinutes,
+        punctuality,
+        isNear,
+        estimatedArrivalTime,
         hasActiveWork,
       };
     });
@@ -597,15 +635,32 @@ export default function FleetRadarMap() {
                               </span>
                             )}
                           </p>
-                          <div className="flex items-center gap-2 text-[10px] text-gray-400 font-mono">
+                          <div className="flex items-center gap-1.5 flex-wrap text-[10px] text-gray-400 font-mono">
                             <span>#{order.order_number || order.id?.slice(0, 8)}</span>
                             {tech.distanceMeters !== null ? (
-                              <span className="text-brand-600 dark:text-brand-400 font-semibold font-sans">
-                                • {formatDistance(tech.distanceMeters)} restante
+                              <span className="text-brand-600 dark:text-brand-400 font-semibold font-sans flex items-center gap-1">
+                                <span>• {formatDistance(tech.distanceMeters)}</span>
+                                {tech.etaMinutes !== null && <span>({formatEta(tech.etaMinutes)})</span>}
+                                {tech.isNear && (
+                                  <span className="text-emerald-600 dark:text-emerald-400 font-bold">📍 Inmediaciones</span>
+                                )}
+                                {tech.punctuality?.status === 'delayed' && (
+                                  <span className="text-amber-600 dark:text-amber-400 font-bold">+{tech.punctuality.delayMinutes}m</span>
+                                )}
                               </span>
                             ) : (
                               <span className="text-amber-600 dark:text-amber-400 font-sans text-[10px]">
                                 • GPS móvil pendiente
+                              </span>
+                            )}
+                            {tech.liveTelemetry?.incident === 'traffic' && (
+                              <span className="text-amber-600 dark:text-amber-400 font-sans flex items-center gap-0.5">
+                                <Car size={10} /> Tránsito
+                              </span>
+                            )}
+                            {tech.liveTelemetry?.incident === 'mechanical' && (
+                              <span className="text-red-600 dark:text-red-400 font-sans flex items-center gap-0.5">
+                                <Wrench size={10} /> Falla
                               </span>
                             )}
                           </div>
@@ -757,25 +812,73 @@ export default function FleetRadarMap() {
                           #{selectedTech.activeOrder.order_number}
                         </span>
                       )}
+                      {selectedTech.punctuality?.status === 'delayed' && (
+                        <span className="badge bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 text-[10px] py-0.2 font-bold">
+                          ⚠️ {selectedTech.punctuality.label}
+                        </span>
+                      )}
+                      {selectedTech.punctuality?.status === 'on_time' && (
+                        <span className="badge bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 text-[10px] py-0.2">
+                          ✓ En horario
+                        </span>
+                      )}
+                      {selectedTech.isNear && (
+                        <span className="badge bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 text-[10px] py-0.2 font-bold animate-pulse">
+                          📍 En inmediaciones (&lt;150m)
+                        </span>
+                      )}
                     </div>
 
-                    <p className="text-[11px] text-gray-500 dark:text-gray-400 truncate mt-0.5">
-                      {selectedTech.locationInfo?.address || 'Sin dirección cargada'}
+                    <div className="flex items-center gap-2 flex-wrap text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+                      <span className="truncate">{selectedTech.locationInfo?.address || 'Sin dirección cargada'}</span>
                       {selectedTech.distanceMeters !== null ? (
-                        <span className="font-semibold text-brand-700 dark:text-brand-300 ml-1.5">
-                          ({formatDistance(selectedTech.distanceMeters)} restante)
+                        <span className="font-semibold text-brand-700 dark:text-brand-300">
+                          • {formatDistance(selectedTech.distanceMeters)} ({formatEta(selectedTech.etaMinutes)}
+                          {selectedTech.estimatedArrivalTime ? ` · ${selectedTech.estimatedArrivalTime} hs` : ''})
                         </span>
                       ) : (
-                        <span className="text-amber-600 dark:text-amber-400 font-medium ml-1.5">
+                        <span className="text-amber-600 dark:text-amber-400 font-medium">
                           • GPS móvil pendiente
                         </span>
                       )}
-                    </p>
+                      {selectedTech.liveTelemetry?.battery !== null && selectedTech.liveTelemetry?.battery !== undefined && (
+                        <span className="flex items-center gap-0.5 font-mono text-[10px] text-gray-400">
+                          {selectedTech.liveTelemetry.batteryCharging ? (
+                            <BatteryCharging size={12} className="text-emerald-500" />
+                          ) : (
+                            <Battery size={12} className="text-gray-400" />
+                          )}
+                          {selectedTech.liveTelemetry.battery}%
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
 
                 {/* Acciones de Modo Foco */}
-                <div className="flex items-center gap-2 self-end md:self-auto shrink-0">
+                <div className="flex items-center gap-2 self-end md:self-auto shrink-0 flex-wrap">
+                  {/* Botón de aviso rápido al Cliente por WhatsApp */}
+                  {selectedTech.activeOrder && (
+                    <a
+                      href={generateWhatsAppTrackingUrl({
+                        phone: selectedTech.activeOrder.client?.phone || selectedTech.activeOrder.plant?.contact_phone || '',
+                        technicianName: selectedTech.name,
+                        clientName: selectedTech.activeOrder.client?.name || selectedTech.activeOrder.plant?.name || '',
+                        orderNumber: selectedTech.activeOrder.order_number,
+                        address: selectedTech.locationInfo?.address,
+                        distanceMeters: selectedTech.distanceMeters,
+                        etaMinutes: selectedTech.etaMinutes,
+                      })}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white flex items-center gap-1.5 shadow-xs transition-colors"
+                      title="Avisar llegada estimada al cliente por WhatsApp"
+                    >
+                      <Share2 size={12} />
+                      <span>Avisar WhatsApp</span>
+                    </a>
+                  )}
+
                   {selectedTech.activeOrder && (
                     <button
                       type="button"
@@ -796,6 +899,23 @@ export default function FleetRadarMap() {
                   </button>
                 </div>
               </div>
+
+              {/* Alerta de incidencia en ruta reportada por el técnico */}
+              {selectedTech.liveTelemetry?.incident && (
+                <div className="mt-1.5 bg-amber-50/90 dark:bg-amber-950/70 border border-amber-200 dark:border-amber-800/60 rounded-lg px-3 py-1.5 text-[11px] text-amber-800 dark:text-amber-300 flex items-center gap-2 shadow-xs">
+                  {selectedTech.liveTelemetry.incident === 'traffic' ? (
+                    <Car size={14} className="shrink-0 text-amber-600 dark:text-amber-400" />
+                  ) : (
+                    <Wrench size={14} className="shrink-0 text-red-500 dark:text-red-400" />
+                  )}
+                  <span>
+                    <strong>Incidencia reportada por el técnico:</strong>{' '}
+                    {selectedTech.liveTelemetry.incident === 'traffic'
+                      ? 'Demorado por congestión vehicular pesada en ruta.'
+                      : 'Reportó desperfecto técnico o mecánica en el vehículo.'}
+                  </span>
+                </div>
+              )}
 
               {/* Alerta sutil si no hay coordenadas exactas */}
               {selectedTech.activeOrder && !selectedTech.destCoords && (

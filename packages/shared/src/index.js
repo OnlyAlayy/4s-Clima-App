@@ -68,4 +68,10 @@ export {
   calculateDistance,
   formatDistance,
   searchAddressCoordinates,
+  calculateEtaMinutes,
+  formatEta,
+  calculateEstimatedArrival,
+  evaluateSchedulePunctuality,
+  isNearDestination,
+  generateWhatsAppTrackingUrl,
 } from './utils/index.js';

@@ -170,6 +170,8 @@ export default function WorkOrderPage() {
             orderId={wo.id}
             isActive={isTraveling}
             technicianName="Técnico"
+            destinationCoords={{ latitude: loc.latitude, longitude: loc.longitude }}
+            clientName={wo.client?.name || wo.plant?.name || ''}
             onLocationUpdate={(coords) => setTechLocation(coords)}
           />
 
