@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, ClipboardList, Building2, Users, DollarSign,
@@ -13,6 +14,7 @@ import { useDarkMode } from '../../hooks/useDarkMode';
 export default function Sidebar({ isCollapsed = false, toggleSidebar }) {
   const { user, profile, logout } = useAdminAuth();
   const { isDark, toggleDarkMode } = useDarkMode();
+  const [logoError, setLogoError] = useState(false);
 
   const isOwner = profile?.role === 'owner';
   const displayName = profile?.name || profile?.full_name || user?.email || 'Usuario';
@@ -56,11 +58,16 @@ export default function Sidebar({ isCollapsed = false, toggleSidebar }) {
         {isCollapsed ? (
           <>
             <div className="h-9 w-9 flex items-center justify-center flex-shrink-0" title="4S Clima - Panel Admin">
-              <img
-                src="/logo4sclima.webp"
-                alt="4S Clima Logo"
-                className="h-full w-auto object-contain brightness-0 invert"
-              />
+              {logoError ? (
+                <span className="font-black text-white text-base tracking-wider">4S</span>
+              ) : (
+                <img
+                  src="/logo4sclima.webp"
+                  alt="4S Clima"
+                  onError={() => setLogoError(true)}
+                  className="h-full w-auto object-contain brightness-0 invert"
+                />
+              )}
             </div>
             {toggleSidebar && (
               <button
@@ -76,11 +83,18 @@ export default function Sidebar({ isCollapsed = false, toggleSidebar }) {
           <>
             <div className="flex items-center gap-2.5 min-w-0">
               <div className="h-9 flex items-center justify-center flex-shrink-0">
-                <img
-                  src="/logo4sclima.webp"
-                  alt="4S Clima Logo"
-                  className="h-full w-auto object-contain brightness-0 invert"
-                />
+                {logoError ? (
+                  <span className="font-black text-white text-lg tracking-wider">
+                    4S <span className="text-brand-300 font-bold text-sm">CLIMA</span>
+                  </span>
+                ) : (
+                  <img
+                    src="/logo4sclima.webp"
+                    alt="4S Clima"
+                    onError={() => setLogoError(true)}
+                    className="h-full w-auto object-contain brightness-0 invert"
+                  />
+                )}
               </div>
               <div className="flex flex-col justify-center min-w-0">
                 <p className="text-blue-200 text-[11px] uppercase tracking-wider font-semibold border-l border-white/20 pl-2.5 truncate">
