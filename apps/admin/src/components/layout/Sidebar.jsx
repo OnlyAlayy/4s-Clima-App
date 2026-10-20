@@ -145,8 +145,8 @@ export default function Sidebar({ isCollapsed = false, toggleSidebar }) {
           >
             <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 shadow-sm transition-all ${
               isOwner
-                ? 'bg-gradient-to-tr from-amber-400 to-amber-200 text-amber-950 font-black ring-2 ring-amber-400/50'
-                : 'bg-white/20 text-white font-bold'
+                ? 'bg-brand-600 text-white font-bold border border-brand-400/40 shadow-sm'
+                : 'bg-white/10 text-white font-bold border border-white/15'
             }`}>
               <span className="text-xs">
                 {userInitial}
@@ -157,8 +157,8 @@ export default function Sidebar({ isCollapsed = false, toggleSidebar }) {
           <div className="flex items-center gap-3 px-3 py-2.5 mb-2 rounded-xl bg-white/5 border border-white/10">
             <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 shadow-sm transition-all ${
               isOwner
-                ? 'bg-gradient-to-tr from-amber-400 to-amber-200 text-amber-950 font-black ring-2 ring-amber-400/50'
-                : 'bg-gradient-to-br from-brand-500 to-brand-700 text-white font-bold'
+                ? 'bg-brand-600 text-white font-bold border border-brand-400/40 shadow-sm'
+                : 'bg-white/10 text-white font-bold border border-white/15'
             }`}>
               <span className="text-xs">
                 {userInitial}
@@ -170,13 +170,13 @@ export default function Sidebar({ isCollapsed = false, toggleSidebar }) {
               </p>
               {isOwner ? (
                 <div className="flex items-center gap-1 mt-1">
-                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-400/20 text-amber-300 border border-amber-400/40 tracking-tight">
-                    <ShieldCheck size={11} className="text-amber-300 shrink-0" />
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-brand-500/20 text-blue-200 border border-brand-400/30 tracking-tight">
+                    <ShieldCheck size={11} className="text-brand-300 shrink-0" />
                     Propietario (Owner)
                   </span>
                 </div>
               ) : (
-                <p className="text-blue-200 text-[11px] truncate font-medium mt-0.5">
+                <p className="text-blue-200/80 text-[11px] truncate font-medium mt-0.5">
                   Administrador
                 </p>
               )}
