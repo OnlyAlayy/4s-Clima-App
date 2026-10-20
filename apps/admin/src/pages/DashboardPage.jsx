@@ -10,6 +10,7 @@ import { supabase } from '@4s-clima/shared/supabase';
 import { WORK_ORDER_STATUS } from '@4s-clima/shared/constants';
 import { formatDate, formatCurrency, getStatusLabel, getStatusColor } from '@4s-clima/shared/utils';
 import { useDarkMode } from '../hooks/useDarkMode';
+import FleetRadarMap from '../components/FleetRadarMap';
 
 /**
  * Dashboard administrativo.
@@ -325,6 +326,9 @@ export default function DashboardPage() {
           </div>
         )}
       </div>
+
+      {/* Radar de Flota y Asignaciones en Vivo (Master-Detail con Modo Foco) */}
+      <FleetRadarMap />
     </div>
   );
 }
