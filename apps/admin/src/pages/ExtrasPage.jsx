@@ -1,7 +1,8 @@
 import { useEffect, useState, useMemo } from 'react';
 import {
   DollarSign, Check, AlertCircle, Calculator, BookOpen, Package,
-  Search, Copy, CheckCheck, RefreshCw, Layers, ShieldCheck, ArrowRight
+  Search, Copy, CheckCheck, RefreshCw, Layers, ShieldCheck, ArrowRight,
+  Sliders, TrendingUp, Save, RotateCcw, Sparkles, Percent, Wrench, ChevronDown, ChevronUp
 } from 'lucide-react';
 import { supabase } from '@4s-clima/shared/supabase';
 import { formatCurrency, formatDate } from '@4s-clima/shared/utils';
@@ -9,6 +10,14 @@ import {
   INSTALLATION_COMBOS_BY_CAPACITY,
   CATALOG_CATEGORIES,
   OFFICIAL_MATERIALS_CATALOG,
+  DEFAULT_PRICING_PARAMETERS,
+  buildCombosByCapacity,
+  buildMaterialsCatalog,
+  applyInflationAdjustment,
+  calculateCopperPipePrice,
+  calculateArmoredPipePrice,
+  calculateLaborPrice,
+  calculateUninstallationPrice,
   calculateComboBudget
 } from '@4s-clima/shared';
 
@@ -17,10 +26,26 @@ import {
  * Incluye:
  * 1. Cotizador interactivo por Frigorías (Hoja RESUMEN del Excel oficial).
  * 2. Catálogo completo de materiales e insumos oficiales (Hoja1 del Excel).
- * 3. Gestión y seguimiento de extras reportados por técnicos en órdenes de trabajo.
+ * 3. Motor Paramétrico y Ajuste contra la Inflación (Hoja1 viva de Walter).
+ * 4. Gestión y seguimiento de extras reportados por técnicos en órdenes de trabajo.
  */
 export default function ExtrasPage() {
-  const [activeTab, setActiveTab] = useState('cotizador'); // 'cotizador' | 'catalogo' | 'reportados'
+  const [activeTab, setActiveTab] = useState('cotizador'); // 'cotizador' | 'catalogo' | 'parametros' | 'reportados'
+
+  // --- Estado para Motor Dinámico e Inflación (Hoja 1) ---
+  const [pricingParams, setPricingParams] = useState(() => {
+    try {
+      const saved = localStorage.getItem('4s_pricing_parameters');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.warn('Error reading saved pricing parameters:', e);
+    }
+    return DEFAULT_PRICING_PARAMETERS;
+  });
+  const [isSavingParams, setIsSavingParams] = useState(false);
+  const [saveFeedback, setSaveFeedback] = useState('');
+  const [inflationInput, setInflationInput] = useState('');
+  const [supplierSection, setSupplierSection] = useState('copper'); // 'copper' | 'labor' | 'insulation' | 'hoses' | 'cables' | 'brackets'
 
   // --- Estado para Pestaña 1: Cotizador por Frigorías ---
   const [selectedCapacity, setSelectedCapacity] = useState('3000');
@@ -39,10 +64,33 @@ export default function ExtrasPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
 
-  // --- Estado para Pestaña 3: Extras Reportados en OTs ---
+  // --- Estado para Pestaña 4: Extras Reportados en OTs ---
   const [extras, setExtras] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [filter, setFilter] = useState('unbilled'); // 'all' | 'unbilled' | 'billed'
+
+  // Cargar parámetros remotos de Supabase si existen
+  useEffect(() => {
+    async function fetchRemoteParams() {
+      try {
+        const { data } = await supabase
+          .from('pricing_parameters')
+          .select('parameters')
+          .eq('id', 'default')
+          .maybeSingle();
+
+        if (data?.parameters) {
+          setPricingParams(data.parameters);
+          try {
+            localStorage.setItem('4s_pricing_parameters', JSON.stringify(data.parameters));
+          } catch (e) {}
+        }
+      } catch (err) {
+        // Fallback en localStorage
+      }
+    }
+    fetchRemoteParams();
+  }, []);
 
   useEffect(() => {
     loadExtras();
@@ -106,10 +154,19 @@ export default function ExtrasPage() {
     .filter((e) => !e.billed)
     .reduce((sum, e) => sum + (e.quantity || 0) * (e.unit_price || 0), 0);
 
+  // --- Generación Dinámica en base a los Parámetros Vivos de Hoja 1 ---
+  const dynamicCombos = useMemo(() => {
+    return buildCombosByCapacity(pricingParams);
+  }, [pricingParams]);
+
+  const dynamicCatalog = useMemo(() => {
+    return buildMaterialsCatalog(pricingParams);
+  }, [pricingParams]);
+
   // Cálculo en vivo del presupuesto (Hoja RESUMEN)
   const budget = useMemo(() => {
-    return calculateComboBudget(selectedCapacity, quantities);
-  }, [selectedCapacity, quantities]);
+    return calculateComboBudget(selectedCapacity, quantities, dynamicCombos);
+  }, [selectedCapacity, quantities, dynamicCombos]);
 
   const handleQuantityChange = (key, val) => {
     const num = Math.max(0, parseFloat(val) || 0);
@@ -118,14 +175,14 @@ export default function ExtrasPage() {
 
   const handleCopyBudget = () => {
     const textLines = [
-      `*COTIZACIÓN OFICIAL 4S CLIMA*`,
-      `*Capacidad:* ${budget.combo.label} (${budget.combo.pipeSpecs})`,
+      `*PRESUPUESTO OFICIAL DE INSTALACIÓN — 4S CLIMA*`,
+      `*Equipo:* ${budget.capacityLabel} (${budget.pipeSpecs})`,
       `---------------------------------------`,
-      ...budget.lines
-        .filter((l) => l.quantity > 0)
+      ...budget.lineItems
+        .filter((it) => it.quantity > 0)
         .map(
-          (l) =>
-            `• ${l.label}: ${l.quantity} ${l.unit} x ${formatCurrency(l.unitPrice)} = ${formatCurrency(l.totalNeto)}`
+          (it) =>
+            `• ${it.label}: ${it.quantity} ${it.unit} x ${formatCurrency(it.unitPrice)} = ${formatCurrency(it.subtotalNeto)}`
         ),
       `---------------------------------------`,
       `*Subtotal Neto:* ${formatCurrency(budget.subtotalNeto)}`,
@@ -140,7 +197,7 @@ export default function ExtrasPage() {
 
   // Filtrado de materiales en la Pestaña 2
   const filteredCatalog = useMemo(() => {
-    return OFFICIAL_MATERIALS_CATALOG.filter((item) => {
+    return dynamicCatalog.filter((item) => {
       const matchCategory = selectedCategory === 'all' || item.category === selectedCategory;
       const matchSearch =
         searchTerm === '' ||
@@ -149,7 +206,70 @@ export default function ExtrasPage() {
         (item.keywords && item.keywords.some((k) => k.toLowerCase().includes(searchTerm.toLowerCase())));
       return matchCategory && matchSearch;
     });
-  }, [searchTerm, selectedCategory]);
+  }, [dynamicCatalog, searchTerm, selectedCategory]);
+
+  // --- Handlers para el Motor de Parámetros e Inflación ---
+  const handleSaveParameters = async () => {
+    setIsSavingParams(true);
+    setSaveFeedback('');
+    try {
+      localStorage.setItem('4s_pricing_parameters', JSON.stringify(pricingParams));
+
+      try {
+        await supabase
+          .from('pricing_parameters')
+          .upsert({
+            id: 'default',
+            parameters: pricingParams,
+            updated_at: new Date().toISOString(),
+          });
+      } catch (e) {
+        console.warn('Supabase sync optional:', e);
+      }
+
+      setSaveFeedback('¡Tarifario y Parámetros sincronizados exitosamente!');
+      setTimeout(() => setSaveFeedback(''), 4000);
+    } catch (err) {
+      console.error('Error saving parameters:', err);
+    } finally {
+      setIsSavingParams(false);
+    }
+  };
+
+  const handleApplyInflation = (customPct) => {
+    const rawVal = customPct !== undefined ? customPct : inflationInput;
+    const pct = parseFloat(rawVal);
+    if (isNaN(pct) || pct === 0) {
+      alert('Por favor ingresá un porcentaje válido de aumento (ej. 8 para +8%)');
+      return;
+    }
+
+    if (window.confirm(`¿Confirmás aplicar un ajuste por inflación del ${pct > 0 ? '+' : ''}${pct}% a todos los insumos base y mano de obra?`)) {
+      const updated = applyInflationAdjustment(pricingParams, pct);
+      setPricingParams(updated);
+      try {
+        localStorage.setItem('4s_pricing_parameters', JSON.stringify(updated));
+      } catch (e) {}
+      setInflationInput('');
+      setSaveFeedback(`¡Aumento del ${pct}% aplicado a todos los costos base!`);
+      setTimeout(() => setSaveFeedback(''), 4000);
+    }
+  };
+
+  const handleResetToFactoryDefaults = () => {
+    if (window.confirm('¿Restablecer todos los costos y parámetros a los valores oficiales de fábrica de SEP 26?')) {
+      setPricingParams(DEFAULT_PRICING_PARAMETERS);
+      try {
+        localStorage.setItem('4s_pricing_parameters', JSON.stringify(DEFAULT_PRICING_PARAMETERS));
+      } catch (e) {}
+      setSaveFeedback('Valores oficiales de SEP 26 restablecidos.');
+      setTimeout(() => setSaveFeedback(''), 4000);
+    }
+  };
+
+  const isCustomized = useMemo(() => {
+    return JSON.stringify(pricingParams) !== JSON.stringify(DEFAULT_PRICING_PARAMETERS);
+  }, [pricingParams]);
 
   return (
     <div className="space-y-6">
@@ -160,48 +280,64 @@ export default function ExtrasPage() {
             <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-brand-50 text-brand-700 dark:bg-brand-900/40 dark:text-brand-300 border border-brand-200 dark:border-brand-800">
               Tarifario Oficial SEP 26
             </span>
+            {isCustomized && (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 border border-amber-200 dark:border-amber-800 flex items-center gap-1">
+                <Sparkles size={11} /> Ajuste Inflación Activo
+              </span>
+            )}
           </div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
-            Catálogo de Extras y Cotizador
+            Catálogo de Extras, Cotizador y Motor de Inflación
           </h1>
           <p className="text-gray-500 dark:text-gray-400 text-sm">
-            Costos de instalación de cañería, insumos por metro y gestión de repuestos utilizados
+            Fórmulas vivas de Hoja 1 de Walter: costos de insumos, márgenes de ganancia (GM) y actualización contra la inflación
           </p>
         </div>
 
         {/* Selector de Pestañas */}
-        <div className="flex bg-gray-100 dark:bg-slate-800 p-1 rounded-xl self-start sm:self-auto border border-gray-200 dark:border-slate-700">
+        <div className="flex flex-wrap bg-gray-100 dark:bg-slate-800 p-1 rounded-xl self-start sm:self-auto border border-gray-200 dark:border-slate-700">
           <button
             onClick={() => setActiveTab('cotizador')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all
               ${activeTab === 'cotizador'
                 ? 'bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-sm'
                 : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
               }`}
           >
-            <Calculator size={15} />
+            <Calculator size={14} />
             Cotizador por Frigorías
           </button>
           <button
             onClick={() => setActiveTab('catalogo')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all
               ${activeTab === 'catalogo'
                 ? 'bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-sm'
                 : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
               }`}
           >
-            <BookOpen size={15} />
-            Catálogo Oficial ({OFFICIAL_MATERIALS_CATALOG.length})
+            <BookOpen size={14} />
+            Catálogo ({dynamicCatalog.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('parametros')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all
+              ${activeTab === 'parametros'
+                ? 'bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-sm'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+              }`}
+          >
+            <Sliders size={14} />
+            Parámetros e Inflación (Hoja 1)
           </button>
           <button
             onClick={() => setActiveTab('reportados')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all relative
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all relative
               ${activeTab === 'reportados'
                 ? 'bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-sm'
                 : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
               }`}
           >
-            <Package size={15} />
+            <Package size={14} />
             Reportados por Técnicos
             {extras.filter((e) => !e.billed).length > 0 && (
               <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
@@ -217,96 +353,114 @@ export default function ExtrasPage() {
         <div className="space-y-6 animate-fade-in">
           {/* Selector de Capacidad */}
           <div className="card p-5">
-            <label className="block text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-3">
-              Seleccionar Capacidad del Equipo (Frigorías / Hora)
-            </label>
+            <div className="flex items-center justify-between mb-3">
+              <label className="block text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                Seleccionar Capacidad del Equipo (Frigorías / Hora)
+              </label>
+              {isCustomized && (
+                <span className="text-xs text-brand-600 dark:text-brand-400 font-semibold flex items-center gap-1">
+                  <TrendingUp size={13} /> Precios recalculados con motor de inflación
+                </span>
+              )}
+            </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
-              {Object.entries(INSTALLATION_COMBOS_BY_CAPACITY).map(([key, combo]) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setSelectedCapacity(key)}
-                  className={`p-3 rounded-xl border text-left transition-all relative
-                    ${selectedCapacity === key
-                      ? 'bg-brand-50/80 dark:bg-brand-950/40 border-brand-500 ring-2 ring-brand-500/20 text-brand-900 dark:text-brand-200 shadow-sm font-bold'
-                      : 'bg-white dark:bg-slate-900 border-gray-200 dark:border-slate-800 text-gray-700 dark:text-gray-300 hover:border-brand-300'
-                    }`}
-                >
-                  <span className="text-sm block">{combo.label}</span>
-                  <span className="text-[11px] text-gray-500 dark:text-gray-400 font-mono block mt-0.5">
-                    {combo.pipeSpecs}
-                  </span>
-                  {selectedCapacity === key && (
-                    <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-brand-500" />
-                  )}
-                </button>
-              ))}
+              {Object.keys(dynamicCombos).map((capKey) => {
+                const combo = dynamicCombos[capKey];
+                const isSelected = selectedCapacity === capKey;
+                return (
+                  <button
+                    key={capKey}
+                    type="button"
+                    onClick={() => setSelectedCapacity(capKey)}
+                    className={`p-3 rounded-xl border text-left transition-all relative
+                      ${isSelected
+                        ? 'bg-brand-50/80 dark:bg-brand-900/30 border-brand-500 text-brand-900 dark:text-brand-100 shadow-sm ring-1 ring-brand-500'
+                        : 'bg-white dark:bg-slate-800/80 border-gray-200 dark:border-slate-700 hover:border-gray-300 text-gray-700 dark:text-gray-300'
+                      }`}
+                  >
+                    <div className="font-bold text-sm text-gray-900 dark:text-white">
+                      {combo.label}
+                    </div>
+                    <div className="text-[11px] text-gray-500 dark:text-gray-400 font-mono mt-0.5">
+                      {combo.pipeSpecs}
+                    </div>
+                    {isSelected && (
+                      <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-brand-500" />
+                    )}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
-          {/* Tarjetas KPI de Resumen Económico */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="card p-5 bg-gradient-to-br from-slate-50 to-white dark:from-slate-900 dark:to-slate-800/80 border-slate-200 dark:border-slate-700">
-              <span className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+          {/* Tarjetas de Resumen Financiero */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="card p-5 bg-gradient-to-br from-white to-gray-50 dark:from-slate-800 dark:to-slate-900">
+              <span className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 block mb-1">
                 Subtotal Neto (PRECIO + IVA)
               </span>
-              <p className="text-2xl font-black text-gray-900 dark:text-white mt-1">
+              <div className="text-2xl font-black text-gray-900 dark:text-white font-mono">
                 {formatCurrency(budget.subtotalNeto)}
-              </p>
-              <span className="text-[11px] text-gray-400">Base imponible sin impuestos</span>
+              </div>
+              <span className="text-[11px] text-gray-400 mt-1 block">
+                Base imponible sin impuestos
+              </span>
             </div>
 
-            <div className="card p-5 bg-gradient-to-br from-indigo-50/40 to-white dark:from-indigo-950/20 dark:to-slate-800/80 border-indigo-200/60 dark:border-indigo-900/40">
-              <span className="text-xs font-semibold uppercase tracking-wider text-indigo-700 dark:text-indigo-400">
+            <div className="card p-5 bg-gradient-to-br from-white to-gray-50 dark:from-slate-800 dark:to-slate-900">
+              <span className="text-xs font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 block mb-1">
                 IVA (21% Factura A)
               </span>
-              <p className="text-2xl font-black text-indigo-600 dark:text-indigo-400 mt-1">
+              <div className="text-2xl font-black text-indigo-600 dark:text-indigo-400 font-mono">
                 {formatCurrency(budget.ivaAmount)}
-              </p>
-              <span className="text-[11px] text-indigo-500/70">Alícuota general de servicios</span>
+              </div>
+              <span className="text-[11px] text-gray-400 mt-1 block">
+                Alícuota general de servicios
+              </span>
             </div>
 
-            <div className="card p-5 bg-gradient-to-br from-emerald-50 to-white dark:from-emerald-950/30 dark:to-slate-800/80 border-emerald-300 dark:border-emerald-800/60">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-300">
-                  Total Final con IVA
-                </span>
-                <button
-                  type="button"
-                  onClick={handleCopyBudget}
-                  className="text-xs px-2.5 py-1 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200 font-bold flex items-center gap-1 transition-all"
-                  title="Copiar desglose"
-                >
-                  {copiedQuote ? <CheckCheck size={13} /> : <Copy size={13} />}
-                  {copiedQuote ? 'Copiado!' : 'Copiar'}
-                </button>
+            <div className="card p-5 bg-gradient-to-br from-emerald-500/10 to-emerald-500/5 border-emerald-500/30 flex flex-col justify-between">
+              <div>
+                <div className="flex justify-between items-center mb-1">
+                  <span className="text-xs font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
+                    Total Final con IVA
+                  </span>
+                  <button
+                    onClick={handleCopyBudget}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white transition-colors shadow-xs"
+                    title="Copiar cotización para WhatsApp"
+                  >
+                    {copiedQuote ? <CheckCheck size={13} /> : <Copy size={13} />}
+                    {copiedQuote ? '¡Copiado!' : 'Copiar'}
+                  </button>
+                </div>
+                <div className="text-3xl font-black text-emerald-600 dark:text-emerald-400 font-mono">
+                  {formatCurrency(budget.totalConIva)}
+                </div>
               </div>
-              <p className="text-2xl font-black text-emerald-700 dark:text-emerald-400 mt-1">
-                {formatCurrency(budget.totalConIva)}
-              </p>
-              <span className="text-[11px] text-emerald-600/80 dark:text-emerald-400/80">
+              <span className="text-[11px] text-emerald-600/80 dark:text-emerald-400/80 mt-2 block font-medium">
                 Monto facturable al cliente
               </span>
             </div>
           </div>
 
-          {/* Tabla Interactiva de Cálculo */}
-          <div className="card p-0 overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-100 dark:border-slate-800 bg-gray-50/50 dark:bg-slate-800/50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          {/* Tabla de Desglose Exacta de la Hoja RESUMEN */}
+          <div className="card overflow-hidden">
+            <div className="p-4 border-b border-gray-100 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
               <div>
-                <h3 className="font-bold text-gray-900 dark:text-white text-base">
-                  Desglose de Materiales e Instalación — {budget.combo.label}
+                <h3 className="font-bold text-gray-900 dark:text-white text-sm">
+                  Desglose de Materiales e Instalación — {budget.capacityLabel}
                 </h3>
                 <p className="text-xs text-gray-500 dark:text-gray-400">
                   Ajustá las cantidades necesarias para recalcular en tiempo real
                 </p>
               </div>
-              <div className="text-xs font-semibold px-3 py-1 rounded-lg bg-brand-50 text-brand-700 dark:bg-brand-950/60 dark:text-brand-300 border border-brand-200 dark:border-brand-800">
-                Cañería sugerida: {budget.combo.pipeSpecs}
-              </div>
+              <span className="text-xs font-mono px-2.5 py-1 rounded-md bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 font-semibold self-start sm:self-auto">
+                Cañería sugerida: {budget.pipeSpecs}
+              </span>
             </div>
 
-            <div className="table-container border-0">
+            <div className="table-container">
               <table>
                 <thead>
                   <tr>
@@ -315,150 +469,135 @@ export default function ExtrasPage() {
                     <th className="w-28 text-center">Cantidad</th>
                     <th className="text-right">Precio Unit. (Neto)</th>
                     <th className="text-right">Subtotal Neto</th>
-                    <th className="text-right text-emerald-600 dark:text-emerald-400 font-bold">Total c/IVA (x1.21)</th>
+                    <th className="text-right">Total c/IVA (x1.21)</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {budget.lines.map((line) => {
-                    const quantityMapKey = {
-                      pipeMeter: 'pipeMeters',
-                      bracket: 'brackets',
-                      bracketLegs: 'bracketLegs',
-                      floorLegs: 'floorLegs',
-                      fixingKit: 'fixingKits',
-                      installationLabor: 'installationLabor',
-                      uninstallationLabor: 'uninstallation',
-                    }[line.key];
+                  {budget.lineItems.map((item) => {
+                    let qtyKey = 'pipeMeters';
+                    if (item.key === 'bracket') qtyKey = 'brackets';
+                    else if (item.key === 'bracketLegs') qtyKey = 'bracketLegs';
+                    else if (item.key === 'floorLegs') qtyKey = 'floorLegs';
+                    else if (item.key === 'fixingKit') qtyKey = 'fixingKits';
+                    else if (item.key === 'installationLabor') qtyKey = 'installationLabor';
+                    else if (item.key === 'uninstallationLabor') qtyKey = 'uninstallation';
 
                     return (
-                      <tr key={line.key} className={line.quantity > 0 ? 'bg-brand-50/20 dark:bg-brand-950/10' : ''}>
-                        <td className="font-medium text-gray-900 dark:text-white">
-                          {line.label}
+                      <tr key={item.key}>
+                        <td className="font-medium text-gray-900 dark:text-white text-sm">
+                          {item.label}
                         </td>
-                        <td className="text-gray-500 text-xs uppercase font-mono">
-                          {line.unit}
+                        <td className="text-xs text-gray-500 uppercase font-mono">
+                          {item.unit}
                         </td>
-                        <td>
+                        <td className="text-center">
                           <input
                             type="number"
                             min="0"
-                            step={line.unit === 'metro' ? '0.5' : '1'}
-                            value={quantities[quantityMapKey] ?? ''}
-                            onChange={(e) => handleQuantityChange(quantityMapKey, e.target.value)}
-                            className="w-24 px-2 py-1.5 text-center text-sm font-bold bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 text-gray-900 dark:text-white"
+                            step="1"
+                            value={quantities[qtyKey]}
+                            onChange={(e) => handleQuantityChange(qtyKey, e.target.value)}
+                            className="w-18 px-2 py-1 text-center font-bold text-sm bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500"
                           />
                         </td>
-                        <td className="text-right text-sm text-gray-600 dark:text-gray-300 font-mono">
-                          {formatCurrency(line.unitPrice)}
+                        <td className="text-right font-mono text-sm text-gray-600 dark:text-gray-300">
+                          {formatCurrency(item.unitPrice)}
                         </td>
-                        <td className="text-right text-sm font-semibold text-gray-900 dark:text-white font-mono">
-                          {formatCurrency(line.totalNeto)}
+                        <td className="text-right font-mono text-sm font-semibold text-gray-900 dark:text-white">
+                          {formatCurrency(item.subtotalNeto)}
                         </td>
-                        <td className="text-right text-sm font-bold text-emerald-700 dark:text-emerald-400 font-mono">
-                          {formatCurrency(line.totalIva)}
+                        <td className="text-right font-mono text-sm font-bold text-emerald-600 dark:text-emerald-400">
+                          {formatCurrency(item.subtotalNeto * 1.21)}
                         </td>
                       </tr>
                     );
                   })}
                 </tbody>
-                <tfoot>
-                  <tr className="bg-gray-50 dark:bg-slate-800/80 font-bold text-sm">
-                    <td colSpan="4" className="text-right text-gray-700 dark:text-gray-300">
-                      TOTALES GENERALES:
-                    </td>
-                    <td className="text-right text-gray-900 dark:text-white font-mono">
-                      {formatCurrency(budget.subtotalNeto)}
-                    </td>
-                    <td className="text-right text-emerald-600 dark:text-emerald-400 font-mono text-base font-black">
-                      {formatCurrency(budget.totalConIva)}
-                    </td>
-                  </tr>
-                </tfoot>
               </table>
             </div>
           </div>
         </div>
       )}
 
-      {/* ======================================================== */}
-      {/* PESTAÑA 2: CATÁLOGO OFICIAL DE MATERIALES (HOJA1 EXCEL)  */}
-      {/* ======================================================== */}
+      {/* ========================================================================= */}
+      {/* PESTAÑA 2: CATÁLOGO OFICIAL COMPLETO (HOJA 1 CON PRECIOS DINÁMICOS)      */}
+      {/* ========================================================================= */}
       {activeTab === 'catalogo' && (
         <div className="space-y-4 animate-fade-in">
-          {/* Filtros y Búsqueda */}
-          <div className="card p-4 flex flex-col md:flex-row gap-3 items-center justify-between">
-            <div className="relative w-full md:w-80">
+          {/* Barra de Filtros */}
+          <div className="card p-4 flex flex-col sm:flex-row gap-3">
+            <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
               <input
                 type="text"
-                placeholder="Buscar por caño, aislación, medida..."
+                placeholder="Buscar por nombre, medida (1/4, 3/8, 5/8...) o categoría..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="input pl-9 text-sm"
+                className="w-full pl-9 pr-4 py-2 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500"
               />
             </div>
-
-            <div className="flex gap-2 flex-wrap w-full md:w-auto">
-              <select
-                className="select text-xs"
-                value={selectedCategory}
-                onChange={(e) => setSelectedCategory(e.target.value)}
-              >
-                <option value="all">Todas las Categorías ({OFFICIAL_MATERIALS_CATALOG.length})</option>
-                {Object.values(CATALOG_CATEGORIES).map((cat) => (
-                  <option key={cat} value={cat}>
-                    {cat}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <select
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value)}
+              className="px-3 py-2 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500"
+            >
+              <option value="all">Todas las Categorías ({dynamicCatalog.length})</option>
+              {Object.values(CATALOG_CATEGORIES).map((cat) => (
+                <option key={cat} value={cat}>{cat}</option>
+              ))}
+            </select>
           </div>
 
-          {/* Tabla de Catálogo */}
-          <div className="card p-0 overflow-hidden">
-            <div className="table-container border-0">
+          {/* Tabla de Catálogo Oficial */}
+          <div className="card overflow-hidden">
+            <div className="table-container">
               <table>
                 <thead>
                   <tr>
-                    <th>Material / Insumo</th>
                     <th>Categoría</th>
+                    <th>Material / Servicio</th>
                     <th>Unidad</th>
-                    <th className="text-right">Precio Neto (+ IVA)</th>
-                    <th className="text-right text-emerald-600 dark:text-emerald-400 font-bold">Precio Final c/IVA (21%)</th>
+                    <th className="text-right">Precio Neto (Sin IVA)</th>
+                    <th className="text-right">IVA (21%)</th>
+                    <th className="text-right">Precio Final c/IVA</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredCatalog.length === 0 ? (
+                  {filteredCatalog.map((item) => {
+                    const iva = Number((item.netPrice * 0.21).toFixed(2));
+                    const total = Number((item.netPrice + iva).toFixed(2));
+
+                    return (
+                      <tr key={item.id}>
+                        <td>
+                          <span className="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-gray-100 text-gray-700 dark:bg-slate-800 dark:text-gray-300">
+                            {item.category}
+                          </span>
+                        </td>
+                        <td className="font-medium text-gray-900 dark:text-white text-sm">
+                          {item.name}
+                        </td>
+                        <td className="text-xs text-gray-500 uppercase font-mono">
+                          {item.unit}
+                        </td>
+                        <td className="text-right font-mono text-sm font-semibold text-gray-900 dark:text-white">
+                          {formatCurrency(item.netPrice)}
+                        </td>
+                        <td className="text-right font-mono text-xs text-indigo-600 dark:text-indigo-400">
+                          {formatCurrency(iva)}
+                        </td>
+                        <td className="text-right font-mono text-sm font-bold text-emerald-600 dark:text-emerald-400">
+                          {formatCurrency(total)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {filteredCatalog.length === 0 && (
                     <tr>
-                      <td colSpan="5" className="text-center py-8 text-gray-400">
-                        No se encontraron materiales que coincidan con la búsqueda.
+                      <td colSpan={6} className="text-center py-8 text-gray-400">
+                        No se encontraron ítems en el catálogo con los filtros aplicados.
                       </td>
                     </tr>
-                  ) : (
-                    filteredCatalog.map((item) => {
-                      const finalWithIva = Number((item.netPrice * 1.21).toFixed(2));
-                      return (
-                        <tr key={item.id}>
-                          <td className="font-semibold text-gray-900 dark:text-white">
-                            {item.name}
-                          </td>
-                          <td>
-                            <span className="badge bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 text-[10px]">
-                              {item.category}
-                            </span>
-                          </td>
-                          <td className="text-gray-500 font-mono text-xs uppercase">
-                            {item.unit}
-                          </td>
-                          <td className="text-right font-mono text-sm font-semibold text-gray-900 dark:text-white">
-                            {formatCurrency(item.netPrice)}
-                          </td>
-                          <td className="text-right font-mono text-sm font-bold text-emerald-600 dark:text-emerald-400">
-                            {formatCurrency(finalWithIva)}
-                          </td>
-                        </tr>
-                      );
-                    })
                   )}
                 </tbody>
               </table>
@@ -467,86 +606,548 @@ export default function ExtrasPage() {
         </div>
       )}
 
-      {/* ======================================================== */}
-      {/* PESTAÑA 3: REPORTADOS POR TÉCNICOS EN LA CALLE           */}
-      {/* ======================================================== */}
-      {activeTab === 'reportados' && (
+      {/* ========================================================================= */}
+      {/* PESTAÑA 3: PARÁMETROS DE COSTOS E INFLACIÓN (HOJA 1 VIVA DE WALTER)       */}
+      {/* ========================================================================= */}
+      {activeTab === 'parametros' && (
         <div className="space-y-6 animate-fade-in">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-lg font-bold text-gray-900 dark:text-white">
-                Adicionales y Repuestos de Órdenes
-              </h2>
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                Materiales cargados desde la PWA por los técnicos en campo
-              </p>
+          {/* Banner de Ajuste Masivo por Inflación */}
+          <div className="card p-5 bg-gradient-to-r from-brand-500/10 via-indigo-500/10 to-purple-500/10 border-brand-500/30">
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <TrendingUp className="text-brand-600 dark:text-brand-400" size={20} />
+                  <h3 className="font-bold text-base text-gray-900 dark:text-white">
+                    Ajuste Rápido contra la Inflación de Proveedores (Bellini / Reld / Cobre)
+                  </h3>
+                </div>
+                <p className="text-xs text-gray-600 dark:text-gray-300 mt-1 max-w-2xl">
+                  Ingresá el porcentaje de aumento para recalcular en cascada el precio del cobre, todas las aislaciones, mangueras, cables y mano de obra al instante.
+                </p>
+              </div>
+
+              {/* Botonera de Inflación */}
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl overflow-hidden shadow-xs">
+                  <span className="px-2.5 text-xs font-bold text-gray-400">%</span>
+                  <input
+                    type="number"
+                    step="0.5"
+                    placeholder="Ej: 8"
+                    value={inflationInput}
+                    onChange={(e) => setInflationInput(e.target.value)}
+                    className="w-20 py-2 pr-2 text-sm font-bold text-gray-900 dark:text-white bg-transparent focus:outline-none"
+                    onKeyDown={(e) => e.key === 'Enter' && handleApplyInflation()}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleApplyInflation()}
+                    className="px-3.5 py-2 text-xs font-bold bg-brand-600 hover:bg-brand-700 text-white transition-colors"
+                  >
+                    Aplicar Aumento
+                  </button>
+                </div>
+
+                {/* Presets rápidos */}
+                <div className="hidden sm:flex items-center gap-1">
+                  {[5, 8, 10, 15].map((pct) => (
+                    <button
+                      key={pct}
+                      type="button"
+                      onClick={() => handleApplyInflation(pct)}
+                      className="px-2.5 py-1.5 text-xs font-bold rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-700 dark:text-gray-300 hover:border-brand-500 hover:text-brand-600"
+                    >
+                      +{pct}%
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
-            {filter === 'unbilled' && extras.some((e) => !e.billed) && (
-              <button onClick={markAllAsBilled} className="btn-primary text-xs">
-                <Check size={14} />
-                Marcar todos como facturados
-              </button>
-            )}
+
+            {/* Acciones de Sincronización y Feedback */}
+            <div className="mt-4 pt-3 border-t border-gray-200/60 dark:border-slate-700/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleSaveParameters}
+                  disabled={isSavingParams}
+                  className="btn-primary text-xs px-4 py-2 flex items-center gap-1.5 bg-brand-600 hover:bg-brand-700 text-white"
+                >
+                  <Save size={14} />
+                  {isSavingParams ? 'Guardando...' : 'Guardar y Sincronizar Tarifario'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleResetToFactoryDefaults}
+                  className="btn-secondary text-xs px-3 py-2 flex items-center gap-1 text-gray-600 dark:text-gray-300"
+                  title="Volver a los costos oficiales del Excel SEP 26"
+                >
+                  <RotateCcw size={13} />
+                  Valores SEP 26
+                </button>
+              </div>
+
+              {saveFeedback && (
+                <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5 animate-fade-in">
+                  <Check size={14} />
+                  {saveFeedback}
+                </span>
+              )}
+            </div>
           </div>
 
-          {/* Banner de alerta si hay fugas sin facturar */}
-          {totalUnbilled > 0 && (
-            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/30 rounded-2xl p-4 flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-red-100 dark:bg-red-900/50 flex items-center justify-center flex-shrink-0">
-                <AlertCircle size={20} className="text-red-500 dark:text-red-400" />
+          {/* Grilla de Variables Maestras (Cobre y Márgenes GM) */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            {/* Cobre por Kg */}
+            <div className="card p-4 space-y-2">
+              <span className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 block">
+                Precio Cobre x Kg (Base)
+              </span>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                <input
+                  type="number"
+                  step="500"
+                  value={pricingParams.copperPricePerKg}
+                  onChange={(e) =>
+                    setPricingParams({ ...pricingParams, copperPricePerKg: parseFloat(e.target.value) || 0 })
+                  }
+                  className="w-full pl-8 pr-3 py-1.5 font-bold font-mono text-sm bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-brand-500"
+                />
               </div>
-              <div>
-                <p className="font-semibold text-red-800 dark:text-red-300">
-                  {formatCurrency(totalUnbilled)} en extras sin facturar
-                </p>
-                <p className="text-red-600 dark:text-red-400/80 text-sm">
-                  Facturá estos adicionales antes de que queden en el olvido.
-                </p>
+              <div className="flex justify-between items-center text-[11px] text-gray-500 pt-1">
+                <span>Dto: {(pricingParams.copperDiscount * 100).toFixed(0)}%</span>
+                <span className="font-semibold text-emerald-600 dark:text-emerald-400 font-mono">
+                  Neto: ${((pricingParams.copperPricePerKg * (1 - pricingParams.copperDiscount))).toLocaleString('es-AR')}/kg
+                </span>
               </div>
             </div>
-          )}
 
-          {/* Filtros */}
+            {/* Descuento Proveedor Cobre */}
+            <div className="card p-4 space-y-2">
+              <span className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 block">
+                % Descuento Proveedor Cobre
+              </span>
+              <div className="relative">
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">%</span>
+                <input
+                  type="number"
+                  step="1"
+                  min="0"
+                  max="100"
+                  value={pricingParams.copperDiscount * 100}
+                  onChange={(e) =>
+                    setPricingParams({ ...pricingParams, copperDiscount: (parseFloat(e.target.value) || 0) / 100 })
+                  }
+                  className="w-full pl-3 pr-8 py-1.5 font-bold font-mono text-sm bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-brand-500"
+                />
+              </div>
+              <span className="text-[11px] text-gray-400 block pt-1">
+                Celda C2 del Excel (10% comercial)
+              </span>
+            </div>
+
+            {/* Margen GM Cañería Armada */}
+            <div className="card p-4 space-y-2">
+              <span className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 block">
+                GM Cañería (Multiplicador T16)
+              </span>
+              <div className="relative">
+                <input
+                  type="number"
+                  step="0.05"
+                  value={pricingParams.pipeMarginGM}
+                  onChange={(e) =>
+                    setPricingParams({ ...pricingParams, pipeMarginGM: parseFloat(e.target.value) || 0 })
+                  }
+                  className="w-full px-3 py-1.5 font-bold font-mono text-sm bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-brand-500"
+                />
+              </div>
+              <div className="flex justify-between items-center text-[11px] text-gray-500 pt-1">
+                <span>Margen: {((pricingParams.pipeMarginGM - 1) * 100).toFixed(0)}%</span>
+                <span>Desperdicio: {(pricingParams.wasteFactor * 100).toFixed(0)}%</span>
+              </div>
+            </div>
+
+            {/* Margen GM Mano de Obra */}
+            <div className="card p-4 space-y-2">
+              <span className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 block">
+                GM Mano de Obra (Celda Z16)
+              </span>
+              <div className="relative">
+                <input
+                  type="number"
+                  step="0.05"
+                  value={pricingParams.laborMarginGM}
+                  onChange={(e) =>
+                    setPricingParams({ ...pricingParams, laborMarginGM: parseFloat(e.target.value) || 0 })
+                  }
+                  className="w-full px-3 py-1.5 font-bold font-mono text-sm bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-brand-500"
+                />
+              </div>
+              <span className="text-[11px] text-gray-400 block pt-1">
+                Margen venta sobre instalador: {((pricingParams.laborMarginGM - 1) * 100).toFixed(0)}%
+              </span>
+            </div>
+          </div>
+
+          {/* Subnavegación de Insumos Detallados */}
+          <div className="card overflow-hidden">
+            <div className="flex border-b border-gray-100 dark:border-slate-800 bg-gray-50/50 dark:bg-slate-800/40 p-2 gap-1 overflow-x-auto">
+              {[
+                { id: 'copper', label: 'Caños de Cobre (Rollo 15m)' },
+                { id: 'labor', label: 'Mano de Obra Base' },
+                { id: 'insulation', label: 'Aislaciones Bellini' },
+                { id: 'hoses', label: 'Mangueras Reld' },
+                { id: 'cables', label: 'Cables y Cintas Reld' },
+                { id: 'brackets', label: 'Ménsulas y Fijaciones' },
+              ].map((sec) => (
+                <button
+                  key={sec.id}
+                  type="button"
+                  onClick={() => setSupplierSection(sec.id)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all
+                    ${supplierSection === sec.id
+                      ? 'bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-xs'
+                      : 'text-gray-600 dark:text-gray-400 hover:text-gray-900'
+                    }`}
+                >
+                  {sec.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="p-5">
+              {/* SECCIÓN 1: CAÑOS DE COBRE CALCULADOS */}
+              {supplierSection === 'copper' && (
+                <div className="space-y-4">
+                  <div className="text-xs text-gray-500">
+                    Fórmula automática Hoja1: <code className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-slate-800 font-mono font-bold text-gray-800 dark:text-gray-200">
+                      (Neto Kg Cobre * Kg Rollo * 1.21) / 15m
+                    </code>
+                  </div>
+                  <div className="table-container">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Medida</th>
+                          <th>Peso Rollo (15m)</th>
+                          <th className="text-right">Precio Resultante x Metro (Neto)</th>
+                          <th className="text-right">Precio Resultante c/IVA</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {Object.entries(pricingParams.copperWeights).map(([size, kg]) => {
+                          const price = calculateCopperPipePrice(pricingParams, size);
+                          return (
+                            <tr key={size}>
+                              <td className="font-bold text-gray-900 dark:text-white">Caño {size}"</td>
+                              <td>
+                                <div className="flex items-center gap-1.5">
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    value={kg}
+                                    onChange={(e) => {
+                                      const next = { ...pricingParams.copperWeights, [size]: parseFloat(e.target.value) || 0 };
+                                      setPricingParams({ ...pricingParams, copperWeights: next });
+                                    }}
+                                    className="w-20 px-2 py-1 text-xs font-mono font-bold bg-gray-50 dark:bg-slate-900 border rounded"
+                                  />
+                                  <span className="text-xs text-gray-400">kg</span>
+                                </div>
+                              </td>
+                              <td className="text-right font-mono font-bold text-gray-900 dark:text-white">
+                                {formatCurrency(price)}
+                              </td>
+                              <td className="text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                                {formatCurrency(price * 1.21)}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* SECCIÓN 2: MANO DE OBRA BASE */}
+              {supplierSection === 'labor' && (
+                <div className="space-y-4">
+                  <div className="text-xs text-gray-500">
+                    El costo base del instalador se multiplica por el <strong>GM {pricingParams.laborMarginGM}</strong> para sacar el precio de venta. La desinstalación se calcula como el <strong>50%</strong>.
+                  </div>
+                  <div className="table-container">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Capacidad</th>
+                          <th>Costo Base Instalador</th>
+                          <th className="text-right">Precio Venta (x GM {pricingParams.laborMarginGM})</th>
+                          <th className="text-right">Desinstalación (50% M.O.)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {Object.entries(pricingParams.baseLabor).map(([cap, base]) => {
+                          const sale = calculateLaborPrice(pricingParams, cap);
+                          const uninst = calculateUninstallationPrice(pricingParams, cap);
+                          const label = dynamicCombos[cap]?.label || `${cap} FG`;
+
+                          return (
+                            <tr key={cap}>
+                              <td className="font-bold text-gray-900 dark:text-white">{label}</td>
+                              <td>
+                                <div className="relative w-36">
+                                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs">$</span>
+                                  <input
+                                    type="number"
+                                    step="5000"
+                                    value={base}
+                                    onChange={(e) => {
+                                      const next = { ...pricingParams.baseLabor, [cap]: parseFloat(e.target.value) || 0 };
+                                      setPricingParams({ ...pricingParams, baseLabor: next });
+                                    }}
+                                    className="w-full pl-6 pr-2 py-1 text-xs font-mono font-bold bg-gray-50 dark:bg-slate-900 border rounded"
+                                  />
+                                </div>
+                              </td>
+                              <td className="text-right font-mono font-bold text-gray-900 dark:text-white">
+                                {formatCurrency(sale)}
+                              </td>
+                              <td className="text-right font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                                {formatCurrency(uninst)}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* SECCIÓN 3: AISLACIONES BELLINI */}
+              {supplierSection === 'insulation' && (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {Object.entries(pricingParams.insulationBellini).map(([size, price]) => (
+                    <div key={size} className="p-3 bg-gray-50 dark:bg-slate-800/50 rounded-xl border border-gray-100 dark:border-slate-800 space-y-1">
+                      <span className="text-xs font-bold text-gray-700 dark:text-gray-300">
+                        Aislación Bellini {size}" (x metro)
+                      </span>
+                      <div className="relative">
+                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs">$</span>
+                        <input
+                          type="number"
+                          step="10"
+                          value={price}
+                          onChange={(e) => {
+                            const next = { ...pricingParams.insulationBellini, [size]: parseFloat(e.target.value) || 0 };
+                            setPricingParams({ ...pricingParams, insulationBellini: next });
+                          }}
+                          className="w-full pl-6 pr-2 py-1 text-xs font-mono font-bold bg-white dark:bg-slate-900 border rounded"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* SECCIÓN 4: MANGUERAS RELD */}
+              {supplierSection === 'hoses' && (
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  {Object.entries(pricingParams.hosesReld).map(([size, price]) => (
+                    <div key={size} className="p-3 bg-gray-50 dark:bg-slate-800/50 rounded-xl border border-gray-100 dark:border-slate-800 space-y-1">
+                      <span className="text-xs font-bold text-gray-700 dark:text-gray-300">
+                        Manguera Reld {size}" (x metro)
+                      </span>
+                      <div className="relative">
+                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs">$</span>
+                        <input
+                          type="number"
+                          step="10"
+                          value={price}
+                          onChange={(e) => {
+                            const next = { ...pricingParams.hosesReld, [size]: parseFloat(e.target.value) || 0 };
+                            setPricingParams({ ...pricingParams, hosesReld: next });
+                          }}
+                          className="w-full pl-6 pr-2 py-1 text-xs font-mono font-bold bg-white dark:bg-slate-900 border rounded"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* SECCIÓN 5: CABLES Y CINTAS RELD */}
+              {supplierSection === 'cables' && (
+                <div className="space-y-4">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500">Cables tipo Taller (x metro)</h4>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {Object.entries(pricingParams.cablesReld).map(([type, price]) => (
+                      <div key={type} className="p-3 bg-gray-50 dark:bg-slate-800/50 rounded-xl border border-gray-100 dark:border-slate-800 space-y-1">
+                        <span className="text-xs font-bold text-gray-700 dark:text-gray-300">Cable {type} mm</span>
+                        <div className="relative">
+                          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs">$</span>
+                          <input
+                            type="number"
+                            step="50"
+                            value={price}
+                            onChange={(e) => {
+                              const next = { ...pricingParams.cablesReld, [type]: parseFloat(e.target.value) || 0 };
+                              setPricingParams({ ...pricingParams, cablesReld: next });
+                            }}
+                            className="w-full pl-6 pr-2 py-1 text-xs font-mono font-bold bg-white dark:bg-slate-900 border rounded"
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500 pt-2">Cintas de Caño Reld (x rollo)</h4>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {[
+                      { key: 'whiteWithAdhesive', label: 'Blanca c/adh.' },
+                      { key: 'whiteWithoutAdhesive', label: 'Blanca s/adh.' },
+                      { key: 'grayWithAdhesive', label: 'Gris c/adh.' },
+                      { key: 'grayWithoutAdhesive', label: 'Gris s/adh.' },
+                    ].map(({ key, label }) => (
+                      <div key={key} className="p-3 bg-gray-50 dark:bg-slate-800/50 rounded-xl border border-gray-100 dark:border-slate-800 space-y-1">
+                        <span className="text-xs font-bold text-gray-700 dark:text-gray-300">Cinta {label}</span>
+                        <div className="relative">
+                          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs">$</span>
+                          <input
+                            type="number"
+                            step="50"
+                            value={pricingParams.tapesReld[key]}
+                            onChange={(e) => {
+                              const next = { ...pricingParams.tapesReld, [key]: parseFloat(e.target.value) || 0 };
+                              setPricingParams({ ...pricingParams, tapesReld: next });
+                            }}
+                            className="w-full pl-6 pr-2 py-1 text-xs font-mono font-bold bg-white dark:bg-slate-900 border rounded"
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* SECCIÓN 6: MÉNSULAS Y FIJACIONES */}
+              {supplierSection === 'brackets' && (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {[
+                    { key: 'bracket42', label: 'Ménsula 42cm' },
+                    { key: 'bracket52', label: 'Ménsula 52cm' },
+                    { key: 'bracket62', label: 'Ménsula 62cm' },
+                    { key: 'bracket82', label: 'Ménsula 82cm' },
+                    { key: 'bracketLeg', label: 'Pata Ménsula' },
+                    { key: 'floorLeg', label: 'Pata Piso Estándar' },
+                    { key: 'floorLeg5TR', label: 'Pata Piso 5 TR' },
+                    { key: 'fixingKit', label: 'Kit Fijación' },
+                  ].map(({ key, label }) => (
+                    <div key={key} className="p-3 bg-gray-50 dark:bg-slate-800/50 rounded-xl border border-gray-100 dark:border-slate-800 space-y-1">
+                      <span className="text-xs font-bold text-gray-700 dark:text-gray-300">{label}</span>
+                      <div className="relative">
+                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs">$</span>
+                        <input
+                          type="number"
+                          step="100"
+                          value={pricingParams.bracketsAndFixings[key]}
+                          onChange={(e) => {
+                            const next = { ...pricingParams.bracketsAndFixings, [key]: parseFloat(e.target.value) || 0 };
+                            setPricingParams({ ...pricingParams, bracketsAndFixings: next });
+                          }}
+                          className="w-full pl-6 pr-2 py-1 text-xs font-mono font-bold bg-white dark:bg-slate-900 border rounded"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* PESTAÑA 4: EXTRAS REPORTADOS POR TÉCNICOS EN LA CALLE    */}
+      {/* ======================================================== */}
+      {activeTab === 'reportados' && (
+        <div className="space-y-4 animate-fade-in">
+          {/* Card de Resumen de Pendientes */}
+          <div className="card p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-amber-500/10 border-amber-500/30">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-700 dark:text-amber-300">
+                <AlertCircle size={22} />
+              </div>
+              <div>
+                <span className="text-xs text-amber-700 dark:text-amber-300 font-bold uppercase tracking-wider block">
+                  Materiales reportados pendientes de facturar
+                </span>
+                <div className="text-xl font-black text-amber-900 dark:text-amber-100 font-mono">
+                  {formatCurrency(totalUnbilled)}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={loadExtras}
+                className="btn-secondary text-xs px-3 py-2 flex items-center gap-1.5"
+                title="Actualizar lista"
+              >
+                <RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />
+                Refrescar
+              </button>
+              {extras.filter((e) => !e.billed).length > 0 && (
+                <button
+                  onClick={markAllAsBilled}
+                  className="btn-primary text-xs px-3 py-2 flex items-center gap-1.5 bg-brand-600 hover:bg-brand-700 text-white"
+                >
+                  <Check size={14} />
+                  Marcar todos como Facturados
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Filtros de Estado */}
           <div className="flex gap-2">
             {[
-              { value: 'unbilled', label: 'Sin Facturar', color: 'red' },
-              { value: 'billed', label: 'Facturados', color: 'emerald' },
-              { value: 'all', label: 'Todos', color: 'gray' },
-            ].map(({ value, label }) => (
+              { id: 'unbilled', label: 'Sin Facturar' },
+              { id: 'billed', label: 'Facturados' },
+              { id: 'all', label: 'Todos' },
+            ].map((f) => (
               <button
-                key={value}
-                onClick={() => setFilter(value)}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all
-                  ${filter === value
-                    ? 'bg-brand-500 text-white shadow-sm'
-                    : 'bg-white dark:bg-slate-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700'
+                key={f.id}
+                onClick={() => setFilter(f.id)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all
+                  ${filter === f.id
+                    ? 'bg-brand-600 text-white shadow-xs'
+                    : 'bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50'
                   }`}
               >
-                {label}
+                {f.label}
               </button>
             ))}
           </div>
 
-          {/* Tabla de extras reportados */}
-          <div className="card p-0">
+          {/* Tabla de Extras en OTs */}
+          <div className="card overflow-hidden">
             {isLoading ? (
-              <div className="p-8 space-y-3">
-                {[1, 2, 3, 4, 5].map((i) => (
-                  <div key={i} className="h-12 bg-gray-100 dark:bg-slate-800 rounded-lg animate-pulse" />
-                ))}
-              </div>
+              <div className="p-8 text-center text-gray-400">Cargando extras...</div>
             ) : extras.length === 0 ? (
-              <div className="p-12 text-center">
-                <DollarSign size={40} className="text-gray-300 dark:text-slate-600 mx-auto mb-3" />
-                <p className="text-gray-400 dark:text-slate-500 text-sm">No hay extras registrados con este filtro.</p>
+              <div className="p-8 text-center text-gray-400">
+                No hay extras registrados con el filtro seleccionado.
               </div>
             ) : (
-              <div className="table-container border-0">
+              <div className="table-container">
                 <table>
                   <thead>
                     <tr>
                       <th>Descripción</th>
-                      <th>N° Orden</th>
+                      <th>OT</th>
                       <th>Cliente</th>
                       <th>Técnico</th>
                       <th>Cant.</th>

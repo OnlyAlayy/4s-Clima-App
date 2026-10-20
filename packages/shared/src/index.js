@@ -27,11 +27,19 @@ export {
   getChecklistByEquipmentType,
 } from './constants/checklists.js';
 
-// Catálogo Oficial de Materiales e Instalación
+// Catálogo Oficial y Motor Dinámico de Costos e Inflación (Hoja 1 de Walter)
 export {
   INSTALLATION_COMBOS_BY_CAPACITY,
   CATALOG_CATEGORIES,
   OFFICIAL_MATERIALS_CATALOG,
+  DEFAULT_PRICING_PARAMETERS,
+  calculateCopperPipePrice,
+  calculateArmoredPipePrice,
+  calculateLaborPrice,
+  calculateUninstallationPrice,
+  buildCombosByCapacity,
+  buildMaterialsCatalog,
+  applyInflationAdjustment,
   findSuggestedPrice,
   calculateComboBudget,
 } from './constants/materialsCatalog.js';
