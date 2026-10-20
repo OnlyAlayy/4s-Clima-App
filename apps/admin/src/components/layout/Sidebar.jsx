@@ -1,8 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, ClipboardList, Building2, Users, DollarSign,
-  LogOut, CalendarDays, Sun, Moon, Wallet, ChevronLeft, ChevronRight,
-  ShieldCheck
+  LogOut, CalendarDays, Sun, Moon, Wallet, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { useAdminAuth } from '../../App';
 import { useDarkMode } from '../../hooks/useDarkMode';
@@ -16,9 +15,11 @@ export default function Sidebar({ isCollapsed = false, toggleSidebar }) {
   const { isDark, toggleDarkMode } = useDarkMode();
 
   const isOwner = profile?.role === 'owner';
-  const displayName = profile?.name || profile?.full_name || user?.email || 'Usuario';
-  const displayRole = isOwner ? 'Propietario (Owner)' : (profile?.role === 'admin' ? 'Administrador' : 'Usuario');
-  const userInitial = (displayName?.[0] || 'U').toUpperCase();
+  const displayName = isOwner
+    ? (profile?.name && profile.name !== 'Tu Nombre' ? profile.name : 'Walter')
+    : (profile?.name || profile?.full_name || user?.email || 'Usuario');
+  const displayRole = isOwner ? 'Owner' : (profile?.role === 'admin' ? 'Administrador' : 'Usuario');
+  const userInitial = (displayName?.[0] || 'W').toUpperCase();
 
   const navGroups = [
     {
@@ -168,18 +169,9 @@ export default function Sidebar({ isCollapsed = false, toggleSidebar }) {
               <p className="text-white text-xs font-bold truncate leading-tight" title={displayName}>
                 {displayName}
               </p>
-              {isOwner ? (
-                <div className="flex items-center gap-1 mt-1">
-                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-brand-500/20 text-blue-200 border border-brand-400/30 tracking-tight">
-                    <ShieldCheck size={11} className="text-brand-300 shrink-0" />
-                    Propietario (Owner)
-                  </span>
-                </div>
-              ) : (
-                <p className="text-blue-200/80 text-[11px] truncate font-medium mt-0.5">
-                  Administrador
-                </p>
-              )}
+              <p className="text-blue-200/80 text-[11px] truncate font-medium mt-0.5">
+                {isOwner ? 'Owner' : 'Administrador'}
+              </p>
             </div>
           </div>
         )}
