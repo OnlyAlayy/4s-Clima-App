@@ -11,7 +11,6 @@ import { useAdminAuth } from '../App';
  */
 export default function TechniciansPage() {
   const { profile } = useAdminAuth();
-  const isOwner = profile?.role === 'owner';
 
   const [technicians, setTechnicians] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -99,15 +98,13 @@ export default function TechniciansPage() {
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Técnicos</h1>
           <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">{totalCount} técnicos registrados</p>
         </div>
-        {isOwner && (
-          <button 
-            onClick={() => setIsCreateModalOpen(true)}
-            className="btn-primary"
-          >
-            <Plus size={18} />
-            Nuevo Técnico
-          </button>
-        )}
+        <button 
+          onClick={() => setIsCreateModalOpen(true)}
+          className="btn-primary"
+        >
+          <Plus size={18} />
+          Nuevo Técnico
+        </button>
       </div>
 
       {isLoading ? (
@@ -222,7 +219,6 @@ export default function TechniciansPage() {
 
       <CreateTechnicianModal 
         isOpen={isCreateModalOpen} 
-        isOwner={isOwner}
         onClose={() => setIsCreateModalOpen(false)} 
         onCreated={() => {
           loadTechnicians(page);

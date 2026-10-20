@@ -3,10 +3,10 @@ import { X, UserPlus, Eye, EyeOff, ShieldAlert, ShieldCheck } from 'lucide-react
 import { supabase } from '@4s-clima/shared/supabase';
 import { useAdminAuth } from '../App';
 
-export default function CreateTechnicianModal({ isOpen, onClose, onCreated, isOwner: propIsOwner }) {
+export default function CreateTechnicianModal({ isOpen, onClose, onCreated }) {
   const { profile } = useAdminAuth();
   // Validación estricta: solo es owner si el rol del perfil autenticado es explícitamente 'owner'
-  const isOwner = propIsOwner !== undefined ? propIsOwner : profile?.role === 'owner';
+  const isOwner = profile?.role === 'owner';
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState(null);

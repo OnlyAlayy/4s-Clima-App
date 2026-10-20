@@ -2,10 +2,11 @@ import { useEffect, useState, useMemo } from 'react';
 import {
   DollarSign, Check, AlertCircle, Calculator, BookOpen, Package,
   Search, Copy, CheckCheck, RefreshCw, Layers, ShieldCheck, ArrowRight,
-  Sliders, Save, RotateCcw, Wrench
+  Sliders, Save, RotateCcw, Wrench, Lock
 } from 'lucide-react';
 import { supabase } from '@4s-clima/shared/supabase';
 import { formatCurrency, formatDate } from '@4s-clima/shared/utils';
+import { useAdminAuth } from '../App';
 import {
   INSTALLATION_COMBOS_BY_CAPACITY,
   CATALOG_CATEGORIES,
@@ -29,6 +30,9 @@ import {
  * 4. Gestión y seguimiento de extras reportados por técnicos en órdenes de trabajo.
  */
 export default function ExtrasPage() {
+  const { profile } = useAdminAuth();
+  const isOwner = profile?.role === 'owner';
+
   const [activeTab, setActiveTab] = useState('cotizador'); // 'cotizador' | 'catalogo' | 'parametros' | 'reportados'
 
   // --- Estado para Motor Dinámico de Costos (Hoja 1) ---
@@ -220,6 +224,10 @@ export default function ExtrasPage() {
 
   // --- Handlers para el Motor de Parámetros ---
   const handleSaveParameters = async () => {
+    if (!isOwner) {
+      alert('Acceso Denegado: Solo el usuario con rol Propietario (Owner) puede modificar los parámetros de costos.');
+      return;
+    }
     setIsSavingParams(true);
     setSaveFeedback('');
     try {
@@ -247,6 +255,10 @@ export default function ExtrasPage() {
   };
 
   const handleResetToFactoryDefaults = () => {
+    if (!isOwner) {
+      alert('Acceso Denegado: Solo el usuario con rol Propietario (Owner) puede restablecer los parámetros.');
+      return;
+    }
     if (window.confirm('¿Restablecer todos los costos y parámetros a los valores oficiales de fábrica del Excel?')) {
       setPricingParams(DEFAULT_PRICING_PARAMETERS);
       try {
@@ -307,8 +319,13 @@ export default function ExtrasPage() {
                 : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
               }`}
           >
-            <Sliders size={14} />
+            {isOwner ? <Sliders size={14} /> : <Lock size={13} className="text-amber-500" />}
             Costos y Parámetros (Hoja 1)
+            {!isOwner && (
+              <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/40 px-1.5 py-0.5 rounded">
+                Solo Lectura
+              </span>
+            )}
           </button>
           <button
             onClick={() => setActiveTab('reportados')}
@@ -501,7 +518,7 @@ export default function ExtrasPage() {
       {activeTab === 'catalogo' && (
         <div className="space-y-4 animate-fade-in">
           {/* Barra de Filtros */}
-          <div className="card p-4 flex flex-col sm:flex-row gap-3">
+          <div className="card p-4 flex flex-col sm:flex-row sm:items-center gap-3">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
               <input
@@ -522,6 +539,12 @@ export default function ExtrasPage() {
                 <option key={cat} value={cat}>{cat}</option>
               ))}
             </select>
+            {!isOwner && (
+              <div className="flex items-center gap-1.5 px-3 py-2 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl text-xs font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                <Lock size={13} className="text-amber-500 shrink-0" />
+                <span>Precios de catálogo fijados por Dirección</span>
+              </div>
+            )}
           </div>
 
           {/* Tabla de Catálogo Oficial */}
@@ -600,26 +623,51 @@ export default function ExtrasPage() {
             </div>
 
             <div className="flex items-center gap-2 self-start sm:self-auto">
-              <button
-                type="button"
-                onClick={handleResetToFactoryDefaults}
-                className="btn-secondary text-xs px-3 py-2 flex items-center gap-1.5 text-gray-600 dark:text-gray-300 hover:text-gray-900"
-                title="Restablecer todos los costos a los valores del Excel original"
-              >
-                <RotateCcw size={13} />
-                Restablecer Valores de Fábrica
-              </button>
-              <button
-                type="button"
-                onClick={handleSaveParameters}
-                disabled={isSavingParams}
-                className="btn-primary text-xs px-4 py-2 flex items-center gap-1.5 bg-brand-600 hover:bg-brand-700 text-white shadow-xs"
-              >
-                <Save size={14} />
-                {isSavingParams ? 'Guardando...' : 'Guardar Cambios'}
-              </button>
+              {isOwner ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleResetToFactoryDefaults}
+                    className="btn-secondary text-xs px-3 py-2 flex items-center gap-1.5 text-gray-600 dark:text-gray-300 hover:text-gray-900"
+                    title="Restablecer todos los costos a los valores del Excel original"
+                  >
+                    <RotateCcw size={13} />
+                    Restablecer Valores de Fábrica
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveParameters}
+                    disabled={isSavingParams}
+                    className="btn-primary text-xs px-4 py-2 flex items-center gap-1.5 bg-brand-600 hover:bg-brand-700 text-white shadow-xs"
+                  >
+                    <Save size={14} />
+                    {isSavingParams ? 'Guardando...' : 'Guardar Cambios'}
+                  </button>
+                </>
+              ) : (
+                <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 text-xs font-semibold">
+                  <Lock size={14} />
+                  Solo el Propietario (Owner) puede modificar costos
+                </div>
+              )}
             </div>
           </div>
+
+          {!isOwner && (
+            <div className="p-4 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 rounded-2xl flex items-start sm:items-center gap-3 text-amber-900 dark:text-amber-300 animate-fade-in">
+              <div className="w-8 h-8 rounded-xl bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center shrink-0 text-amber-600 dark:text-amber-400">
+                <Lock size={16} />
+              </div>
+              <div className="flex-1 text-xs">
+                <p className="font-bold uppercase tracking-wider text-[11px] text-amber-800 dark:text-amber-300">
+                  Modo Solo Lectura — Separación de Deberes
+                </p>
+                <p className="text-amber-700 dark:text-amber-400 mt-0.5 leading-relaxed">
+                  Como Administrador tenés acceso a consultar la matriz de costos y parámetros maestros de proveedores, pero los campos se encuentran bloqueados. La modificación de márgenes GM y costos base está reservada exclusivamente al rol <strong>Propietario (Owner)</strong>.
+                </p>
+              </div>
+            </div>
+          )}
 
           {saveFeedback && (
             <div className="p-3 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-xl text-xs font-bold text-emerald-700 dark:text-emerald-300 flex items-center gap-2 animate-fade-in">
@@ -641,10 +689,16 @@ export default function ExtrasPage() {
                   type="number"
                   step="500"
                   value={pricingParams.copperPricePerKg}
+                  disabled={!isOwner}
+                  readOnly={!isOwner}
                   onChange={(e) =>
                     setPricingParams({ ...pricingParams, copperPricePerKg: parseFloat(e.target.value) || 0 })
                   }
-                  className="w-full pl-8 pr-3 py-1.5 font-bold font-mono text-sm bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-brand-500"
+                  className={`w-full pl-8 pr-3 py-1.5 font-bold font-mono text-sm border rounded-lg focus:outline-none focus:ring-1 focus:ring-brand-500 ${
+                    !isOwner
+                      ? 'bg-gray-100 dark:bg-slate-800/80 border-gray-200 dark:border-slate-700 text-gray-500 cursor-not-allowed'
+                      : 'bg-gray-50 dark:bg-slate-900 border-gray-200 dark:border-slate-700 text-gray-900 dark:text-white'
+                  }`}
                 />
               </div>
               <div className="flex justify-between items-center text-[11px] text-gray-500 pt-1">
@@ -668,10 +722,16 @@ export default function ExtrasPage() {
                   min="0"
                   max="100"
                   value={pricingParams.copperDiscount * 100}
+                  disabled={!isOwner}
+                  readOnly={!isOwner}
                   onChange={(e) =>
                     setPricingParams({ ...pricingParams, copperDiscount: (parseFloat(e.target.value) || 0) / 100 })
                   }
-                  className="w-full pl-3 pr-8 py-1.5 font-bold font-mono text-sm bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-brand-500"
+                  className={`w-full pl-3 pr-8 py-1.5 font-bold font-mono text-sm border rounded-lg focus:outline-none focus:ring-1 focus:ring-brand-500 ${
+                    !isOwner
+                      ? 'bg-gray-100 dark:bg-slate-800/80 border-gray-200 dark:border-slate-700 text-gray-500 cursor-not-allowed'
+                      : 'bg-gray-50 dark:bg-slate-900 border-gray-200 dark:border-slate-700 text-gray-900 dark:text-white'
+                  }`}
                 />
               </div>
               <span className="text-[11px] text-gray-400 block pt-1">
@@ -689,10 +749,16 @@ export default function ExtrasPage() {
                   type="number"
                   step="0.05"
                   value={pricingParams.pipeMarginGM}
+                  disabled={!isOwner}
+                  readOnly={!isOwner}
                   onChange={(e) =>
                     setPricingParams({ ...pricingParams, pipeMarginGM: parseFloat(e.target.value) || 0 })
                   }
-                  className="w-full px-3 py-1.5 font-bold font-mono text-sm bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-brand-500"
+                  className={`w-full px-3 py-1.5 font-bold font-mono text-sm border rounded-lg focus:outline-none focus:ring-1 focus:ring-brand-500 ${
+                    !isOwner
+                      ? 'bg-gray-100 dark:bg-slate-800/80 border-gray-200 dark:border-slate-700 text-gray-500 cursor-not-allowed'
+                      : 'bg-gray-50 dark:bg-slate-900 border-gray-200 dark:border-slate-700 text-gray-900 dark:text-white'
+                  }`}
                 />
               </div>
               <div className="flex justify-between items-center text-[11px] text-gray-500 pt-1">
@@ -711,10 +777,16 @@ export default function ExtrasPage() {
                   type="number"
                   step="0.05"
                   value={pricingParams.laborMarginGM}
+                  disabled={!isOwner}
+                  readOnly={!isOwner}
                   onChange={(e) =>
                     setPricingParams({ ...pricingParams, laborMarginGM: parseFloat(e.target.value) || 0 })
                   }
-                  className="w-full px-3 py-1.5 font-bold font-mono text-sm bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-brand-500"
+                  className={`w-full px-3 py-1.5 font-bold font-mono text-sm border rounded-lg focus:outline-none focus:ring-1 focus:ring-brand-500 ${
+                    !isOwner
+                      ? 'bg-gray-100 dark:bg-slate-800/80 border-gray-200 dark:border-slate-700 text-gray-500 cursor-not-allowed'
+                      : 'bg-gray-50 dark:bg-slate-900 border-gray-200 dark:border-slate-700 text-gray-900 dark:text-white'
+                  }`}
                 />
               </div>
               <span className="text-[11px] text-gray-400 block pt-1">
@@ -780,11 +852,15 @@ export default function ExtrasPage() {
                                     type="number"
                                     step="0.01"
                                     value={kg}
+                                    disabled={!isOwner}
+                                    readOnly={!isOwner}
                                     onChange={(e) => {
                                       const next = { ...pricingParams.copperWeights, [size]: parseFloat(e.target.value) || 0 };
                                       setPricingParams({ ...pricingParams, copperWeights: next });
                                     }}
-                                    className="w-20 px-2 py-1 text-xs font-mono font-bold bg-gray-50 dark:bg-slate-900 border rounded"
+                                    className={`w-20 px-2 py-1 text-xs font-mono font-bold border rounded ${
+                                      !isOwner ? 'bg-gray-100 dark:bg-slate-800 text-gray-500 cursor-not-allowed' : 'bg-gray-50 dark:bg-slate-900'
+                                    }`}
                                   />
                                   <span className="text-xs text-gray-400">kg</span>
                                 </div>
@@ -836,11 +912,15 @@ export default function ExtrasPage() {
                                     type="number"
                                     step="5000"
                                     value={base}
+                                    disabled={!isOwner}
+                                    readOnly={!isOwner}
                                     onChange={(e) => {
                                       const next = { ...pricingParams.baseLabor, [cap]: parseFloat(e.target.value) || 0 };
                                       setPricingParams({ ...pricingParams, baseLabor: next });
                                     }}
-                                    className="w-full pl-6 pr-2 py-1 text-xs font-mono font-bold bg-gray-50 dark:bg-slate-900 border rounded"
+                                    className={`w-full pl-6 pr-2 py-1 text-xs font-mono font-bold border rounded ${
+                                      !isOwner ? 'bg-gray-100 dark:bg-slate-800 text-gray-500 cursor-not-allowed' : 'bg-gray-50 dark:bg-slate-900'
+                                    }`}
                                   />
                                 </div>
                               </td>
@@ -873,11 +953,15 @@ export default function ExtrasPage() {
                           type="number"
                           step="10"
                           value={price}
+                          disabled={!isOwner}
+                          readOnly={!isOwner}
                           onChange={(e) => {
                             const next = { ...pricingParams.insulationBellini, [size]: parseFloat(e.target.value) || 0 };
                             setPricingParams({ ...pricingParams, insulationBellini: next });
                           }}
-                          className="w-full pl-6 pr-2 py-1 text-xs font-mono font-bold bg-white dark:bg-slate-900 border rounded"
+                          className={`w-full pl-6 pr-2 py-1 text-xs font-mono font-bold border rounded ${
+                            !isOwner ? 'bg-gray-100 dark:bg-slate-800 text-gray-500 cursor-not-allowed' : 'bg-white dark:bg-slate-900'
+                          }`}
                         />
                       </div>
                     </div>
@@ -899,11 +983,15 @@ export default function ExtrasPage() {
                           type="number"
                           step="10"
                           value={price}
+                          disabled={!isOwner}
+                          readOnly={!isOwner}
                           onChange={(e) => {
                             const next = { ...pricingParams.hosesReld, [size]: parseFloat(e.target.value) || 0 };
                             setPricingParams({ ...pricingParams, hosesReld: next });
                           }}
-                          className="w-full pl-6 pr-2 py-1 text-xs font-mono font-bold bg-white dark:bg-slate-900 border rounded"
+                          className={`w-full pl-6 pr-2 py-1 text-xs font-mono font-bold border rounded ${
+                            !isOwner ? 'bg-gray-100 dark:bg-slate-800 text-gray-500 cursor-not-allowed' : 'bg-white dark:bg-slate-900'
+                          }`}
                         />
                       </div>
                     </div>
@@ -925,11 +1013,15 @@ export default function ExtrasPage() {
                             type="number"
                             step="50"
                             value={price}
+                            disabled={!isOwner}
+                            readOnly={!isOwner}
                             onChange={(e) => {
                               const next = { ...pricingParams.cablesReld, [type]: parseFloat(e.target.value) || 0 };
                               setPricingParams({ ...pricingParams, cablesReld: next });
                             }}
-                            className="w-full pl-6 pr-2 py-1 text-xs font-mono font-bold bg-white dark:bg-slate-900 border rounded"
+                            className={`w-full pl-6 pr-2 py-1 text-xs font-mono font-bold border rounded ${
+                              !isOwner ? 'bg-gray-100 dark:bg-slate-800 text-gray-500 cursor-not-allowed' : 'bg-white dark:bg-slate-900'
+                            }`}
                           />
                         </div>
                       </div>
@@ -952,11 +1044,15 @@ export default function ExtrasPage() {
                             type="number"
                             step="50"
                             value={pricingParams.tapesReld[key]}
+                            disabled={!isOwner}
+                            readOnly={!isOwner}
                             onChange={(e) => {
                               const next = { ...pricingParams.tapesReld, [key]: parseFloat(e.target.value) || 0 };
                               setPricingParams({ ...pricingParams, tapesReld: next });
                             }}
-                            className="w-full pl-6 pr-2 py-1 text-xs font-mono font-bold bg-white dark:bg-slate-900 border rounded"
+                            className={`w-full pl-6 pr-2 py-1 text-xs font-mono font-bold border rounded ${
+                              !isOwner ? 'bg-gray-100 dark:bg-slate-800 text-gray-500 cursor-not-allowed' : 'bg-white dark:bg-slate-900'
+                            }`}
                           />
                         </div>
                       </div>
@@ -986,11 +1082,15 @@ export default function ExtrasPage() {
                           type="number"
                           step="100"
                           value={pricingParams.bracketsAndFixings[key]}
+                          disabled={!isOwner}
+                          readOnly={!isOwner}
                           onChange={(e) => {
                             const next = { ...pricingParams.bracketsAndFixings, [key]: parseFloat(e.target.value) || 0 };
                             setPricingParams({ ...pricingParams, bracketsAndFixings: next });
                           }}
-                          className="w-full pl-6 pr-2 py-1 text-xs font-mono font-bold bg-white dark:bg-slate-900 border rounded"
+                          className={`w-full pl-6 pr-2 py-1 text-xs font-mono font-bold border rounded ${
+                            !isOwner ? 'bg-gray-100 dark:bg-slate-800 text-gray-500 cursor-not-allowed' : 'bg-white dark:bg-slate-900'
+                          }`}
                         />
                       </div>
                     </div>

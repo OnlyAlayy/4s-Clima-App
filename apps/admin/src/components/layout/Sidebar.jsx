@@ -1,7 +1,8 @@
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, ClipboardList, Building2, Users, DollarSign,
-  LogOut, CalendarDays, Sun, Moon, Wallet, ChevronLeft, ChevronRight
+  LogOut, CalendarDays, Sun, Moon, Wallet, ChevronLeft, ChevronRight,
+  ShieldCheck
 } from 'lucide-react';
 import { useAdminAuth } from '../../App';
 import { useDarkMode } from '../../hooks/useDarkMode';
@@ -11,8 +12,13 @@ import { useDarkMode } from '../../hooks/useDarkMode';
  * Fijo a la izquierda con opción de colapsar / expandir mediante flecha.
  */
 export default function Sidebar({ isCollapsed = false, toggleSidebar }) {
-  const { profile, logout } = useAdminAuth();
+  const { user, profile, logout } = useAdminAuth();
   const { isDark, toggleDarkMode } = useDarkMode();
+
+  const isOwner = profile?.role === 'owner';
+  const displayName = profile?.name || profile?.full_name || user?.email || 'Usuario';
+  const displayRole = isOwner ? 'Propietario (Owner)' : (profile?.role === 'admin' ? 'Administrador' : 'Usuario');
+  const userInitial = (displayName?.[0] || 'U').toUpperCase();
 
   const navGroups = [
     {
@@ -135,26 +141,45 @@ export default function Sidebar({ isCollapsed = false, toggleSidebar }) {
         {isCollapsed ? (
           <div
             className="flex justify-center mb-2 py-1"
-            title={`${profile?.name || 'Admin'} (Administrador)`}
+            title={`${displayName} (${displayRole})`}
           >
-            <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center flex-shrink-0 shadow-sm">
-              <span className="text-white text-xs font-bold">
-                {profile?.name?.[0]?.toUpperCase() || 'A'}
+            <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 shadow-sm transition-all ${
+              isOwner
+                ? 'bg-gradient-to-tr from-amber-400 to-amber-200 text-amber-950 font-black ring-2 ring-amber-400/50'
+                : 'bg-white/20 text-white font-bold'
+            }`}>
+              <span className="text-xs">
+                {userInitial}
               </span>
             </div>
           </div>
         ) : (
-          <div className="flex items-center gap-3 px-4 py-2 mb-2">
-            <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center flex-shrink-0 shadow-sm">
-              <span className="text-white text-xs font-bold">
-                {profile?.name?.[0]?.toUpperCase() || 'A'}
+          <div className="flex items-center gap-3 px-3 py-2.5 mb-2 rounded-xl bg-white/5 border border-white/10">
+            <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 shadow-sm transition-all ${
+              isOwner
+                ? 'bg-gradient-to-tr from-amber-400 to-amber-200 text-amber-950 font-black ring-2 ring-amber-400/50'
+                : 'bg-gradient-to-br from-brand-500 to-brand-700 text-white font-bold'
+            }`}>
+              <span className="text-xs">
+                {userInitial}
               </span>
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-white text-sm font-medium truncate">
-                {profile?.name || 'Admin'}
+              <p className="text-white text-xs font-bold truncate leading-tight" title={displayName}>
+                {displayName}
               </p>
-              <p className="text-blue-200 text-[10px] truncate font-medium">Administrador</p>
+              {isOwner ? (
+                <div className="flex items-center gap-1 mt-1">
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-400/20 text-amber-300 border border-amber-400/40 tracking-tight">
+                    <ShieldCheck size={11} className="text-amber-300 shrink-0" />
+                    Propietario (Owner)
+                  </span>
+                </div>
+              ) : (
+                <p className="text-blue-200 text-[11px] truncate font-medium mt-0.5">
+                  Administrador
+                </p>
+              )}
             </div>
           </div>
         )}

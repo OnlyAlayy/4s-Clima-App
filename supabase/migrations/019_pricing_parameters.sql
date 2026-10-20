@@ -19,15 +19,21 @@ DO $$ BEGIN
   END IF;
 
   IF NOT EXISTS (
-    SELECT 1 FROM pg_policies WHERE tablename = 'pricing_parameters' AND policyname = 'Allow admin manage pricing_parameters'
+    SELECT 1 FROM pg_policies WHERE tablename = 'pricing_parameters' AND policyname = 'Allow owner manage pricing_parameters'
   ) THEN
-    CREATE POLICY "Allow admin manage pricing_parameters"
+    CREATE POLICY "Allow owner manage pricing_parameters"
       ON public.pricing_parameters FOR ALL
       TO authenticated
       USING (
         EXISTS (
           SELECT 1 FROM public.users
-          WHERE users.id = auth.uid() AND users.role IN ('admin', 'owner')
+          WHERE users.id = auth.uid() AND users.role = 'owner'
+        )
+      )
+      WITH CHECK (
+        EXISTS (
+          SELECT 1 FROM public.users
+          WHERE users.id = auth.uid() AND users.role = 'owner'
         )
       );
   END IF;
