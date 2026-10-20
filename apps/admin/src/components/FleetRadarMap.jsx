@@ -302,21 +302,12 @@ export default function FleetRadarMap() {
           : null;
 
       // Ubicación del técnico:
-      // 1. Si emitió GPS en vivo por Realtime
+      // Estricta regla de fidelidad: ÚNICAMENTE se posiciona al técnico si existe telemetría GPS REAL
+      // emitida desde el dispositivo móvil por Supabase Realtime (nunca simular ni inventar coordenadas).
       const live = liveLocations[tech.id];
-      let techCoords = live ? [live.lat, live.lng] : null;
+      const techCoords = live ? [Number(live.lat), Number(live.lng)] : null;
 
-      // 2. Si está "in_progress" (en sitio/planta) y el destino tiene GPS, está allí
-      if (!techCoords && activeOrder?.status === WORK_ORDER_STATUS.IN_PROGRESS && destCoords) {
-        techCoords = [destCoords[0] + 0.0003, destCoords[1] + 0.0003]; // ligero offset para ver ambos marcadores
-      }
-
-      // 3. Si está "traveling" y aún no emitió GPS, fallback cercano hacia CABA / base
-      if (!techCoords && activeOrder?.status === WORK_ORDER_STATUS.TRAVELING && destCoords) {
-        techCoords = [destCoords[0] - 0.015, destCoords[1] - 0.015];
-      }
-
-      // Distancia restante
+      // Distancia restante real (solo si tenemos ambos puntos verdaderos)
       const distanceMeters =
         techCoords && destCoords
           ? calculateDistance(techCoords[0], techCoords[1], destCoords[0], destCoords[1])
@@ -608,9 +599,13 @@ export default function FleetRadarMap() {
                           </p>
                           <div className="flex items-center gap-2 text-[10px] text-gray-400 font-mono">
                             <span>#{order.order_number || order.id?.slice(0, 8)}</span>
-                            {tech.distanceMeters !== null && (
+                            {tech.distanceMeters !== null ? (
                               <span className="text-brand-600 dark:text-brand-400 font-semibold font-sans">
                                 • {formatDistance(tech.distanceMeters)} restante
+                              </span>
+                            ) : (
+                              <span className="text-amber-600 dark:text-amber-400 font-sans text-[10px]">
+                                • GPS móvil pendiente
                               </span>
                             )}
                           </div>
@@ -766,9 +761,13 @@ export default function FleetRadarMap() {
 
                     <p className="text-[11px] text-gray-500 dark:text-gray-400 truncate mt-0.5">
                       {selectedTech.locationInfo?.address || 'Sin dirección cargada'}
-                      {selectedTech.distanceMeters !== null && (
+                      {selectedTech.distanceMeters !== null ? (
                         <span className="font-semibold text-brand-700 dark:text-brand-300 ml-1.5">
                           ({formatDistance(selectedTech.distanceMeters)} restante)
+                        </span>
+                      ) : (
+                        <span className="text-amber-600 dark:text-amber-400 font-medium ml-1.5">
+                          • GPS móvil pendiente
                         </span>
                       )}
                     </p>
@@ -805,6 +804,16 @@ export default function FleetRadarMap() {
                   <span>
                     El destino no posee coordenadas GPS fijas guardadas. Se muestra la dirección
                     textual reportada en la orden.
+                  </span>
+                </div>
+              )}
+
+              {/* Aviso si el destino está en mapa pero el técnico aún no emitió señal GPS */}
+              {selectedTech.activeOrder && selectedTech.destCoords && !selectedTech.techCoords && (
+                <div className="mt-1.5 bg-slate-50/90 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-[11px] text-slate-600 dark:text-slate-300 flex items-center gap-2 shadow-xs">
+                  <Navigation size={13} className="shrink-0 text-slate-500 dark:text-slate-400" />
+                  <span>
+                    Destino ubicado en el mapa. El pin del técnico se visualizará en tiempo real tan pronto su app móvil inicie viaje y emita señal GPS.
                   </span>
                 </div>
               )}
