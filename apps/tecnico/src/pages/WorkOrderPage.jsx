@@ -86,15 +86,14 @@ export default function WorkOrderPage() {
               {wo.order_number || 'Orden de Trabajo'}
             </h1>
             <div className="flex items-center gap-2 mt-0.5">
-              <span className={`badge text-[10px] shadow-sm border ${
-                isTraveling
+              <span className={`badge text-[10px] shadow-sm border ${isTraveling
                   ? 'bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400 dark:border-indigo-800 animate-pulse'
-                  : isInProgress 
-                  ? 'bg-brand-50 text-brand-700 border-brand-200 dark:bg-brand-900/30 dark:text-brand-400 dark:border-brand-800' 
-                  : isCompleted
-                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:border-emerald-800'
-                  : 'bg-white text-gray-600 border-gray-200 dark:bg-slate-800 dark:text-gray-300 dark:border-slate-700'
-              }`}>
+                  : isInProgress
+                    ? 'bg-brand-50 text-brand-700 border-brand-200 dark:bg-brand-900/30 dark:text-brand-400 dark:border-brand-800'
+                    : isCompleted
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:border-emerald-800'
+                      : 'bg-white text-gray-600 border-gray-200 dark:bg-slate-800 dark:text-gray-300 dark:border-slate-700'
+                }`}>
                 {getStatusLabel(wo.status)}
               </span>
               <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">
@@ -325,7 +324,7 @@ export default function WorkOrderPage() {
                 Completar Checklist
                 <ChevronRight size={18} />
               </button>
-              
+
               <button
                 onClick={() => navigate(`/orden/${id}/extras`)}
                 className="btn-secondary w-full"
@@ -343,7 +342,7 @@ export default function WorkOrderPage() {
               <p className="text-emerald-700 font-bold flex items-center justify-center gap-2">
                 <span className="w-5 h-5 rounded-full bg-emerald-500 text-white flex items-center justify-center">
                   <Check size={14} />
-                </span> 
+                </span>
                 Trabajo Finalizado
               </p>
               <p className="text-emerald-600/80 font-medium text-xs mt-1.5">

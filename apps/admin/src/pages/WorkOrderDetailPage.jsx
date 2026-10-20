@@ -191,17 +191,17 @@ export default function WorkOrderDetailPage() {
         <div className="flex items-center gap-0">
           {[
             { label: 'Creada', date: order.created_at, icon: Calendar, done: true },
-            { 
-              label: 'En Camino', 
-              date: order.travel_started_at, 
-              icon: Navigation, 
-              done: !!order.travel_started_at || isTraveling || isInProgress || order.status === WORK_ORDER_STATUS.COMPLETED 
+            {
+              label: 'En Camino',
+              date: order.travel_started_at,
+              icon: Navigation,
+              done: !!order.travel_started_at || isTraveling || isInProgress || order.status === WORK_ORDER_STATUS.COMPLETED
             },
-            { 
-              label: 'En Planta', 
-              date: order.arrived_at || order.started_at, 
-              icon: Building2, 
-              done: !!(order.arrived_at || order.started_at) || isInProgress || order.status === WORK_ORDER_STATUS.COMPLETED 
+            {
+              label: 'En Planta',
+              date: order.arrived_at || order.started_at,
+              icon: Building2,
+              done: !!(order.arrived_at || order.started_at) || isInProgress || order.status === WORK_ORDER_STATUS.COMPLETED
             },
             { label: 'Completada', date: order.completed_at, icon: CheckCircle2, done: !!order.completed_at },
           ].map((step, i, arr) => (
@@ -210,7 +210,7 @@ export default function WorkOrderDetailPage() {
                 <div className={`w-10 h-10 rounded-full flex items-center justify-center ${step.done
                   ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400'
                   : 'bg-gray-100 dark:bg-slate-800 text-gray-400 dark:text-gray-600'
-                }`}>
+                  }`}>
                   <step.icon size={18} />
                 </div>
                 <span className={`text-xs font-semibold mt-2 ${step.done ? 'text-gray-900 dark:text-white' : 'text-gray-400 dark:text-gray-600'}`}>
@@ -277,22 +277,22 @@ export default function WorkOrderDetailPage() {
               <div className="space-y-4">
                 <div>
                   <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-1">Fecha Programada</label>
-                  <input type="date" className="input" value={editData.scheduled_date} onChange={(e) => setEditData({...editData, scheduled_date: e.target.value})} />
+                  <input type="date" className="input" value={editData.scheduled_date} onChange={(e) => setEditData({ ...editData, scheduled_date: e.target.value })} />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-1">Hora</label>
-                  <input type="time" className="input" value={editData.scheduled_time} onChange={(e) => setEditData({...editData, scheduled_time: e.target.value})} />
+                  <input type="time" className="input" value={editData.scheduled_time} onChange={(e) => setEditData({ ...editData, scheduled_time: e.target.value })} />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-1">Técnico Asignado</label>
-                  <select className="select" value={editData.assigned_to} onChange={(e) => setEditData({...editData, assigned_to: e.target.value})}>
+                  <select className="select" value={editData.assigned_to} onChange={(e) => setEditData({ ...editData, assigned_to: e.target.value })}>
                     <option value="">Sin asignar</option>
                     {technicians.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-1">Observaciones</label>
-                  <textarea className="input min-h-[80px]" value={editData.observations} onChange={(e) => setEditData({...editData, observations: e.target.value})} />
+                  <textarea className="input min-h-[80px]" value={editData.observations} onChange={(e) => setEditData({ ...editData, observations: e.target.value })} />
                 </div>
                 <button onClick={handleSaveEdit} className="btn-primary w-full">
                   <CheckCircle2 size={16} /> Guardar Cambios
@@ -308,7 +308,7 @@ export default function WorkOrderDetailPage() {
                 </h3>
                 <p className="font-bold text-gray-900 dark:text-white text-lg">{order.client?.name || '-'}</p>
                 {order.client?.cuit && <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">CUIT: {order.client.cuit}</p>}
-                
+
                 {/* Datos de la sede o destino eventual */}
                 {loc.address && (
                   <div className="mt-4 bg-gray-50 dark:bg-slate-800/50 rounded-xl p-3 space-y-2 border border-gray-100 dark:border-slate-800">
@@ -349,7 +349,7 @@ export default function WorkOrderDetailPage() {
                   </div>
                   <div>
                     <span className="text-xs text-gray-500 dark:text-gray-400 font-semibold uppercase block mb-1">Hora</span>
-                    <p className="text-gray-900 dark:text-white font-bold">{order.scheduled_time ? `${order.scheduled_time.slice(0,5)} hs` : 'A confirmar'}</p>
+                    <p className="text-gray-900 dark:text-white font-bold">{order.scheduled_time ? `${order.scheduled_time.slice(0, 5)} hs` : 'A confirmar'}</p>
                   </div>
                 </div>
                 <div className="mt-4">
@@ -467,12 +467,11 @@ export default function WorkOrderDetailPage() {
                           </div>
                         )}
                       </div>
-                      <span className={`text-xs font-bold px-2 py-0.5 rounded ${
-                        item.status === 'ok' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
-                        item.status === 'fail' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
-                        item.status === 'warning' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
-                        'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400'
-                      }`}>
+                      <span className={`text-xs font-bold px-2 py-0.5 rounded ${item.status === 'ok' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
+                          item.status === 'fail' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
+                            item.status === 'warning' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
+                              'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400'
+                        }`}>
                         {item.status === 'ok' ? 'OK' : item.status === 'fail' ? 'FALLA' : item.status === 'warning' ? 'ATENCIÓN' : 'N/A'}
                       </span>
                     </div>
@@ -504,9 +503,8 @@ export default function WorkOrderDetailPage() {
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                     />
                     <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-2">
-                      <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${
-                        photo.type === 'before' ? 'bg-amber-500 text-white' : 'bg-emerald-500 text-white'
-                      }`}>
+                      <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${photo.type === 'before' ? 'bg-amber-500 text-white' : 'bg-emerald-500 text-white'
+                        }`}>
                         {photo.type === 'before' ? 'Antes' : 'Después'}
                       </span>
                       {photo.caption && <p className="text-white text-xs mt-1 truncate">{photo.caption}</p>}

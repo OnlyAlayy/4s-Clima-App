@@ -8,17 +8,32 @@ import { createDestinationIcon, createTechnicianIcon } from './leafletIcons';
 
 function AutoFitBounds({ destination, techPosition }) {
   const map = useMap();
-  const hasFittedRef = useRef(false);
+  const hasFittedBothRef = useRef(false);
+  const hasFittedDestRef = useRef(false);
+  const prevDestKeyRef = useRef(null);
+
+  const destKey = destination ? `${destination[0]},${destination[1]}` : null;
 
   useEffect(() => {
-    if (destination && techPosition) {
+    // Si cambia el destino (por ejemplo al cambiar de orden), reseteamos los flags
+    if (prevDestKeyRef.current !== destKey) {
+      prevDestKeyRef.current = destKey;
+      hasFittedBothRef.current = false;
+      hasFittedDestRef.current = false;
+    }
+
+    // 1. Encuadre inicial cuando tenemos ambos puntos (destino y técnico)
+    if (destination && techPosition && !hasFittedBothRef.current) {
       const bounds = L.latLngBounds([destination, techPosition]);
       map.fitBounds(bounds, { padding: [35, 35], maxZoom: 16 });
-    } else if (destination && !hasFittedRef.current) {
+      hasFittedBothRef.current = true;
+    } 
+    // 2. Si solo tenemos el destino al inicio y todavía no llegó el técnico
+    else if (destination && !techPosition && !hasFittedDestRef.current && !hasFittedBothRef.current) {
       map.setView(destination, 15);
-      hasFittedRef.current = true;
+      hasFittedDestRef.current = true;
     }
-  }, [destination, techPosition, map]);
+  }, [destination, techPosition, destKey, map]);
 
   return null;
 }

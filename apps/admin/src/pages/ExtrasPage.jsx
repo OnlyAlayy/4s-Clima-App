@@ -96,7 +96,7 @@ export default function ExtrasPage() {
             setPricingParams(data.parameters);
             try {
               localStorage.setItem('4s_pricing_parameters', JSON.stringify(data.parameters));
-            } catch (e) {}
+            } catch (e) { }
           }
         }
       } catch (err) {
@@ -263,7 +263,7 @@ export default function ExtrasPage() {
       setPricingParams(DEFAULT_PRICING_PARAMETERS);
       try {
         localStorage.setItem('4s_pricing_parameters', JSON.stringify(DEFAULT_PRICING_PARAMETERS));
-      } catch (e) {}
+      } catch (e) { }
       setSaveFeedback('Valores oficiales de fábrica restablecidos con éxito.');
       setTimeout(() => setSaveFeedback(''), 4000);
     }
@@ -272,73 +272,84 @@ export default function ExtrasPage() {
   return (
     <div className="space-y-6">
       {/* Header Principal */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 mb-1">
             <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-brand-50 text-brand-700 dark:bg-brand-900/40 dark:text-brand-300 border border-brand-200 dark:border-brand-800">
               Tarifario Oficial Vigente
             </span>
           </div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">
             Catálogo de Materiales y Cotizador por Frigorías
           </h1>
-          <p className="text-gray-500 dark:text-gray-400 text-sm">
+          <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">
             Cálculo automático de materiales de instalación, mano de obra y costos de proveedores
           </p>
         </div>
+      </div>
 
-        {/* Selector de Pestañas */}
-        <div className="flex flex-wrap bg-gray-100 dark:bg-slate-800 p-1 rounded-xl self-start sm:self-auto border border-gray-200 dark:border-slate-700">
+      {/* Selector de Pestañas (Barra Dedicada) */}
+      <div className="border-b border-gray-200/80 dark:border-slate-800/80 pb-2">
+        <div className="inline-flex p-1.5 bg-gray-100/90 dark:bg-slate-800/90 rounded-2xl border border-gray-200/80 dark:border-slate-700/80 gap-1.5 shadow-sm max-w-full overflow-x-auto">
           <button
             onClick={() => setActiveTab('cotizador')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all
+            className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all whitespace-nowrap
               ${activeTab === 'cotizador'
                 ? 'bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-sm'
-                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-white/50 dark:hover:bg-slate-700/50'
               }`}
           >
-            <Calculator size={14} />
-            Cotizador por Frigorías
+            <Calculator size={15} />
+            <span>Cotizador por Frigorías</span>
           </button>
+
           <button
             onClick={() => setActiveTab('catalogo')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all
+            className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all whitespace-nowrap
               ${activeTab === 'catalogo'
                 ? 'bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-sm'
-                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-white/50 dark:hover:bg-slate-700/50'
               }`}
           >
-            <BookOpen size={14} />
-            Catálogo ({dynamicCatalog.length})
+            <BookOpen size={15} />
+            <span>Catálogo Completo</span>
+            <span className={`text-[10px] px-2 py-0.5 rounded-full font-extrabold ${activeTab === 'catalogo' ? 'bg-brand-50 text-brand-600 dark:bg-brand-900/40 dark:text-brand-300' : 'bg-gray-200/80 dark:bg-slate-700 text-gray-600 dark:text-gray-300'}`}>
+              {dynamicCatalog.length}
+            </span>
           </button>
+
           <button
             onClick={() => setActiveTab('parametros')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all
+            className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all whitespace-nowrap
               ${activeTab === 'parametros'
                 ? 'bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-sm'
-                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-white/50 dark:hover:bg-slate-700/50'
               }`}
           >
-            {isOwner ? <Sliders size={14} /> : <Lock size={13} className="text-amber-500" />}
-            Costos y Parámetros (Hoja 1)
+            {isOwner ? <Sliders size={15} /> : <Lock size={14} className="text-amber-500" />}
+            <span>Costos y Parámetros (Hoja 1)</span>
             {!isOwner && (
               <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/40 px-1.5 py-0.5 rounded">
                 Solo Lectura
               </span>
             )}
           </button>
+
           <button
             onClick={() => setActiveTab('reportados')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all relative
+            className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all whitespace-nowrap relative
               ${activeTab === 'reportados'
                 ? 'bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-sm'
-                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-white/50 dark:hover:bg-slate-700/50'
               }`}
           >
-            <Package size={14} />
-            Reportados por Técnicos
+            <Package size={15} />
+            <span>Reportados por Técnicos</span>
             {extras.filter((e) => !e.billed).length > 0 && (
-              <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+              <span className="flex items-center gap-1 bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-300 text-[10px] font-extrabold px-2 py-0.5 rounded-full">
+                <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                {extras.filter((e) => !e.billed).length}
+              </span>
             )}
           </button>
         </div>
@@ -694,11 +705,10 @@ export default function ExtrasPage() {
                   onChange={(e) =>
                     setPricingParams({ ...pricingParams, copperPricePerKg: parseFloat(e.target.value) || 0 })
                   }
-                  className={`w-full pl-8 pr-3 py-1.5 font-bold font-mono text-sm border rounded-lg focus:outline-none focus:ring-1 focus:ring-brand-500 ${
-                    !isOwner
+                  className={`w-full pl-8 pr-3 py-1.5 font-bold font-mono text-sm border rounded-lg focus:outline-none focus:ring-1 focus:ring-brand-500 ${!isOwner
                       ? 'bg-gray-100 dark:bg-slate-800/80 border-gray-200 dark:border-slate-700 text-gray-500 cursor-not-allowed'
                       : 'bg-gray-50 dark:bg-slate-900 border-gray-200 dark:border-slate-700 text-gray-900 dark:text-white'
-                  }`}
+                    }`}
                 />
               </div>
               <div className="flex justify-between items-center text-[11px] text-gray-500 pt-1">
@@ -727,11 +737,10 @@ export default function ExtrasPage() {
                   onChange={(e) =>
                     setPricingParams({ ...pricingParams, copperDiscount: (parseFloat(e.target.value) || 0) / 100 })
                   }
-                  className={`w-full pl-3 pr-8 py-1.5 font-bold font-mono text-sm border rounded-lg focus:outline-none focus:ring-1 focus:ring-brand-500 ${
-                    !isOwner
+                  className={`w-full pl-3 pr-8 py-1.5 font-bold font-mono text-sm border rounded-lg focus:outline-none focus:ring-1 focus:ring-brand-500 ${!isOwner
                       ? 'bg-gray-100 dark:bg-slate-800/80 border-gray-200 dark:border-slate-700 text-gray-500 cursor-not-allowed'
                       : 'bg-gray-50 dark:bg-slate-900 border-gray-200 dark:border-slate-700 text-gray-900 dark:text-white'
-                  }`}
+                    }`}
                 />
               </div>
               <span className="text-[11px] text-gray-400 block pt-1">
@@ -754,11 +763,10 @@ export default function ExtrasPage() {
                   onChange={(e) =>
                     setPricingParams({ ...pricingParams, pipeMarginGM: parseFloat(e.target.value) || 0 })
                   }
-                  className={`w-full px-3 py-1.5 font-bold font-mono text-sm border rounded-lg focus:outline-none focus:ring-1 focus:ring-brand-500 ${
-                    !isOwner
+                  className={`w-full px-3 py-1.5 font-bold font-mono text-sm border rounded-lg focus:outline-none focus:ring-1 focus:ring-brand-500 ${!isOwner
                       ? 'bg-gray-100 dark:bg-slate-800/80 border-gray-200 dark:border-slate-700 text-gray-500 cursor-not-allowed'
                       : 'bg-gray-50 dark:bg-slate-900 border-gray-200 dark:border-slate-700 text-gray-900 dark:text-white'
-                  }`}
+                    }`}
                 />
               </div>
               <div className="flex justify-between items-center text-[11px] text-gray-500 pt-1">
@@ -782,11 +790,10 @@ export default function ExtrasPage() {
                   onChange={(e) =>
                     setPricingParams({ ...pricingParams, laborMarginGM: parseFloat(e.target.value) || 0 })
                   }
-                  className={`w-full px-3 py-1.5 font-bold font-mono text-sm border rounded-lg focus:outline-none focus:ring-1 focus:ring-brand-500 ${
-                    !isOwner
+                  className={`w-full px-3 py-1.5 font-bold font-mono text-sm border rounded-lg focus:outline-none focus:ring-1 focus:ring-brand-500 ${!isOwner
                       ? 'bg-gray-100 dark:bg-slate-800/80 border-gray-200 dark:border-slate-700 text-gray-500 cursor-not-allowed'
                       : 'bg-gray-50 dark:bg-slate-900 border-gray-200 dark:border-slate-700 text-gray-900 dark:text-white'
-                  }`}
+                    }`}
                 />
               </div>
               <span className="text-[11px] text-gray-400 block pt-1">
@@ -858,9 +865,8 @@ export default function ExtrasPage() {
                                       const next = { ...pricingParams.copperWeights, [size]: parseFloat(e.target.value) || 0 };
                                       setPricingParams({ ...pricingParams, copperWeights: next });
                                     }}
-                                    className={`w-20 px-2 py-1 text-xs font-mono font-bold border rounded ${
-                                      !isOwner ? 'bg-gray-100 dark:bg-slate-800 text-gray-500 cursor-not-allowed' : 'bg-gray-50 dark:bg-slate-900'
-                                    }`}
+                                    className={`w-20 px-2 py-1 text-xs font-mono font-bold border rounded ${!isOwner ? 'bg-gray-100 dark:bg-slate-800 text-gray-500 cursor-not-allowed' : 'bg-gray-50 dark:bg-slate-900'
+                                      }`}
                                   />
                                   <span className="text-xs text-gray-400">kg</span>
                                 </div>
@@ -918,9 +924,8 @@ export default function ExtrasPage() {
                                       const next = { ...pricingParams.baseLabor, [cap]: parseFloat(e.target.value) || 0 };
                                       setPricingParams({ ...pricingParams, baseLabor: next });
                                     }}
-                                    className={`w-full pl-6 pr-2 py-1 text-xs font-mono font-bold border rounded ${
-                                      !isOwner ? 'bg-gray-100 dark:bg-slate-800 text-gray-500 cursor-not-allowed' : 'bg-gray-50 dark:bg-slate-900'
-                                    }`}
+                                    className={`w-full pl-6 pr-2 py-1 text-xs font-mono font-bold border rounded ${!isOwner ? 'bg-gray-100 dark:bg-slate-800 text-gray-500 cursor-not-allowed' : 'bg-gray-50 dark:bg-slate-900'
+                                      }`}
                                   />
                                 </div>
                               </td>
@@ -959,9 +964,8 @@ export default function ExtrasPage() {
                             const next = { ...pricingParams.insulationBellini, [size]: parseFloat(e.target.value) || 0 };
                             setPricingParams({ ...pricingParams, insulationBellini: next });
                           }}
-                          className={`w-full pl-6 pr-2 py-1 text-xs font-mono font-bold border rounded ${
-                            !isOwner ? 'bg-gray-100 dark:bg-slate-800 text-gray-500 cursor-not-allowed' : 'bg-white dark:bg-slate-900'
-                          }`}
+                          className={`w-full pl-6 pr-2 py-1 text-xs font-mono font-bold border rounded ${!isOwner ? 'bg-gray-100 dark:bg-slate-800 text-gray-500 cursor-not-allowed' : 'bg-white dark:bg-slate-900'
+                            }`}
                         />
                       </div>
                     </div>
@@ -989,9 +993,8 @@ export default function ExtrasPage() {
                             const next = { ...pricingParams.hosesReld, [size]: parseFloat(e.target.value) || 0 };
                             setPricingParams({ ...pricingParams, hosesReld: next });
                           }}
-                          className={`w-full pl-6 pr-2 py-1 text-xs font-mono font-bold border rounded ${
-                            !isOwner ? 'bg-gray-100 dark:bg-slate-800 text-gray-500 cursor-not-allowed' : 'bg-white dark:bg-slate-900'
-                          }`}
+                          className={`w-full pl-6 pr-2 py-1 text-xs font-mono font-bold border rounded ${!isOwner ? 'bg-gray-100 dark:bg-slate-800 text-gray-500 cursor-not-allowed' : 'bg-white dark:bg-slate-900'
+                            }`}
                         />
                       </div>
                     </div>
@@ -1019,9 +1022,8 @@ export default function ExtrasPage() {
                               const next = { ...pricingParams.cablesReld, [type]: parseFloat(e.target.value) || 0 };
                               setPricingParams({ ...pricingParams, cablesReld: next });
                             }}
-                            className={`w-full pl-6 pr-2 py-1 text-xs font-mono font-bold border rounded ${
-                              !isOwner ? 'bg-gray-100 dark:bg-slate-800 text-gray-500 cursor-not-allowed' : 'bg-white dark:bg-slate-900'
-                            }`}
+                            className={`w-full pl-6 pr-2 py-1 text-xs font-mono font-bold border rounded ${!isOwner ? 'bg-gray-100 dark:bg-slate-800 text-gray-500 cursor-not-allowed' : 'bg-white dark:bg-slate-900'
+                              }`}
                           />
                         </div>
                       </div>
@@ -1050,9 +1052,8 @@ export default function ExtrasPage() {
                               const next = { ...pricingParams.tapesReld, [key]: parseFloat(e.target.value) || 0 };
                               setPricingParams({ ...pricingParams, tapesReld: next });
                             }}
-                            className={`w-full pl-6 pr-2 py-1 text-xs font-mono font-bold border rounded ${
-                              !isOwner ? 'bg-gray-100 dark:bg-slate-800 text-gray-500 cursor-not-allowed' : 'bg-white dark:bg-slate-900'
-                            }`}
+                            className={`w-full pl-6 pr-2 py-1 text-xs font-mono font-bold border rounded ${!isOwner ? 'bg-gray-100 dark:bg-slate-800 text-gray-500 cursor-not-allowed' : 'bg-white dark:bg-slate-900'
+                              }`}
                           />
                         </div>
                       </div>
@@ -1088,9 +1089,8 @@ export default function ExtrasPage() {
                             const next = { ...pricingParams.bracketsAndFixings, [key]: parseFloat(e.target.value) || 0 };
                             setPricingParams({ ...pricingParams, bracketsAndFixings: next });
                           }}
-                          className={`w-full pl-6 pr-2 py-1 text-xs font-mono font-bold border rounded ${
-                            !isOwner ? 'bg-gray-100 dark:bg-slate-800 text-gray-500 cursor-not-allowed' : 'bg-white dark:bg-slate-900'
-                          }`}
+                          className={`w-full pl-6 pr-2 py-1 text-xs font-mono font-bold border rounded ${!isOwner ? 'bg-gray-100 dark:bg-slate-800 text-gray-500 cursor-not-allowed' : 'bg-white dark:bg-slate-900'
+                            }`}
                         />
                       </div>
                     </div>

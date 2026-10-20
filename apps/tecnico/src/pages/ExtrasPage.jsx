@@ -18,7 +18,7 @@ export default function ExtrasPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { currentOrder, fetchWorkOrder } = useWorkOrderStore();
-  
+
   const [extras, setExtras] = useState([]);
   const [description, setDescription] = useState('');
   const [quantity, setQuantity] = useState('');
@@ -52,7 +52,7 @@ export default function ExtrasPage() {
           .from('extras')
           .insert([newExtra])
           .select();
-        
+
         if (error) throw error;
         if (data && data.length > 0) {
           setExtras((prev) => [...prev, data[0]]);
@@ -60,7 +60,7 @@ export default function ExtrasPage() {
       } else {
         const tempId = `temp-${Date.now()}`;
         const tempExtra = { ...newExtra, id: tempId, created_at: new Date().toISOString() };
-        
+
         await db.extras.add({ ...tempExtra, synced: false });
         await db.pendingSync.add({
           table: 'extras',
@@ -68,7 +68,7 @@ export default function ExtrasPage() {
           data: newExtra,
           created_at: new Date().toISOString(),
         });
-        
+
         setExtras((prev) => [...prev, tempExtra]);
       }
 
@@ -86,7 +86,7 @@ export default function ExtrasPage() {
 
   const handleDelete = async (extraId) => {
     if (!window.confirm('¿Eliminar este material?')) return;
-    
+
     try {
       if (navigator.onLine) {
         if (!extraId.toString().startsWith('temp-')) {
@@ -225,9 +225,9 @@ export default function ExtrasPage() {
               <label className="block text-xs font-medium text-gray-500 mb-1">
                 Descripción del repuesto / material
               </label>
-              <input 
-                type="text" 
-                className="input" 
+              <input
+                type="text"
+                className="input"
                 placeholder="Ej: Metros de Caño, Gas R410A, Ménsula..."
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
@@ -237,12 +237,12 @@ export default function ExtrasPage() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-medium text-gray-500 mb-1">Cantidad</label>
-                <input 
+                <input
                   id="extra-quantity-input"
-                  type="number" 
+                  type="number"
                   step="0.01"
                   min="0.01"
-                  className="input font-bold" 
+                  className="input font-bold"
                   placeholder="Ej: 2.5"
                   value={quantity}
                   onChange={(e) => setQuantity(e.target.value)}
@@ -251,7 +251,7 @@ export default function ExtrasPage() {
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-500 mb-1">Unidad</label>
-                <select 
+                <select
                   className="select font-medium"
                   value={unit}
                   onChange={(e) => setUnit(e.target.value)}
@@ -262,8 +262,8 @@ export default function ExtrasPage() {
                 </select>
               </div>
             </div>
-            <button 
-              type="submit" 
+            <button
+              type="submit"
               className="btn-primary w-full mt-2"
               disabled={isSubmitting || !description || !quantity}
             >
@@ -292,7 +292,7 @@ export default function ExtrasPage() {
                       {extra.quantity} {UNIT_OPTIONS.find(u => u.value === extra.unit)?.label || extra.unit}
                     </p>
                   </div>
-                  <button 
+                  <button
                     onClick={() => handleDelete(extra.id)}
                     className="p-2 text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
                   >
@@ -304,10 +304,10 @@ export default function ExtrasPage() {
           )}
         </div>
       </div>
-      
+
       <div className="mt-8 mb-4">
-        <button 
-          onClick={handleBack} 
+        <button
+          onClick={handleBack}
           className="btn-secondary w-full"
         >
           Volver a la orden

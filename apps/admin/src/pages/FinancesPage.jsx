@@ -9,6 +9,7 @@ import { formatCurrency, formatDate } from '@4s-clima/shared/utils';
 import { findSuggestedPrice } from '@4s-clima/shared';
 import { generateReceiptPDF, generateAccountStatementPDF, openAndDownloadPDF } from '../services/pdfService';
 import { generateArcaInvoicePDF } from '../services/arcaInvoicePdf';
+import { saveAndDownloadBlob } from '../services/downloadHelper';
 import Swal from 'sweetalert2';
 
 export default function FinancesPage() {
@@ -735,7 +736,7 @@ export default function FinancesPage() {
   };
 
   // Exportar Libro IVA Digital / CSV
-  const exportToCSV = () => {
+  const exportToCSV = async () => {
     let rows = [];
     let fileName = '';
 
@@ -791,18 +792,14 @@ export default function FinancesPage() {
 
     // Byte Order Mark (BOM) UTF-8 para que Excel detecte tildes y caracteres especiales automáticamente
     const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
-    const blob = new Blob([bom, csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.setAttribute("download", fileName);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const blob = new Blob([bom, csvContent], { type: 'text/csv;charset=utf-8' });
 
-    setTimeout(() => {
-      URL.revokeObjectURL(url);
-    }, 2000);
+    await saveAndDownloadBlob(blob, fileName, [
+      {
+        description: 'Planilla de Excel (CSV)',
+        accept: { 'text/csv': ['.csv'] },
+      },
+    ]);
   };
 
   const handleDownloadPDF = async (order) => {
