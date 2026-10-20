@@ -27,7 +27,7 @@ DO $$ BEGIN
       USING (
         EXISTS (
           SELECT 1 FROM public.users
-          WHERE users.id = auth.uid() AND users.role = 'admin'
+          WHERE users.id = auth.uid() AND users.role IN ('admin', 'owner')
         )
       );
   END IF;
