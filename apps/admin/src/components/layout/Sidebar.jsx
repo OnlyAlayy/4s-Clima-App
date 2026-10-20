@@ -15,11 +15,9 @@ export default function Sidebar({ isCollapsed = false, toggleSidebar }) {
   const { isDark, toggleDarkMode } = useDarkMode();
 
   const isOwner = profile?.role === 'owner';
-  const displayName = isOwner
-    ? (profile?.name && profile.name !== 'Tu Nombre' ? profile.name : 'Walter')
-    : (profile?.name || profile?.full_name || user?.email || 'Usuario');
+  const displayName = profile?.name || profile?.full_name || user?.email || 'Usuario';
   const displayRole = isOwner ? 'Owner' : (profile?.role === 'admin' ? 'Administrador' : 'Usuario');
-  const userInitial = (displayName?.[0] || 'W').toUpperCase();
+  const userInitial = (displayName?.[0] || 'U').toUpperCase();
 
   const navGroups = [
     {
