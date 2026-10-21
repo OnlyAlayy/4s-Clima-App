@@ -171,11 +171,12 @@ export function calculateEstimatedArrival(etaMinutes) {
 
 /**
  * Evalúa si el arribo proyectado está a tiempo o demorado respecto a la hora programada.
+ * Distingue órdenes programadas para hoy vs. órdenes de fechas anteriores (reprogramadas/backlog).
  * 
  * @param {string} scheduledDate - Fecha YYYY-MM-DD
  * @param {string} scheduledTime - Hora HH:mm o HH:mm:ss
  * @param {number} etaMinutes - Minutos estimados de viaje
- * @returns {Object} { status: 'on_time'|'delayed'|'unknown', delayMinutes: number, label: string }
+ * @returns {Object} { status: 'on_time'|'delayed'|'rescheduled'|'early'|'unknown', delayMinutes: number, label: string }
  */
 export function evaluateSchedulePunctuality(scheduledDate, scheduledTime, etaMinutes) {
   if (!scheduledDate || !scheduledTime || etaMinutes == null) {
@@ -184,9 +185,15 @@ export function evaluateSchedulePunctuality(scheduledDate, scheduledTime, etaMin
 
   try {
     const timeParts = scheduledTime.slice(0, 5).split(':');
-    const target = new Date(scheduledDate);
-    // Si la fecha solo trae YYYY-MM-DD, new Date() lo interpreta en UTC
     const [y, m, d] = scheduledDate.split('-').map(Number);
+
+    const now = new Date();
+    const todayY = now.getFullYear();
+    const todayM = now.getMonth() + 1;
+    const todayD = now.getDate();
+    const todayStr = `${todayY}-${String(todayM).padStart(2, '0')}-${String(todayD).padStart(2, '0')}`;
+
+    const target = new Date();
     target.setFullYear(y, m - 1, d);
     target.setHours(parseInt(timeParts[0], 10), parseInt(timeParts[1], 10), 0, 0);
 
@@ -194,19 +201,42 @@ export function evaluateSchedulePunctuality(scheduledDate, scheduledTime, etaMin
     const diffMs = projectedArrival.getTime() - target.getTime();
     const diffMins = Math.round(diffMs / 60000);
 
-    // Margen de tolerancia de cortesía: 12 minutos
+    // 1. Si la orden es de una fecha distinta a hoy:
+    if (scheduledDate !== todayStr) {
+      const formattedPactada = `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}`;
+      if (scheduledDate < todayStr) {
+        return {
+          status: 'rescheduled',
+          delayMinutes: diffMins,
+          label: `Pactada el ${formattedPactada}`,
+        };
+      } else {
+        return {
+          status: 'early',
+          delayMinutes: 0,
+          label: `Pactada para el ${formattedPactada}`,
+        };
+      }
+    }
+
+    // 2. Orden programada para HOY: evaluación por minutos
     if (diffMins > 12) {
+      const delayLabel =
+        diffMins >= 60
+          ? `Demorado (+${Math.floor(diffMins / 60)}h ${diffMins % 60}m)`
+          : `Demorado (+${diffMins} min)`;
+
       return {
         status: 'delayed',
         delayMinutes: diffMins,
-        label: `Demorado (+${diffMins} min)`,
+        label: delayLabel,
       };
     }
 
     return {
       status: 'on_time',
       delayMinutes: 0,
-      label: 'En horario programado',
+      label: 'En horario',
     };
   } catch {
     return { status: 'unknown', delayMinutes: 0, label: 'En viaje' };
@@ -238,15 +268,16 @@ export function generateWhatsAppTrackingUrl({
     ? new Date(Date.now() + etaMinutes * 60 * 1000).toLocaleTimeString('es-AR', {
         hour: '2-digit',
         minute: '2-digit',
+        hour12: false,
       })
     : '';
 
   let message = `¡Hola! Te informamos desde *4S Clima* que nuestro técnico *${technicianName || 'asignado'}* se encuentra en viaje hacia tus instalaciones.`;
-  if (clientName) message += `\n🏢 *Destino:* ${clientName}`;
+  if (clientName) message += `\n• *Destino:* ${clientName}`;
   if (address) message += ` (${address})`;
-  if (orderNumber) message += `\n📋 *Orden:* #${orderNumber}`;
-  if (distText) message += `\n📍 *Distancia actual:* ${distText}`;
-  if (etaText && arrivalTime) message += `\n⏱️ *Llegada estimada:* ${etaText} (aprox. ${arrivalTime} hs)`;
+  if (orderNumber) message += `\n• *Orden:* #${orderNumber}`;
+  if (distText) message += `\n• *Distancia actual:* ${distText}`;
+  if (etaText && arrivalTime) message += `\n• *Llegada estimada:* ${etaText} (${arrivalTime} hs)`;
   message += `\n\n_Centro de Despacho Operativo — 4S Clima._`;
 
   const cleanPhone = (phone || '').replace(/[^0-9]/g, '');

@@ -344,6 +344,7 @@ export default function FleetRadarMap() {
           ? new Date(Date.now() + etaMinutes * 60 * 1000).toLocaleTimeString('es-AR', {
               hour: '2-digit',
               minute: '2-digit',
+              hour12: false,
             })
           : null;
 
@@ -642,10 +643,19 @@ export default function FleetRadarMap() {
                                 <span>• {formatDistance(tech.distanceMeters)}</span>
                                 {tech.etaMinutes !== null && <span>({formatEta(tech.etaMinutes)})</span>}
                                 {tech.isNear && (
-                                  <span className="text-emerald-600 dark:text-emerald-400 font-bold">📍 Inmediaciones</span>
+                                  <span className="text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-0.5">
+                                    <MapPin size={10} className="shrink-0" /> Inmediaciones
+                                  </span>
                                 )}
                                 {tech.punctuality?.status === 'delayed' && (
-                                  <span className="text-amber-600 dark:text-amber-400 font-bold">+{tech.punctuality.delayMinutes}m</span>
+                                  <span className="text-amber-600 dark:text-amber-400 font-bold">
+                                    +{tech.punctuality.delayMinutes >= 60 ? `${Math.floor(tech.punctuality.delayMinutes / 60)}h` : `${tech.punctuality.delayMinutes}m`}
+                                  </span>
+                                )}
+                                {tech.punctuality?.status === 'rescheduled' && (
+                                  <span className="text-slate-500 dark:text-slate-400 font-medium text-[9px]">
+                                    ({tech.punctuality.label.replace('Pactada el ', '')})
+                                  </span>
                                 )}
                               </span>
                             ) : (
@@ -813,18 +823,27 @@ export default function FleetRadarMap() {
                         </span>
                       )}
                       {selectedTech.punctuality?.status === 'delayed' && (
-                        <span className="badge bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 text-[10px] py-0.2 font-bold">
-                          ⚠️ {selectedTech.punctuality.label}
+                        <span className="badge bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 text-[10px] py-0.2 font-semibold flex items-center gap-1">
+                          <AlertCircle size={11} className="shrink-0 text-amber-600 dark:text-amber-400" />
+                          <span>{selectedTech.punctuality.label}</span>
                         </span>
                       )}
                       {selectedTech.punctuality?.status === 'on_time' && (
-                        <span className="badge bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 text-[10px] py-0.2">
-                          ✓ En horario
+                        <span className="badge bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 text-[10px] py-0.2 flex items-center gap-1">
+                          <CheckCircle2 size={11} className="shrink-0 text-emerald-600 dark:text-emerald-400" />
+                          <span>En horario</span>
+                        </span>
+                      )}
+                      {selectedTech.punctuality?.status === 'rescheduled' && (
+                        <span className="badge bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 text-[10px] py-0.2 flex items-center gap-1">
+                          <Clock size={11} className="shrink-0 text-slate-500 dark:text-slate-400" />
+                          <span>{selectedTech.punctuality.label}</span>
                         </span>
                       )}
                       {selectedTech.isNear && (
-                        <span className="badge bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 text-[10px] py-0.2 font-bold animate-pulse">
-                          📍 En inmediaciones (&lt;150m)
+                        <span className="badge bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 text-[10px] py-0.2 font-bold animate-pulse flex items-center gap-1">
+                          <MapPin size={11} className="shrink-0 text-emerald-600 dark:text-emerald-400" />
+                          <span>En inmediaciones (&lt;150m)</span>
                         </span>
                       )}
                     </div>

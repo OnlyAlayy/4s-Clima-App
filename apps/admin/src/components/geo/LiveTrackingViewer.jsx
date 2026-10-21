@@ -29,6 +29,7 @@ import {
   Car,
   Wrench,
   ExternalLink,
+  MapPin,
 } from 'lucide-react';
 import { createDestinationIcon, createTechnicianIcon } from './leafletIcons';
 
@@ -200,6 +201,7 @@ export default function LiveTrackingViewer({
       ? new Date(Date.now() + etaMinutes * 60 * 1000).toLocaleTimeString('es-AR', {
           hour: '2-digit',
           minute: '2-digit',
+          hour12: false,
         })
       : null;
 
@@ -237,18 +239,27 @@ export default function LiveTrackingViewer({
                 Canal Seguro RLS
               </span>
               {punctuality && punctuality.status === 'delayed' && (
-                <span className="badge bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 text-[10px] py-0.5 font-bold">
-                  ⚠️ {punctuality.label}
+                <span className="badge bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 text-[10px] py-0.5 font-semibold flex items-center gap-1">
+                  <AlertCircle size={11} className="shrink-0 text-amber-600 dark:text-amber-400" />
+                  <span>{punctuality.label}</span>
                 </span>
               )}
               {punctuality && punctuality.status === 'on_time' && (
-                <span className="badge bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 text-[10px] py-0.5">
-                  ✓ {punctuality.label}
+                <span className="badge bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 text-[10px] py-0.5 flex items-center gap-1">
+                  <CheckCircle2 size={11} className="shrink-0 text-emerald-600 dark:text-emerald-400" />
+                  <span>En horario</span>
+                </span>
+              )}
+              {punctuality && punctuality.status === 'rescheduled' && (
+                <span className="badge bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 text-[10px] py-0.5 flex items-center gap-1">
+                  <Clock size={11} className="shrink-0 text-slate-500 dark:text-slate-400" />
+                  <span>{punctuality.label}</span>
                 </span>
               )}
               {isNear && (
-                <span className="badge bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 text-[10px] py-0.5 animate-pulse font-bold">
-                  📍 En Inmediaciones (&lt;150m)
+                <span className="badge bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 text-[10px] py-0.5 animate-pulse font-bold flex items-center gap-1">
+                  <MapPin size={11} className="shrink-0 text-emerald-600 dark:text-emerald-400" />
+                  <span>En Inmediaciones (&lt;150m)</span>
                 </span>
               )}
             </h3>
