@@ -357,8 +357,8 @@ export default function LiveTrackingViewer({
             <Marker position={destPos} icon={createDestinationIcon('Destino')}>
               <Popup>
                 <div className="text-xs">
-                  <p className="font-bold text-gray-900">{clientName || 'Destino de la Orden'}</p>
-                  <p className="text-gray-600">{destinationAddress || 'Sin dirección exacta'}</p>
+                  <p className="font-bold text-gray-900 dark:text-white">{clientName || 'Destino de la Orden'}</p>
+                  <p className="text-gray-600 dark:text-slate-300">{destinationAddress || 'Sin dirección exacta'}</p>
                 </div>
               </Popup>
             </Marker>
@@ -369,11 +369,11 @@ export default function LiveTrackingViewer({
             <Marker position={techPos} icon={createTechnicianIcon(techLocation?.heading)}>
               <Popup>
                 <div className="text-xs">
-                  <p className="font-bold text-blue-700">{technicianName} (En Vivo)</p>
-                  <p className="text-gray-600">Velocidad: {techLocation?.speed || 0} km/h</p>
-                  <p className="text-gray-500">Precisión: ±{techLocation?.accuracy || 0} m</p>
+                  <p className="font-bold text-blue-700 dark:text-blue-400">{technicianName} (En Vivo)</p>
+                  <p className="text-gray-600 dark:text-slate-300">Velocidad: {techLocation?.speed || 0} km/h</p>
+                  <p className="text-gray-500 dark:text-slate-400">Precisión: ±{techLocation?.accuracy || 0} m</p>
                   {techLocation?.battery !== null && (
-                    <p className="text-gray-500">Batería: {techLocation.battery}%</p>
+                    <p className="text-gray-500 dark:text-slate-400">Batería: {techLocation.battery}%</p>
                   )}
                 </div>
               </Popup>

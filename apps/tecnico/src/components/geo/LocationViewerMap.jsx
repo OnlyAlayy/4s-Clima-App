@@ -112,8 +112,8 @@ export default function LocationViewerMap({
             <Marker position={position} icon={createDestinationIcon(title)}>
               <Popup>
                 <div className="text-xs">
-                  <p className="font-bold text-gray-900">{title}</p>
-                  <p className="text-gray-600 mt-0.5">{address || 'Destino de la orden'}</p>
+                  <p className="font-bold text-gray-900 dark:text-white">{title}</p>
+                  <p className="text-gray-600 dark:text-slate-300 mt-0.5">{address || 'Destino de la orden'}</p>
                 </div>
               </Popup>
             </Marker>
@@ -123,8 +123,8 @@ export default function LocationViewerMap({
               <Marker position={techPos} icon={createTechnicianIcon(currentLocation?.heading)}>
                 <Popup>
                   <div className="text-xs">
-                    <p className="font-bold text-blue-700">Tu Ubicación (En Vivo)</p>
-                    <p className="text-gray-600">Velocidad: {currentLocation?.speed || 0} km/h</p>
+                    <p className="font-bold text-blue-700 dark:text-blue-400">Tu Ubicación (En Vivo)</p>
+                    <p className="text-gray-600 dark:text-slate-300">Velocidad: {currentLocation?.speed || 0} km/h</p>
                   </div>
                 </Popup>
               </Marker>

@@ -288,8 +288,40 @@
     line-height: 1.2 !important;
   }
 
-  /* Filtro oscuro elegante para mapas Leaflet en Dark Mode */
+  /* Soporte automático de Dark / Light Mode para mapas Leaflet */
+  .dark .leaflet-tile-pane,
   .radar-dark-tiles {
     filter: brightness(0.65) invert(1) contrast(2.4) hue-rotate(200deg) saturate(0.25);
+  }
+
+  .dark .leaflet-container {
+    background-color: #0f172a !important;
+  }
+
+  .dark .leaflet-bar a {
+    background-color: #1e293b !important;
+    color: #e2e8f0 !important;
+    border-color: #334155 !important;
+  }
+
+  .dark .leaflet-bar a:hover {
+    background-color: #334155 !important;
+    color: #ffffff !important;
+  }
+
+  .dark .leaflet-popup-content-wrapper,
+  .dark .leaflet-popup-tip {
+    background-color: #0f172a !important;
+    color: #f8fafc !important;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.6) !important;
+  }
+
+  .dark .leaflet-control-attribution {
+    background: rgba(15, 23, 42, 0.75) !important;
+    color: #94a3b8 !important;
+  }
+
+  .dark .leaflet-control-attribution a {
+    color: #60a5fa !important;
   }
 }

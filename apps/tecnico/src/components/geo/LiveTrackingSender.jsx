@@ -269,9 +269,9 @@ export default function LiveTrackingSender({
     <div className="space-y-2 my-3">
       {/* Alerta de Geocerca de Proximidad (<150m) */}
       {nearGeofence && (
-        <div className="bg-emerald-950/80 border border-emerald-500/60 rounded-xl p-3 text-xs text-emerald-200 flex items-center justify-between shadow-lg animate-pulse">
+        <div className="bg-emerald-50 dark:bg-emerald-950/80 border border-emerald-200 dark:border-emerald-500/60 rounded-xl p-3 text-xs text-emerald-800 dark:text-emerald-200 flex items-center justify-between shadow-sm animate-pulse">
           <div className="flex items-center gap-2">
-            <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
+            <CheckCircle2 size={16} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
             <span>
               <strong>¡Llegaste a destino!</strong> Estás en las inmediaciones de {clientName || 'la planta'}.
             </span>
@@ -280,7 +280,7 @@ export default function LiveTrackingSender({
       )}
 
       {/* Tarjeta de Radar y Telemetría */}
-      <div className="bg-slate-900 text-white rounded-xl p-3 shadow-md border border-slate-800">
+      <div className="bg-white dark:bg-slate-900 text-slate-800 dark:text-white rounded-xl p-3 shadow-sm border border-slate-200 dark:border-slate-800 transition-colors">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             {gpsStatus === 'active' ? (
@@ -291,31 +291,31 @@ export default function LiveTrackingSender({
             ) : gpsStatus === 'paused' ? (
               <span className="w-3 h-3 rounded-full bg-amber-500"></span>
             ) : gpsStatus === 'denied' || gpsStatus === 'error' ? (
-              <AlertTriangle size={16} className="text-amber-400" />
+              <AlertTriangle size={16} className="text-amber-500 dark:text-amber-400" />
             ) : (
-              <div className="w-4 h-4 border-2 border-white/60 border-t-transparent rounded-full animate-spin"></div>
+              <div className="w-4 h-4 border-2 border-brand-500 dark:border-white/60 border-t-transparent rounded-full animate-spin"></div>
             )}
 
             <div>
               <p className="text-xs font-bold leading-tight flex items-center gap-1.5">
-                <span>Radar en Vivo</span>
+                <span className="text-slate-900 dark:text-white">Radar en Vivo</span>
                 {gpsStatus === 'active' && (
-                  <span className="text-[10px] bg-emerald-500/20 text-emerald-300 font-mono px-1.5 py-0.2 rounded">
+                  <span className="text-[10px] bg-emerald-50 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-200/80 dark:border-transparent font-mono px-1.5 py-0.5 rounded">
                     TRANSMITIENDO
                   </span>
                 )}
                 {activeIncident === 'traffic' && (
-                  <span className="text-[10px] bg-amber-500/20 text-amber-300 font-mono px-1.5 py-0.2 rounded flex items-center gap-1">
+                  <span className="text-[10px] bg-amber-50 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-200/80 dark:border-transparent font-mono px-1.5 py-0.5 rounded flex items-center gap-1">
                     <Car size={10} /> Tránsito pesado
                   </span>
                 )}
                 {activeIncident === 'mechanical' && (
-                  <span className="text-[10px] bg-red-500/20 text-red-300 font-mono px-1.5 py-0.2 rounded flex items-center gap-1">
+                  <span className="text-[10px] bg-red-50 dark:bg-red-500/20 text-red-700 dark:text-red-300 border border-red-200/80 dark:border-transparent font-mono px-1.5 py-0.5 rounded flex items-center gap-1">
                     <Wrench size={10} /> Falla vehicular
                   </span>
                 )}
               </p>
-              <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-0.5">
+              <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
                 <span>
                   {gpsStatus === 'active'
                     ? `±${lastCoords?.accuracy || 0}m · ${lastCoords?.speed || 0} km/h`
@@ -326,8 +326,8 @@ export default function LiveTrackingSender({
                     : 'Sincronizando con panel de control...'}
                 </span>
                 {batteryState && (
-                  <span className="flex items-center gap-0.5 text-slate-400 font-mono text-[10px]">
-                    {batteryState.charging ? <BatteryCharging size={12} className="text-emerald-400" /> : <Battery size={12} className="text-slate-400" />}
+                  <span className="flex items-center gap-0.5 text-slate-500 dark:text-slate-400 font-mono text-[10px]">
+                    {batteryState.charging ? <BatteryCharging size={12} className="text-emerald-500 dark:text-emerald-400" /> : <Battery size={12} className="text-slate-400 dark:text-slate-500" />}
                     {batteryState.level}%
                   </span>
                 )}
@@ -341,20 +341,22 @@ export default function LiveTrackingSender({
               type="button"
               onClick={() => setShowIncidentMenu(!showIncidentMenu)}
               className={`p-1.5 rounded-lg text-xs transition-colors flex items-center gap-1 ${
-                activeIncident ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                activeIncident
+                  ? 'bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-500/20 dark:text-amber-300 dark:border-amber-500/40'
+                  : 'bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-200/80 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300 dark:border-transparent'
               }`}
               title="Reportar incidencia en ruta"
             >
-              <AlertTriangle size={13} className={activeIncident ? 'text-amber-400' : 'text-slate-400'} />
+              <AlertTriangle size={13} className={activeIncident ? 'text-amber-600 dark:text-amber-400' : 'text-slate-500 dark:text-slate-400'} />
             </button>
 
             {gpsStatus !== 'denied' && (
               <button
                 type="button"
                 onClick={() => setIsPaused(!isPaused)}
-                className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 transition-colors flex items-center gap-1"
+                className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200/80 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300 dark:border-transparent text-xs transition-colors flex items-center gap-1 font-medium"
               >
-                {isPaused ? <Play size={12} className="text-emerald-400" /> : <Pause size={12} className="text-amber-400" />}
+                {isPaused ? <Play size={12} className="text-emerald-600 dark:text-emerald-400" /> : <Pause size={12} className="text-amber-600 dark:text-amber-400" />}
                 <span>{isPaused ? 'Reanudar' : 'Pausar'}</span>
               </button>
             )}
@@ -363,15 +365,15 @@ export default function LiveTrackingSender({
 
         {/* Menú desplegable para reportar demoras operativas */}
         {showIncidentMenu && (
-          <div className="mt-2.5 pt-2 border-t border-slate-800 flex items-center gap-2">
-            <span className="text-[10px] text-slate-400">Avisar a central:</span>
+          <div className="mt-2.5 pt-2 border-t border-slate-200 dark:border-slate-800 flex items-center gap-2">
+            <span className="text-[10px] text-slate-500 dark:text-slate-400">Avisar a central:</span>
             <button
               type="button"
               onClick={() => handleSelectIncident('traffic')}
               className={`px-2 py-0.5 rounded text-[11px] flex items-center gap-1 transition-colors ${
                 activeIncident === 'traffic'
-                  ? 'bg-amber-600 text-white font-semibold'
-                  : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                  ? 'bg-amber-600 text-white font-semibold shadow-xs'
+                  : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200/80 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300 dark:border-transparent'
               }`}
             >
               <Car size={11} /> Tránsito
@@ -381,8 +383,8 @@ export default function LiveTrackingSender({
               onClick={() => handleSelectIncident('mechanical')}
               className={`px-2 py-0.5 rounded text-[11px] flex items-center gap-1 transition-colors ${
                 activeIncident === 'mechanical'
-                  ? 'bg-red-600 text-white font-semibold'
-                  : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                  ? 'bg-red-600 text-white font-semibold shadow-xs'
+                  : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200/80 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300 dark:border-transparent'
               }`}
             >
               <Wrench size={11} /> Falla mecánica
@@ -391,7 +393,7 @@ export default function LiveTrackingSender({
               <button
                 type="button"
                 onClick={() => handleSelectIncident(null)}
-                className="text-[10px] text-slate-400 hover:text-white underline ml-auto"
+                className="text-[10px] text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white underline ml-auto"
               >
                 Quitar aviso
               </button>

@@ -707,7 +707,6 @@ export default function FleetRadarMap() {
             <TileLayer
               url={TILES.url}
               attribution={TILES.attribution}
-              className={isDark ? 'radar-dark-tiles' : ''}
             />
 
             <MapCameraHandler

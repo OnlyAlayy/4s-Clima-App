@@ -75,8 +75,8 @@ export default function LocationViewerMap({
             <Marker position={position} icon={createDestinationIcon(title)}>
               <Popup>
                 <div className="text-xs">
-                  <p className="font-bold text-gray-900">{title}</p>
-                  <p className="text-gray-600 mt-0.5">{address || 'Destino de la orden'}</p>
+                  <p className="font-bold text-gray-900 dark:text-white">{title}</p>
+                  <p className="text-gray-600 dark:text-slate-300 mt-0.5">{address || 'Destino de la orden'}</p>
                 </div>
               </Popup>
             </Marker>
