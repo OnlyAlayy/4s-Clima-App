@@ -14,6 +14,11 @@
     @apply bg-gray-50 text-slate-900 font-sans antialiased overflow-x-hidden transition-colors duration-200 dark:bg-slate-950 dark:text-gray-100;
     -webkit-tap-highlight-color: transparent;
   }
+
+  /* Enterprise Tabular Alignment for Currencies, Tables and Metrics */
+  table, th, td, .tabular-nums, .stat-value, .font-mono, [data-tabular] {
+    font-variant-numeric: tabular-nums;
+  }
 }
 
 @layer components {
@@ -21,10 +26,10 @@
   .btn-primary {
     @apply inline-flex items-center justify-center gap-2
            bg-brand-600 text-white font-semibold
-           rounded-2xl px-6 py-4 text-base
+           rounded-xl px-5 py-3.5 text-sm
            hover:bg-brand-700 active:bg-brand-800
-           transition-all duration-200 ease-out
-           shadow-[0_4px_14px_rgba(37,99,235,0.3)]
+           transition-all duration-150 ease-out
+           shadow-sm hover:shadow
            disabled:opacity-50 disabled:cursor-not-allowed;
   }
 
@@ -32,12 +37,12 @@
   .btn-secondary {
     @apply inline-flex items-center justify-center gap-2
            bg-white text-slate-700 font-semibold
-           rounded-2xl px-6 py-4 text-base
-           border border-gray-200
+           rounded-xl px-5 py-3.5 text-sm
+           border border-slate-200
            hover:bg-gray-50 active:bg-gray-100
            dark:bg-slate-900 dark:text-gray-200 dark:border-slate-800
            dark:hover:bg-slate-800 dark:active:bg-slate-700
-           transition-all duration-200 ease-out
+           transition-all duration-150 ease-out
            shadow-sm
            disabled:opacity-50 disabled:cursor-not-allowed;
   }
@@ -46,10 +51,10 @@
   .btn-success {
     @apply inline-flex items-center justify-center gap-2
            bg-emerald-500 text-white font-semibold
-           rounded-2xl px-6 py-4 text-base
+           rounded-xl px-5 py-3.5 text-sm
            hover:bg-emerald-600 active:bg-emerald-700
-           transition-all duration-200 ease-out
-           shadow-[0_4px_14px_rgba(16,185,129,0.3)];
+           transition-all duration-150 ease-out
+           shadow-sm;
   }
 
   /* Boton de peligro */
@@ -57,44 +62,43 @@
     @apply inline-flex items-center justify-center gap-2
            bg-red-50 text-red-600 font-semibold
            dark:bg-red-500/10 dark:text-red-400
-           rounded-2xl px-6 py-4 text-base
+           rounded-xl px-5 py-3.5 text-sm
            hover:bg-red-100 active:bg-red-200
            dark:hover:bg-red-500/20 dark:active:bg-red-500/30
-           transition-all duration-200 ease-out;
+           transition-all duration-150 ease-out;
   }
 
   /* Cards */
   .card {
-    @apply bg-white rounded-3xl border border-gray-100/80
-           p-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)]
+    @apply bg-white rounded-xl border border-slate-200/80
+           p-5 shadow-sm
            dark:bg-slate-900 dark:border-slate-800 dark:shadow-none
            relative overflow-hidden;
   }
 
   .card-pressable {
     @apply card cursor-pointer
-           hover:border-brand-200 hover:shadow-[0_8px_30px_rgba(37,99,235,0.08)]
+           hover:border-slate-300 hover:shadow-sm
            dark:hover:border-slate-700
-           hover:-translate-y-0.5
-           active:scale-[0.98] active:translate-y-0
-           transition-all duration-300 ease-out;
+           active:scale-[0.99]
+           transition-all duration-150 ease-out;
   }
 
   /* Inputs */
   .input {
     @apply w-full bg-gray-50 text-slate-900
-           rounded-2xl px-4 py-4 text-base
-           border border-gray-200
+           rounded-xl px-4 py-3 text-sm
+           border border-slate-200
            placeholder:text-gray-400 font-medium
            dark:bg-slate-900 dark:text-gray-100 dark:border-slate-800 dark:placeholder:text-slate-500
            focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 focus:bg-white dark:focus:bg-slate-800
-           transition-all duration-200;
+           transition-all duration-150 ease-out;
   }
 
   /* Badge */
   .badge {
-    @apply inline-flex items-center gap-1.5 px-3 py-1.5
-           rounded-full text-xs font-bold tracking-wide uppercase;
+    @apply inline-flex items-center gap-1.5 px-2.5 py-1
+           rounded-md text-xs font-semibold tracking-wide uppercase;
   }
 
   /* Layout Containers */
@@ -111,19 +115,19 @@
 
   .bottom-nav {
     @apply fixed bottom-0 left-0 right-0 z-50
-           bg-white/90 dark:bg-slate-900/90 backdrop-blur-2xl
-           border-t border-gray-100 dark:border-slate-800 shadow-[0_-10px_40px_rgba(0,0,0,0.05)]
-           pb-[max(1rem,var(--sab))] px-6 pt-4 rounded-t-[2.5rem];
+           bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl
+           border-t border-slate-200/80 dark:border-slate-800 shadow-md
+           pb-[max(1rem,var(--sab))] px-6 pt-3.5 rounded-t-2xl;
   }
 
   /* Checklist item row */
   .checklist-row {
     @apply flex items-center justify-between gap-3
-           py-4 px-5 rounded-2xl
-           border border-gray-100 bg-white
+           py-3.5 px-4 rounded-xl
+           border border-slate-200/80 bg-white
            dark:border-slate-800 dark:bg-slate-900
-           hover:border-brand-200 hover:shadow-sm dark:hover:border-slate-700
-           transition-all duration-300;
+           hover:border-slate-300 hover:shadow-sm dark:hover:border-slate-700
+           transition-all duration-150 ease-out;
   }
 
   .checklist-row[data-status="ok"] {

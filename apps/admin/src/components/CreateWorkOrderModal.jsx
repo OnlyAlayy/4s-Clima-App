@@ -191,7 +191,7 @@ export default function CreateWorkOrderModal({ isOpen, onClose, onCreated }) {
                   {plants.map(p => (
                     <option key={p.id} value={p.id}>{p.name} {p.address ? `(${p.address})` : ''}</option>
                   ))}
-                  <option value="custom">📍 Ubicación eventual / Sin sucursal fija (1 sola vez)</option>
+                  <option value="custom">Ubicación eventual / Sin sucursal fija (1 sola vez)</option>
                 </select>
               </div>
             </div>

@@ -40,6 +40,7 @@ import {
   Share2,
   Car,
   Wrench,
+  ArrowRight,
 } from 'lucide-react';
 
 // Tiles OpenStreetMap estándar y limpios sin marcas de agua
@@ -628,7 +629,7 @@ export default function FleetRadarMap() {
                       {order ? (
                         <div className="space-y-0.5">
                           <p className="text-[11px] font-medium text-gray-800 dark:text-gray-200 truncate flex items-center gap-1">
-                            <span className="text-brand-500 shrink-0">➔</span>
+                            <ArrowRight size={10} strokeWidth={1.75} className="text-brand-500 shrink-0 inline" />
                             <span className="font-semibold">{clientName || 'Cliente'}</span>
                             {destinationDesc && (
                               <span className="text-gray-400 dark:text-gray-500 truncate text-[10px]">
@@ -813,7 +814,7 @@ export default function FleetRadarMap() {
                       <span className="font-bold text-xs text-gray-900 dark:text-white">
                         {selectedTech.name}
                       </span>
-                      <span className="text-gray-400 text-xs">➔</span>
+                      <ArrowRight size={11} strokeWidth={1.75} className="text-gray-400 shrink-0 inline" />
                       <span className="font-bold text-xs text-brand-600 dark:text-brand-400 truncate">
                         {selectedTech.activeOrder?.client?.name || 'Cliente'}
                       </span>

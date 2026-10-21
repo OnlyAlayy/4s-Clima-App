@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { 
   DollarSign, Check, AlertCircle, FileText, TrendingUp, Wallet, Download,
   Search, Calendar, CreditCard, CheckSquare, Square, X, Filter, Building, Receipt, Layers,
-  MessageCircle, Eye, ChevronRight, Tag, Sparkles
+  MessageCircle, Eye, ChevronRight, Tag, Sparkles, CheckCircle2, AlertTriangle, Clock
 } from 'lucide-react';
 import { supabase } from '@4s-clima/shared/supabase';
 import { formatCurrency, formatDate, roundCurrency } from '@4s-clima/shared/utils';
@@ -726,8 +726,9 @@ export default function FinancesPage() {
           <div className="flex flex-col items-start gap-1">
             <span className="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 font-medium">Pagado</span>
             {paymentMethodName && (
-              <span className="text-[11px] text-gray-500 dark:text-gray-400 font-normal truncate max-w-[140px]" title={paymentMethodName}>
-                💳 {paymentMethodName}
+              <span className="text-[11px] text-gray-500 dark:text-gray-400 font-normal truncate max-w-[140px] flex items-center gap-1" title={paymentMethodName}>
+                <CreditCard size={11} strokeWidth={1.75} className="shrink-0 text-gray-400" />
+                <span>{paymentMethodName}</span>
               </span>
             )}
           </div>
@@ -859,14 +860,14 @@ export default function FinancesPage() {
       : 0;
     
     const text = `Hola ${client?.name || 'Cliente'}, les escribimos del área de Administración de 4S Clima para acercarles el estado de su cuenta corriente.\n\n` +
-      `📌 Saldo pendiente al día: ${formatCurrency(debt)} (${pendingCount} ${pendingCount === 1 ? 'comprobante pendiente' : 'comprobantes pendientes'})\n` +
-      (daysOverdue > 0 ? `⚠️ Plazo de pago vencido hace ${daysOverdue} días.\n\n` : `\n`) +
-      `💳 Datos para transferencia bancaria:\n` +
-      `• Banco: Galicia\n` +
-      `• CUIT: 23-47738071-9\n` +
-      `• Alias: CLIMA.4S.ADMIN\n` +
-      `• CBU: 0070000000000000000000\n\n` +
-      `Por favor remitirnos el comprobante una vez efectuada la transferencia. ¡Muchas gracias!`;
+      `• Saldo pendiente al día: ${formatCurrency(debt)} (${pendingCount} ${pendingCount === 1 ? 'comprobante pendiente' : 'comprobantes pendientes'})\n` +
+      (daysOverdue > 0 ? `• Plazo de pago vencido hace ${daysOverdue} días.\n\n` : `\n`) +
+      `• Datos para transferencia bancaria:\n` +
+      `  - Banco: Galicia\n` +
+      `  - CUIT: 23-47738071-9\n` +
+      `  - Alias: CLIMA.4S.ADMIN\n` +
+      `  - CBU: 0070000000000000000000\n\n` +
+      `Por favor remitirnos el comprobante una vez efectuada la transferencia. Muchas gracias.`;
 
     const phone = (client?.contact_phone || '').replace(/\D/g, '');
     if (phone) {
@@ -1114,16 +1115,19 @@ export default function FinancesPage() {
                       </td>
                       <td>
                         {account.currentDebt === 0 ? (
-                          <span className="badge bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
-                            ✓ Al Día
+                          <span className="badge bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 flex items-center gap-1">
+                            <CheckCircle2 size={12} strokeWidth={1.75} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+                            <span>Al Día</span>
                           </span>
                         ) : account.isOverdue ? (
-                          <span className="badge bg-red-100 text-red-800 dark:bg-red-950/60 dark:text-red-300">
-                            ⚠️ En Mora ({account.maxOverdueDays - 30}d vencida)
+                          <span className="badge bg-red-100 text-red-800 dark:bg-red-950/60 dark:text-red-300 flex items-center gap-1 font-semibold">
+                            <AlertTriangle size={12} strokeWidth={1.75} className="text-red-600 dark:text-red-400 shrink-0" />
+                            <span>En Mora ({account.maxOverdueDays - 30}d)</span>
                           </span>
                         ) : (
-                          <span className="badge bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
-                            ⏰ A Término ({30 - account.maxOverdueDays}d para vencer)
+                          <span className="badge bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 flex items-center gap-1">
+                            <Clock size={12} strokeWidth={1.75} className="text-amber-600 dark:text-amber-400 shrink-0" />
+                            <span>A Término ({30 - account.maxOverdueDays}d)</span>
                           </span>
                         )}
                       </td>
@@ -1343,20 +1347,23 @@ export default function FinancesPage() {
                             const isOver = days > 30;
                             if (isOver) {
                               return (
-                                <span className="badge bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-300 font-semibold">
-                                  ⚠️ Vencida ({days - 30}d)
+                                <span className="badge bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-300 font-semibold flex items-center gap-1">
+                                  <AlertTriangle size={12} strokeWidth={1.75} className="text-red-600 dark:text-red-400 shrink-0" />
+                                  <span>Vencida ({days - 30}d)</span>
                                 </span>
                               );
                             } else if (days > 23) {
                               return (
-                                <span className="badge bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300">
-                                  ⏰ Vence en {30 - days}d
+                                <span className="badge bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 flex items-center gap-1">
+                                  <Clock size={12} strokeWidth={1.75} className="text-amber-600 dark:text-amber-400 shrink-0" />
+                                  <span>Vence en {30 - days}d</span>
                                 </span>
                               );
                             } else {
                               return (
-                                <span className="badge bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
-                                  ✓ A término ({30 - days}d)
+                                <span className="badge bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 flex items-center gap-1">
+                                  <CheckCircle2 size={12} strokeWidth={1.75} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+                                  <span>A término ({30 - days}d)</span>
                                 </span>
                               );
                             }
