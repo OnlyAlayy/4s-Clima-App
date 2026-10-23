@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '@4s-clima/shared/supabase';
 import { calculateDistance, isNearDestination } from '@4s-clima/shared';
-import { Radio, AlertTriangle, CheckCircle2, Pause, Play, Compass, Battery, BatteryCharging, AlertOctagon, Car, Wrench } from 'lucide-react';
+import { Radio, AlertTriangle, CheckCircle2, Pause, Play, Compass, Battery, BatteryCharging, AlertOctagon, Car, Wrench, Smartphone } from 'lucide-react';
+import { nativeLocationTracker } from '../../services/nativeLocationTracker';
 
 const THROTTLE_INTERVAL_MS = 4000; // Emitir máximo cada 4 segundos para cuidar batería y datos
 const MIN_DISTANCE_METERS = 3; // Ignorar micro-vibraciones menores a 3 metros si está detenido
@@ -92,6 +93,7 @@ export default function LiveTrackingSender({
   }, [orderId, isActive, isPaused]);
 
   const cleanupTracking = () => {
+    nativeLocationTracker.stopTracking();
     if (watchIdRef.current !== null) {
       navigator.geolocation?.clearWatch(watchIdRef.current);
       watchIdRef.current = null;
@@ -124,62 +126,23 @@ export default function LiveTrackingSender({
       }
     });
 
-    // 2. Iniciar observación de GPS del dispositivo con opciones óptimas
-    const geoOptions = {
-      enableHighAccuracy: true,
-      maximumAge: 3000,
-      timeout: 10000,
-    };
-
-    if (navigator.geolocation) {
-      // Fix inmediato
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          handlePositionUpdate(position);
-        },
-        (error) => {
-          console.warn('LiveTracking initial fix error, activando fallback representativo:', error);
-          const fallbackPos = {
-            coords: {
-              latitude: -34.5950 + (Math.random() - 0.5) * 0.005,
-              longitude: -58.4200 + (Math.random() - 0.5) * 0.005,
-              heading: 45,
-              speed: 9.7, // ~35 km/h
-              accuracy: 10,
-            },
-          };
-          handlePositionUpdate(fallbackPos);
-        },
-        geoOptions
-      );
-
-      watchIdRef.current = navigator.geolocation.watchPosition(
-        (position) => {
-          handlePositionUpdate(position);
-        },
-        (error) => {
-          console.warn('LiveTracking GPS error:', error);
-          if (error.code === error.PERMISSION_DENIED) {
-            setGpsStatus('denied');
-          } else {
-            setGpsStatus('error');
-          }
-        },
-        geoOptions
-      );
-    } else {
-      // Navegador sin API de geolocalización: usar coordenadas representativas
-      const fallbackPos = {
-        coords: {
-          latitude: -34.5950,
-          longitude: -58.4200,
-          heading: 45,
-          speed: 8.5,
-          accuracy: 15,
-        },
-      };
-      handlePositionUpdate(fallbackPos);
-    }
+    // 2. Iniciar observación vía adaptador híbrido (PWA Web o Android Nativo con Background Geolocation)
+    nativeLocationTracker.startTracking({
+      orderId,
+      technicianName,
+      clientName,
+      onLocationUpdate: (location) => {
+        handlePositionUpdate({ coords: location });
+      },
+      onError: (error) => {
+        console.warn('LiveTracking GPS error:', error);
+        if (error?.code === 1 || error?.code === 'PERMISSION_DENIED' || error?.message?.includes('denied')) {
+          setGpsStatus('denied');
+        } else {
+          setGpsStatus('error');
+        }
+      },
+    });
   };
 
   const sendBroadcast = (coords, customIncident = null) => {
@@ -202,6 +165,7 @@ export default function LiveTrackingSender({
         incident: incidentToReport || null,
         timestamp: new Date().toISOString(),
         technicianName,
+        isNative: coords.isNative || nativeLocationTracker.isNativePlatform(),
       },
     });
     lastSentRef.current = Date.now();
@@ -211,15 +175,19 @@ export default function LiveTrackingSender({
   };
 
   const handlePositionUpdate = (position) => {
-    const { latitude, longitude, heading, speed, accuracy } = position.coords;
+    const raw = position.coords || position;
+    const latitude = raw.latitude ?? raw.lat;
+    const longitude = raw.longitude ?? raw.lng;
+    if (latitude == null || longitude == null) return;
     const now = Date.now();
 
     const coords = {
       lat: latitude,
       lng: longitude,
-      accuracy: Math.round(accuracy || 10),
-      speed: speed ? Math.round(speed * 3.6) : 25, // Convertir a km/h
-      heading: heading || null,
+      accuracy: Math.round(raw.accuracy || 10),
+      speed: raw.speed != null ? Math.round(raw.speed) : 25,
+      heading: raw.heading || null,
+      isNative: raw.isNative || nativeLocationTracker.isNativePlatform(),
     };
 
     setLastCoords(coords);
