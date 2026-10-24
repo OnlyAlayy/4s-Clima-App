@@ -62,13 +62,13 @@ jobs:
         env:
           ANDROID_HOME: /usr/local/lib/android/sdk
           ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
-        run: ./gradlew assembleDebug --no-daemon --stacktrace 2>&1 | tee gradle_log.txt
+        run: ./gradlew :app:assembleDebug --no-daemon --stacktrace 2>&1 | tee gradle_log.txt
         working-directory: apps/tecnico/android
 
-      - name: Report Gradle Log On Failure
-        if: failure()
+      - name: Report Gradle Log
+        if: always()
         run: |
-          echo "### Gradle Failure Log" >> $GITHUB_STEP_SUMMARY
+          echo "### Gradle Build Log" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
           tail -n 100 apps/tecnico/android/gradle_log.txt >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
@@ -76,7 +76,16 @@ jobs:
       - name: Find and Prepare APK for Download
         run: |
           mkdir -p apk_output
-          find apps/tecnico/android -name "*.apk" -type f -exec cp -v {} apk_output/4S-Clima-Tecnico.apk \;
+          echo "Searching for APK files in apps/tecnico/android:"
+          find apps/tecnico/android -name "*.apk" -type f
+          APK_FILE=$(find apps/tecnico/android -name "*.apk" -type f | head -n 1)
+          if [ -n "$APK_FILE" ]; then
+            echo "Found APK at: $APK_FILE"
+            cp -v "$APK_FILE" apk_output/4S-Clima-Tecnico.apk
+          else
+            echo "ERROR: No APK found after assembleDebug"
+            exit 1
+          fi
           ls -lh apk_output/
 
       - name: Upload APK Artifact
