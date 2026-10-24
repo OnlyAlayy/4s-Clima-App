@@ -10,6 +10,8 @@ jobs:
   build:
     name: Build Debug APK
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout repository
@@ -71,9 +73,25 @@ jobs:
           tail -n 100 apps/tecnico/android/gradle_log.txt >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
 
+      - name: Find and Prepare APK for Download
+        run: |
+          mkdir -p apk_output
+          find apps/tecnico/android -name "*.apk" -type f -exec cp -v {} apk_output/4S-Clima-Tecnico.apk \;
+          ls -lh apk_output/
+
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: 4S-Clima-Tecnico-Debug-APK
-          path: apps/tecnico/android/app/build/outputs/apk/debug/app-debug.apk
+          path: apk_output/4S-Clima-Tecnico.apk
+          if-no-files-found: error
           retention-days: 7
+
+      - name: Create GitHub Release with direct APK download
+        uses: softprops/action-gh-release@v2
+        if: success()
+        with:
+          tag_name: v1.0.0-apk-test
+          name: "4S Clima Técnico (APK Android)"
+          body: "Descarga directa de APK para celulares de técnicos de 4S Clima con rastreo GPS en segundo plano."
+          files: apk_output/4S-Clima-Tecnico.apk
