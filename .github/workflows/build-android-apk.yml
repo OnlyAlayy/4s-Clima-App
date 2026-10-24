@@ -44,7 +44,17 @@ jobs:
           CI: false
           ANDROID_HOME: /usr/local/lib/android/sdk
           ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
-        run: npm --workspace=@4s-clima/tecnico run cap:sync
+        run: |
+          npm --workspace=@4s-clima/tecnico run cap:sync 2>&1 | tee sync_log.txt
+        continue-on-error: true
+
+      - name: Report Sync Log
+        if: always()
+        run: |
+          echo "### Sync Capacitor Log" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat sync_log.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
 
       - name: Build APK with Gradle
         env:
