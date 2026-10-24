@@ -1,0 +1,15 @@
+{
+	"appId": "com.clima4s.tecnico",
+	"appName": "4S Clima Técnico",
+	"webDir": "dist",
+	"server": {
+		"androidScheme": "https",
+		"cleartext": true
+	},
+	"plugins": {
+		"BackgroundGeolocation": {
+			"notificationTitle": "4S Clima: Ruta activa en curso",
+			"notificationText": "Transmitiendo ubicación al centro operativo 4S Clima."
+		}
+	}
+}

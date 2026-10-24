@@ -48,16 +48,13 @@ jobs:
           ANDROID_HOME: /usr/local/lib/android/sdk
           ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
         run: |
-          npm --workspace=@4s-clima/tecnico run cap:sync 2>&1 | tee sync_log.txt
-        continue-on-error: true
+          cd apps/tecnico
+          npx cap sync android
+          echo "Verifying copied assets:"
+          ls -la android/app/src/main/assets/
+          ls -la android/app/src/main/assets/public/
+          test -f android/app/src/main/assets/public/index.html || { echo "ERROR: index.html missing from assets/public!"; exit 1; }
 
-      - name: Report Sync Log
-        if: always()
-        run: |
-          echo "### Sync Capacitor Log" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          cat sync_log.txt >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
 
       - name: Build APK with Gradle
         run: |
