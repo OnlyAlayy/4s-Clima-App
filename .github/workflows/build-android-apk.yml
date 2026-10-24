@@ -42,18 +42,15 @@ jobs:
           echo "sdk.dir=/usr/local/lib/android/sdk" > apps/tecnico/android/local.properties
           yes | /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
-      - name: Sync Capacitor Android
-        env:
-          CI: false
-          ANDROID_HOME: /usr/local/lib/android/sdk
-          ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+      - name: Sync Web Assets to Android
         run: |
-          cd apps/tecnico
-          npx cap sync android
-          echo "Verifying copied assets:"
-          ls -la android/app/src/main/assets/
-          ls -la android/app/src/main/assets/public/
-          test -f android/app/src/main/assets/public/index.html || { echo "ERROR: index.html missing from assets/public!"; exit 1; }
+          mkdir -p apps/tecnico/android/app/src/main/assets/public
+          cp -r apps/tecnico/dist/* apps/tecnico/android/app/src/main/assets/public/
+          cp apps/tecnico/capacitor.config.json apps/tecnico/android/app/src/main/assets/capacitor.config.json
+          echo "Verified bundled files in assets/public:"
+          ls -la apps/tecnico/android/app/src/main/assets/public/
+          test -f apps/tecnico/android/app/src/main/assets/public/index.html || { echo "ERROR: index.html missing!"; exit 1; }
+
 
 
       - name: Build APK with Gradle
