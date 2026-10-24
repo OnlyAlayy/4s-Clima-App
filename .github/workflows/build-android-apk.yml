@@ -17,11 +17,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '17'
+          java-version: '21'
 
       - name: Set up Node.js 20
         uses: actions/setup-node@v4
@@ -62,21 +62,13 @@ jobs:
         env:
           ANDROID_HOME: /usr/local/lib/android/sdk
           ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
-        run: ./gradlew :app:assembleDebug --no-daemon --stacktrace 2>&1 | tee gradle_log.txt
+        run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
         working-directory: apps/tecnico/android
-
-      - name: Report Gradle Log
-        if: always()
-        run: |
-          echo "### Gradle Build Log" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          tail -n 100 apps/tecnico/android/gradle_log.txt >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
 
       - name: Find and Prepare APK for Download
         run: |
           mkdir -p apk_output
-          echo "Searching for APK files in apps/tecnico/android:"
+          echo "Listing all generated APKs in build directory:"
           find apps/tecnico/android -name "*.apk" -type f
           APK_FILE=$(find apps/tecnico/android -name "*.apk" -type f | head -n 1)
           if [ -n "$APK_FILE" ]; then
