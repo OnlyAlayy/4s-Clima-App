@@ -37,7 +37,11 @@ jobs:
       - name: Sync Capacitor Android
         env:
           CI: false
-        run: npm --workspace=@4s-clima/tecnico run cap:sync
+          ANDROID_HOME: /usr/local/lib/android/sdk
+          ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+        run: |
+          echo "sdk.dir=/usr/local/lib/android/sdk" > apps/tecnico/android/local.properties
+          npm --workspace=@4s-clima/tecnico run cap:sync
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew

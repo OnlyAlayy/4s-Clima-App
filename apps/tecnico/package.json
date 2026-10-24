@@ -8,8 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "clean": "rimraf dist",
-    "cap:sync": "npm run build && npx cap sync android",
-    "cap:open": "npx cap open android"
+    "cap:sync": "cap sync android",
+    "cap:open": "cap open android"
   },
   "dependencies": {
     "@4s-clima/shared": "*",
