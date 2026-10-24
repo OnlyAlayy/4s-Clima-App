@@ -34,7 +34,19 @@ jobs:
       - name: Build Web Application
         env:
           CI: false
-        run: npm run build:tecnico
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || 'https://eaixkworazrzxcttdlpd.supabase.co' }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVhaXhrd29yYXpyenhjdHRkbHBkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA4OTc0MjIsImV4cCI6MjEwNjQ3MzQyMn0.cuUQGtQJMzJ48gm6K4uM_vjRSEVZFWxlpt3exPnNFn8' }}
+          VITE_APP_NAME: "4S Clima"
+          VITE_APP_VERSION: "1.0.0"
+        run: |
+          cat << 'EOF' > .env
+          VITE_SUPABASE_URL=https://eaixkworazrzxcttdlpd.supabase.co
+          VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVhaXhrd29yYXpyenhjdHRkbHBkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA4OTc0MjIsImV4cCI6MjEwNjQ3MzQyMn0.cuUQGtQJMzJ48gm6K4uM_vjRSEVZFWxlpt3exPnNFn8
+          VITE_APP_NAME=4S Clima
+          VITE_APP_VERSION=1.0.0
+          EOF
+          cp .env apps/tecnico/.env
+          npm run build:tecnico
 
       - name: Prepare Android Project
         run: |
@@ -50,6 +62,20 @@ jobs:
           echo "Verified bundled files in assets/public:"
           ls -la apps/tecnico/android/app/src/main/assets/public/
           test -f apps/tecnico/android/app/src/main/assets/public/index.html || { echo "ERROR: index.html missing!"; exit 1; }
+          node -e "
+            const fs = require('fs');
+            const files = fs.readdirSync('apps/tecnico/android/app/src/main/assets/public/assets');
+            const jsFile = files.find(f => f.endsWith('.js'));
+            if (!jsFile) throw new Error('No JS file found in assets/public/assets');
+            const content = fs.readFileSync('apps/tecnico/android/app/src/main/assets/public/assets/' + jsFile, 'utf8');
+            if (!content.includes('eaixkworazrzxcttdlpd.supabase.co')) {
+              throw new Error('Verification failed: Real Supabase URL not found in ' + jsFile);
+            }
+            if (content.includes('placeholder.supabase.co')) {
+              throw new Error('Verification failed: Found placeholder.supabase.co in ' + jsFile);
+            }
+            console.log('SUCCESS: Verified real Supabase URL is bundled in ' + jsFile);
+          "
 
 
 
