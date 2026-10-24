@@ -40,6 +40,7 @@ jobs:
         run: |
           chmod +x apps/tecnico/android/gradlew
           echo "sdk.dir=/usr/local/lib/android/sdk" > apps/tecnico/android/local.properties
+          yes | /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
       - name: Sync Capacitor Android
         env:
