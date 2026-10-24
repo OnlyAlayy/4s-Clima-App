@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { supabase } from '@4s-clima/shared/supabase';
-import toast from 'react-hot-toast';
+import { Capacitor } from '@capacitor/core';
+import hybridNotifications from '../services/hybridNotifications';
 
 export function urlBase64ToUint8Array(base64String) {
   const padding = '='.repeat((4 - base64String.length % 4) % 4);
@@ -15,10 +16,13 @@ export function urlBase64ToUint8Array(base64String) {
 
 /**
  * Función exportada para suscribir o sincronizar la suscripción Web Push
- * vinculada al usuario logueado. Requiere ser llamada desde un gesto de usuario
- * si el permiso no está otorgado.
+ * vinculada al usuario logueado en Web PWA, o permisos nativos en Android.
  */
 export async function registerPushSubscription(userId) {
+  if (Capacitor.isNativePlatform()) {
+    return hybridNotifications.requestPermission(userId);
+  }
+
   if (!('Notification' in window) || !('serviceWorker' in navigator)) {
     throw new Error('Este navegador o dispositivo no soporta Notificaciones Push.');
   }
@@ -66,8 +70,8 @@ export function useRealtimeNotifications(profile) {
     if (!profile || !profile.id) return;
     const userId = profile.id;
 
-    // Sincronización silenciosa ÚNICAMENTE si el permiso YA FUE otorgado previamente por el usuario
-    if ('Notification' in window && Notification.permission === 'granted' && 'serviceWorker' in navigator) {
+    // Sincronización silenciosa ÚNICAMENTE en Web PWA si el permiso ya fue concedido previamente
+    if (!Capacitor.isNativePlatform() && 'Notification' in window && Notification.permission === 'granted' && 'serviceWorker' in navigator) {
       navigator.serviceWorker.ready.then(async (registration) => {
         try {
           const vapidPublicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY;
@@ -97,7 +101,7 @@ export function useRealtimeNotifications(profile) {
       });
     }
 
-    // Canal de Realtime exclusivo para este usuario
+    // Canal de Realtime exclusivo para este técnico en la tabla work_orders
     const channel = supabase
       .channel(`work_orders_${userId}`)
       .on(
@@ -111,10 +115,11 @@ export function useRealtimeNotifications(profile) {
         (payload) => {
           console.log('[Realtime] Nueva orden recibida:', payload);
           const newOrder = payload.new;
-          showNotification(
-            'Nueva Orden de Trabajo',
-            `¡Nueva asignación! OT: ${newOrder.order_number || 'Pendiente'}`
-          );
+          hybridNotifications.scheduleNotification({
+            title: 'Nueva Orden de Trabajo Asignada',
+            body: `OT: ${newOrder.order_number || 'Pendiente'}. Toca para ver los detalles.`,
+            data: { orderId: newOrder.id }
+          });
           window.dispatchEvent(new CustomEvent('work_orders_updated'));
         }
       )
@@ -137,7 +142,7 @@ export function useRealtimeNotifications(profile) {
           // Detectar reasignación a este técnico
           if (oldOrder && oldOrder.assigned_to && oldOrder.assigned_to !== userId) {
             title = 'Nueva Orden Asignada';
-            body = `Se te reasignó la orden ${newOrder.order_number || 'N/D'}.`;
+            body = `Se te asignó la orden ${newOrder.order_number || 'N/D'}.`;
           }
           // Detectar cancelación
           else if (newOrder.status === 'cancelled' && (!oldOrder || oldOrder.status !== 'cancelled')) {
@@ -151,48 +156,21 @@ export function useRealtimeNotifications(profile) {
               (newOrder.scheduled_time && newOrder.scheduled_time !== oldOrder.scheduled_time)
             )
           ) {
-            title = 'Reprogramación';
-            body = `La orden ${newOrder.order_number || 'N/D'} fue reprogramada.`;
+            title = 'Reprogramación de Orden';
+            body = `La orden ${newOrder.order_number || 'N/D'} fue reprogramada para el ${newOrder.scheduled_date || ''}.`;
           }
 
           if (title) {
-            showNotification(title, body);
+            hybridNotifications.scheduleNotification({
+              title,
+              body,
+              data: { orderId: newOrder.id }
+            });
           }
           window.dispatchEvent(new CustomEvent('work_orders_updated'));
         }
       )
       .subscribe();
-
-    function showNotification(title, body) {
-      toast.success(`${title}\n${body}`, {
-        duration: 5000,
-        style: {
-          borderRadius: '16px',
-          background: '#fff',
-          color: '#1e293b',
-          boxShadow: '0 8px 30px rgba(0,0,0,0.1)',
-          padding: '16px',
-          fontWeight: '600'
-        }
-      });
-
-      if ('Notification' in window && Notification.permission === 'granted') {
-        try {
-          const notification = new Notification(title, {
-            body,
-            icon: '/icons/icon-192.png',
-            badge: '/icons/icon-192.png',
-            vibrate: [200, 100, 200]
-          });
-          notification.onclick = () => {
-            window.focus();
-            notification.close();
-          };
-        } catch (e) {
-          console.warn('[Realtime] Notificación de ventana falló:', e);
-        }
-      }
-    }
 
     return () => {
       supabase.removeChannel(channel);

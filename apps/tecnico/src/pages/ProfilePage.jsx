@@ -1,12 +1,13 @@
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LogOut, User, Wifi, WifiOff, HardDrive, RefreshCw, Sun, Moon, Bell, BellRing, BellOff, CheckCircle2, AlertTriangle, Send } from 'lucide-react';
+import { Capacitor } from '@capacitor/core';
 import { useAuthStore } from '../stores/authStore';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { useWorkOrderStore } from '../stores/workOrderStore';
 import { clearLocalDatabase, getPendingSyncCount } from '../services/offlineDb';
 import { useDarkMode } from '../hooks/useDarkMode';
-import { registerPushSubscription } from '../hooks/useRealtimeNotifications';
-import { useState, useEffect } from 'react';
+import hybridNotifications from '../services/hybridNotifications';
 import toast from 'react-hot-toast';
 
 /**
@@ -21,18 +22,17 @@ export default function ProfilePage() {
   const { isDark, toggleDarkMode } = useDarkMode();
   const [pendingCount, setPendingCount] = useState(0);
 
-  // Estado de Web Push
-  const [pushPermission, setPushPermission] = useState(() => {
-    return 'Notification' in window ? Notification.permission : 'denied';
-  });
+  // Estado de Notificaciones Híbridas (Web Push vs Android Nativo)
+  const isNative = Capacitor.isNativePlatform();
+  const [pushPermission, setPushPermission] = useState('prompt');
   const [isRegisteringPush, setIsRegisteringPush] = useState(false);
   const [isTestingPush, setIsTestingPush] = useState(false);
 
   useEffect(() => {
     getPendingSyncCount().then(setPendingCount);
-    if ('Notification' in window) {
-      setPushPermission(Notification.permission);
-    }
+    hybridNotifications.checkPermission().then((status) => {
+      setPushPermission(status);
+    });
   }, [isSyncing]);
 
   const handleLogout = async () => {
@@ -56,12 +56,17 @@ export default function ProfilePage() {
     if (!profile?.id) return;
     setIsRegisteringPush(true);
     try {
-      await registerPushSubscription(profile.id);
-      setPushPermission(Notification.permission);
-      toast.success('¡Dispositivo vinculado con éxito para recibir alertas push!');
+      const res = await hybridNotifications.requestPermission(profile.id);
+      setPushPermission(res.status);
+      if (isNative) {
+        toast.success('¡Notificaciones nativas activadas con éxito en tu Android!');
+      } else {
+        toast.success('¡Dispositivo vinculado con éxito para recibir alertas push!');
+      }
     } catch (err) {
-      console.error('Error al registrar push:', err);
-      setPushPermission('Notification' in window ? Notification.permission : 'denied');
+      console.error('Error al registrar notificaciones:', err);
+      const current = await hybridNotifications.checkPermission();
+      setPushPermission(current);
       toast.error(err.message || 'Error al solicitar permisos de notificación');
     } finally {
       setIsRegisteringPush(false);
@@ -71,19 +76,12 @@ export default function ProfilePage() {
   const handleTestNotification = async () => {
     setIsTestingPush(true);
     try {
-      if ('serviceWorker' in navigator) {
-        const reg = await navigator.serviceWorker.ready;
-        reg.showNotification('4S Clima - Notificación de Prueba', {
-          body: '¡Sonido y vibración verificados! Tu celular está listo para recibir órdenes.',
-          icon: '/icons/icon-192.png',
-          badge: '/icons/icon-192.png',
-          vibrate: [200, 100, 200, 100, 200],
-          data: '/perfil'
-        });
-        toast.success('¡Notificación enviada! Deberías escuchar y sentir la vibración en tu dispositivo.');
-      } else {
-        toast.error('Service Worker no disponible en este navegador');
-      }
+      await hybridNotifications.scheduleNotification({
+        title: '4S Clima - Notificación de Prueba',
+        body: '¡Sonido y vibración verificados! Tu celular está listo para recibir órdenes.',
+        data: { url: '/perfil' }
+      });
+      toast.success('¡Notificación enviada! Deberías escuchar y sentir la vibración en tu dispositivo.');
     } catch (err) {
       console.error('Error en prueba local:', err);
       toast.error('Error al disparar prueba: ' + err.message);
@@ -188,15 +186,16 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* Notificaciones Push en este Dispositivo */}
+        {/* Notificaciones Push / Nativas en este Dispositivo */}
         <div className="card">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 flex items-center gap-2">
-              <Bell size={16} className="text-brand-500" /> Notificaciones Push
+              <Bell size={16} className="text-brand-500" />
+              {isNative ? 'Notificaciones Nativas Android' : 'Notificaciones Push'}
             </h3>
             {pushPermission === 'granted' ? (
-              <span className="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 text-xs flex items-center gap-1">
-                <CheckCircle2 size={12} /> Activas y Suscriptas
+              <span className="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 text-xs flex items-center gap-1 font-medium">
+                <CheckCircle2 size={12} /> {isNative ? 'Notificaciones Nativas Activas' : 'Activas y Suscriptas'}
               </span>
             ) : pushPermission === 'denied' ? (
               <span className="badge bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 text-xs flex items-center gap-1">
@@ -210,7 +209,9 @@ export default function ProfilePage() {
           </div>
 
           <p className="text-xs text-gray-500 dark:text-gray-400 mb-4 leading-relaxed">
-            Permite que el sistema te alerte con sonido y vibración en este celular cuando te asignen una orden de trabajo, incluso si la app está cerrada o la pantalla bloqueada.
+            {isNative
+              ? 'Permite que el sistema te alerte con sonido y vibración nativos en este celular Android cada vez que te asignen una orden de trabajo o cambie el estado de tus tareas.'
+              : 'Permite que el sistema te alerte con sonido y vibración en este celular cuando te asignen una orden de trabajo, incluso si la app está cerrada o la pantalla bloqueada.'}
           </p>
 
           <div className="flex flex-col gap-2.5">
@@ -222,12 +223,14 @@ export default function ProfilePage() {
               {isRegisteringPush ? (
                 <>
                   <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  Vinculando dispositivo...
+                  {isNative ? 'Solicitando permisos nativos...' : 'Vinculando dispositivo...'}
                 </>
               ) : (
                 <>
                   <BellRing size={15} />
-                  {pushPermission === 'granted' ? 'Re-vincular / Actualizar este Celular' : 'Activar / Vincular este Celular'}
+                  {pushPermission === 'granted'
+                    ? (isNative ? 'Permiso Concedido (Tocar para Re-verificar)' : 'Re-vincular / Actualizar este Celular')
+                    : (isNative ? 'Activar Notificaciones Nativas' : 'Activar / Vincular este Celular')}
                 </>
               )}
             </button>

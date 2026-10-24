@@ -1,6 +1,8 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { useEffect } from 'react';
 import { Toaster } from 'react-hot-toast';
+import { Capacitor } from '@capacitor/core';
+import { App as CapApp } from '@capacitor/app';
 import { useAuthStore } from './stores/authStore';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
 import { useRealtimeNotifications } from './hooks/useRealtimeNotifications';
@@ -47,6 +49,7 @@ function ProtectedRoute({ children }) {
 }
 
 export default function App() {
+  const navigate = useNavigate();
   const isOnline = useOnlineStatus();
   const initialize = useAuthStore((s) => s.initialize);
   const profile = useAuthStore((s) => s.profile);
@@ -59,6 +62,56 @@ export default function App() {
 
   // Hook para notificaciones push en tiempo real
   useRealtimeNotifications(profile);
+
+  // Manejo del botón físico "Atrás" de Android (@capacitor/app)
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+
+    const backListenerPromise = CapApp.addListener('backButton', () => {
+      const pathname = window.location.pathname;
+      if (pathname === '/' || pathname === '/login') {
+        CapApp.exitApp();
+      } else {
+        navigate(-1);
+      }
+    });
+
+    return () => {
+      backListenerPromise.then((handle) => handle?.remove?.()).catch(() => {});
+    };
+  }, [navigate]);
+
+  // Interceptor para abrir enlaces externos en apps dedicadas (WhatsApp, Maps, Teléfono)
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+
+    const handleExternalLinks = (e) => {
+      const anchor = e.target.closest('a');
+      if (!anchor || !anchor.href) return;
+
+      const href = anchor.href;
+      const isExternal =
+        href.startsWith('tel:') ||
+        href.startsWith('mailto:') ||
+        href.startsWith('geo:') ||
+        href.includes('wa.me') ||
+        href.includes('whatsapp.com') ||
+        href.includes('maps.google.com') ||
+        href.includes('google.com/maps') ||
+        anchor.target === '_blank';
+
+      if (isExternal) {
+        e.preventDefault();
+        e.stopPropagation();
+        window.open(href, '_system');
+      }
+    };
+
+    document.addEventListener('click', handleExternalLinks, true);
+    return () => {
+      document.removeEventListener('click', handleExternalLinks, true);
+    };
+  }, []);
 
   return (
     <>

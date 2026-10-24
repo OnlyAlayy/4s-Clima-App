@@ -9,6 +9,7 @@ import { formatDate, getStatusLabel, getStatusColor, resolveOrderLocation } from
 import { WORK_ORDER_STATUS, WORK_ORDER_TYPE_LABELS, EQUIPMENT_TYPE_LABELS } from '@4s-clima/shared/constants';
 import LocationViewerMap from '../components/geo/LocationViewerMap';
 import LiveTrackingSender from '../components/geo/LiveTrackingSender';
+import nativeLocationTracker from '../services/nativeLocationTracker';
 
 /**
  * Página de detalle de una Orden de Trabajo.
@@ -28,6 +29,11 @@ export default function WorkOrderPage() {
 
   const handleStartTravel = async () => {
     setIsStarting(true);
+    try {
+      await nativeLocationTracker.requestPermissions();
+    } catch (e) {
+      console.warn('GPS permission prompt note:', e);
+    }
     await startTravel(id);
     await fetchWorkOrder(id);
     setIsStarting(false);

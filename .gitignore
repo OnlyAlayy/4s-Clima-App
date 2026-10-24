@@ -46,3 +46,7 @@ supabase/.temp/
 
 # Coverage
 coverage/
+
+# Scratch & Temporary
+scratch/
+apk_output/

@@ -1,6 +1,6 @@
 -- ========================================================
--- 4S Clima - Migración 021
--- Tabla y políticas RLS para persistencia de geolocalización en segundo plano (Android Nativo / PWA)
+-- 4S Clima - Migración 021 (Con Realtime e Idempotencia)
+-- Tabla y políticas RLS para persistencia de geolocalización en segundo plano
 -- ========================================================
 
 CREATE TABLE IF NOT EXISTS public.technician_locations (
@@ -29,6 +29,11 @@ CREATE INDEX IF NOT EXISTS idx_tech_locations_wo
 
 -- Activar Row Level Security
 ALTER TABLE public.technician_locations ENABLE ROW LEVEL SECURITY;
+
+-- Limpiar políticas previas por si ya existían
+DROP POLICY IF EXISTS "Technicians can insert their own locations" ON public.technician_locations;
+DROP POLICY IF EXISTS "Technicians can read their own locations" ON public.technician_locations;
+DROP POLICY IF EXISTS "Admins can view all technician locations" ON public.technician_locations;
 
 -- Política 1: Técnicos pueden registrar sus propias coordenadas
 CREATE POLICY "Technicians can insert their own locations"
@@ -60,5 +65,18 @@ CREATE POLICY "Admins can view all technician locations"
         AND u.role IN ('admin', 'owner')
     )
   );
+
+-- Habilitar transmisión en tiempo real (Realtime) para el mapa del Dashboard
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables 
+    WHERE pubname = 'supabase_realtime' 
+      AND schemaname = 'public' 
+      AND tablename = 'technician_locations'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.technician_locations;
+  END IF;
+END $$;
 
 COMMENT ON TABLE public.technician_locations IS 'Registro de telemetría GPS continua de técnicos en ruta para Android nativo y auditoría de flota';

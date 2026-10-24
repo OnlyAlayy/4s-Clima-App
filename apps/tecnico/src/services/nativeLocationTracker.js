@@ -16,6 +16,7 @@
  */
 
 import { Capacitor, registerPlugin } from '@capacitor/core';
+import { Geolocation } from '@capacitor/geolocation';
 import { supabase } from '@4s-clima/shared/supabase';
 
 // Lazy-register del plugin de geolocalización en background
@@ -36,6 +37,56 @@ class NativeLocationTracker {
    */
   isNativePlatform() {
     return Capacitor.isNativePlatform();
+  }
+
+  /**
+   * Solicita permisos de ubicación al sistema operativo de forma híbrida:
+   * - En Android APK: solicita permisos nativos vía @capacitor/geolocation (ACCESS_FINE_LOCATION, etc.)
+   * - En Web PWA: no interrumpe el flujo web nativo
+   */
+  async requestPermissions() {
+    if (this.isNativePlatform()) {
+      try {
+        const status = await Geolocation.requestPermissions();
+        return status.location === 'granted';
+      } catch (e) {
+        console.warn('[LocationTracker] Error solicitando permisos nativos de GPS:', e);
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /**
+   * Obtiene la posición actual de forma híbrida e instantánea:
+   * - En Android APK: usa Geolocation.getCurrentPosition() evitando el diálogo web de Chrome.
+   * - En Web PWA: usa navigator.geolocation.getCurrentPosition()
+   */
+  async getCurrentPosition(options = { enableHighAccuracy: true, timeout: 10000 }) {
+    if (this.isNativePlatform()) {
+      try {
+        await this.requestPermissions();
+        const pos = await Geolocation.getCurrentPosition(options);
+        const formatted = this._formatWebPosition(pos);
+        formatted.isNative = true;
+        return formatted;
+      } catch (err) {
+        console.warn('[LocationTracker] Error obteniendo posición nativa:', err);
+        throw err;
+      }
+    }
+
+    if (typeof navigator !== 'undefined' && navigator.geolocation) {
+      return new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => resolve(this._formatWebPosition(pos)),
+          (err) => reject(err),
+          options
+        );
+      });
+    }
+
+    throw new Error('Geolocalización no disponible en este dispositivo');
   }
 
   /**
@@ -68,6 +119,22 @@ class NativeLocationTracker {
     if (this.isNativePlatform()) {
       console.log('[LocationTracker] Iniciando rastreo Nativo Android con Foreground Service...');
       try {
+        // Solicitar permisos nativos explícitamente sin pasar por el WebView
+        await this.requestPermissions();
+
+        // Fix inicial instantáneo usando Geolocation nativo para feedback inmediato
+        try {
+          const initialPos = await Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 5000 });
+          if (initialPos?.coords) {
+            const initialCoords = this._formatWebPosition(initialPos);
+            initialCoords.isNative = true;
+            onLocationUpdate(initialCoords);
+            this._persistLocationToSupabase({ orderId, technicianId, coords: initialCoords });
+          }
+        } catch (e) {
+          console.warn('[LocationTracker Nativo] Fix inicial omitido:', e);
+        }
+
         const watcherId = await BackgroundGeolocation.addWatcher(
           {
             backgroundTitle: '4S Clima Técnico: Ruta Activa',
