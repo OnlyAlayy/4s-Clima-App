@@ -40,6 +40,16 @@ export default function ChecklistPage() {
   // ¿El checklist ya fue sellado y enviado?
   const isSubmitted = currentOrder?.checklist_status === 'submitted';
 
+  // Forzar captura obligatoria de fotos del antes previa al formulario
+  useEffect(() => {
+    if (currentOrder && currentOrder.id === id && currentOrder.checklist_status !== 'submitted') {
+      const hasBefore = currentOrder.photos?.some((p) => p.type === 'before');
+      if (!hasBefore) {
+        navigate(`/orden/${id}/fotos-antes`, { replace: true });
+      }
+    }
+  }, [currentOrder, id, navigate]);
+
   // Inicializar checklist (usar existentes, plantilla dinámica o plantilla por defecto)
   useEffect(() => {
     if (!currentOrder || currentOrder.id !== id) return;
@@ -289,7 +299,7 @@ export default function ChecklistPage() {
    */
   const handleSubmitFinal = async () => {
     if (isSubmitted) {
-      navigate(`/orden/${id}/fotos`);
+      navigate(`/orden/${id}/fotos-despues`);
       return;
     }
 
@@ -377,6 +387,7 @@ export default function ChecklistPage() {
           },
         });
       }
+      navigate(`/orden/${id}/fotos-despues`);
     } catch (error) {
       console.error('Error enviando checklist final:', error);
       alert('Error al enviar checklist: ' + error.message);
@@ -603,10 +614,10 @@ export default function ChecklistPage() {
           {isSubmitted ? (
             /* Modo ya enviado: solo navegación */
             <button
-              onClick={() => navigate(`/orden/${id}/fotos`)}
+              onClick={() => navigate(`/orden/${id}/fotos-despues`)}
               className="w-full btn-primary text-base flex items-center justify-center gap-2 py-3"
             >
-              <span>Continuar a Fotografías</span>
+              <span>Continuar a Fotos del Después</span>
               <ChevronRight size={18} />
             </button>
           ) : (

@@ -23,7 +23,15 @@ export default function SignaturePage() {
   const [isEmpty, setIsEmpty] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Validación estricta de checklist eliminada por pedido del usuario (para permitir errores humanos o items omitidos)
+  // Redirigir a fotos del después si aún no se tomaron
+  useEffect(() => {
+    if (currentOrder && currentOrder.id === id && currentOrder.status === 'in_progress') {
+      const hasAfter = currentOrder.photos?.some((p) => p.type === 'after');
+      if (!hasAfter) {
+        navigate(`/orden/${id}/fotos-despues`, { replace: true });
+      }
+    }
+  }, [currentOrder, id, navigate]);
 
   const handleClear = () => {
     sigRef.current?.clear();

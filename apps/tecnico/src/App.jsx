@@ -140,7 +140,9 @@ export default function App() {
           <Route index element={<DashboardPage />} />
           <Route path="orden/:id" element={<WorkOrderPage />} />
           <Route path="orden/:id/extras" element={<ExtrasPage />} />
+          <Route path="orden/:id/fotos-antes" element={<PhotosPage step="before" />} />
           <Route path="orden/:id/checklist" element={<ChecklistPage />} />
+          <Route path="orden/:id/fotos-despues" element={<PhotosPage step="after" />} />
           <Route path="orden/:id/fotos" element={<PhotosPage />} />
           <Route path="orden/:id/firma" element={<SignaturePage />} />
           <Route path="escaner" element={<ScannerPage />} />

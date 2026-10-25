@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, MapPin, Phone, Clock, Wrench, Building2,
-  ClipboardCheck, Play, ChevronRight, Thermometer, Hash, Package, Check, Navigation
+  ClipboardCheck, Play, ChevronRight, Thermometer, Hash, Package, Check, Navigation, Camera
 } from 'lucide-react';
 import { useWorkOrderStore } from '../stores/workOrderStore';
 import { formatDate, getStatusLabel, getStatusColor, resolveOrderLocation } from '@4s-clima/shared';
@@ -66,6 +66,11 @@ export default function WorkOrderPage() {
   const isInProgress = wo.status === WORK_ORDER_STATUS.IN_PROGRESS;
   const isCompleted = wo.status === WORK_ORDER_STATUS.COMPLETED;
   const loc = resolveOrderLocation(wo);
+
+  // Verificación del flujo ordenado de evidencia
+  const hasBeforePhoto = wo.photos?.some((p) => p.type === 'before');
+  const hasAfterPhoto = wo.photos?.some((p) => p.type === 'after');
+  const isChecklistSubmitted = wo.checklist_status === 'submitted';
 
   const handleBack = () => {
     if (window.history.state && window.history.state.idx > 0) {
@@ -321,25 +326,61 @@ export default function WorkOrderPage() {
             </button>
           )}
 
-          {/* PASO 3: En progreso (Herramientas técnicas, checklist y extras) */}
+          {/* PASO 3: En progreso (Flujo ordenado: Fotos Antes -> Checklist -> Fotos Después -> Firma) */}
           {isInProgress && (
-            <div className="space-y-3">
-              <button
-                onClick={() => navigate(`/orden/${id}/checklist`)}
-                className="btn-success w-full shadow-lg shadow-emerald-500/20"
-              >
-                <ClipboardCheck size={20} />
-                Completar Checklist
-                <ChevronRight size={18} />
-              </button>
+            <div className="space-y-2.5">
+              {!hasBeforePhoto ? (
+                /* 1. Obligatorio tomar fotos del antes antes de iniciar el formulario */
+                <button
+                  onClick={() => navigate(`/orden/${id}/fotos-antes`)}
+                  className="btn-primary w-full shadow-lg shadow-brand-500/25 flex items-center justify-center gap-2 py-3.5 text-sm font-bold"
+                >
+                  <Camera size={18} />
+                  <span>1. Tomar Fotos del Antes (Obligatorio)</span>
+                  <ChevronRight size={18} />
+                </button>
+              ) : !isChecklistSubmitted ? (
+                /* 2. Completar checklist una vez tomadas las fotos del antes */
+                <button
+                  onClick={() => navigate(`/orden/${id}/checklist`)}
+                  className="btn-success w-full shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 py-3.5 text-sm font-bold"
+                >
+                  <ClipboardCheck size={18} />
+                  <span>2. Completar Checklist</span>
+                  <ChevronRight size={18} />
+                </button>
+              ) : !hasAfterPhoto ? (
+                /* 3. Tomar fotos del después una vez enviado el checklist */
+                <button
+                  onClick={() => navigate(`/orden/${id}/fotos-despues`)}
+                  className="btn-primary w-full shadow-lg shadow-brand-500/25 flex items-center justify-center gap-2 py-3.5 text-sm font-bold"
+                >
+                  <Camera size={18} />
+                  <span>3. Tomar Fotos del Después (Obligatorio)</span>
+                  <ChevronRight size={18} />
+                </button>
+              ) : (
+                /* 4. Pasar a firma del cliente */
+                <button
+                  onClick={() => navigate(`/orden/${id}/firma`)}
+                  className="btn-success w-full shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 py-3.5 text-sm font-bold"
+                >
+                  <Check size={18} />
+                  <span>4. Firma del Cliente (Finalizar)</span>
+                  <ChevronRight size={18} />
+                </button>
+              )}
 
+              {/* Botón secundario para materiales y repuestos */}
               <button
                 onClick={() => navigate(`/orden/${id}/extras`)}
-                className="btn-secondary w-full"
+                className="btn-secondary w-full py-2.5 text-xs flex items-center justify-between"
               >
-                <Package size={20} className="text-gray-500" />
-                Relevar Materiales / Insumos
-                <ChevronRight size={18} className="text-gray-500 ml-auto" />
+                <div className="flex items-center gap-2 text-gray-600 dark:text-gray-300">
+                  <Package size={16} />
+                  <span>Relevar Materiales / Insumos</span>
+                </div>
+                <ChevronRight size={16} className="text-gray-400" />
               </button>
             </div>
           )}

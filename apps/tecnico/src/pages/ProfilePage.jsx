@@ -58,11 +58,7 @@ export default function ProfilePage() {
     try {
       const res = await hybridNotifications.requestPermission(profile.id);
       setPushPermission(res.status);
-      if (isNative) {
-        toast.success('¡Notificaciones nativas activadas con éxito en tu Android!');
-      } else {
-        toast.success('¡Dispositivo vinculado con éxito para recibir alertas push!');
-      }
+      toast.success('¡Notificaciones activadas!');
     } catch (err) {
       console.error('Error al registrar notificaciones:', err);
       const current = await hybridNotifications.checkPermission();
@@ -186,56 +182,58 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* Notificaciones Push / Nativas en este Dispositivo */}
+        {/* Notificaciones */}
         <div className="card">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 flex items-center gap-2">
-              <Bell size={16} className="text-brand-500" />
-              {isNative ? 'Notificaciones Nativas Android' : 'Notificaciones Push'}
-            </h3>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-brand-50 dark:bg-brand-900/30 flex items-center justify-center text-brand-600 dark:text-brand-400">
+                <Bell size={20} />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+                  Notificaciones
+                </h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  {pushPermission === 'granted' ? 'Alertas de órdenes activadas' : 'Alertas de nuevas órdenes y cambios'}
+                </p>
+              </div>
+            </div>
+
             {pushPermission === 'granted' ? (
-              <span className="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 text-xs flex items-center gap-1 font-medium">
-                <CheckCircle2 size={12} /> {isNative ? 'Notificaciones Nativas Activas' : 'Activas y Suscriptas'}
+              <span className="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 text-xs flex items-center gap-1 font-semibold">
+                <CheckCircle2 size={13} /> Activas
               </span>
             ) : pushPermission === 'denied' ? (
-              <span className="badge bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 text-xs flex items-center gap-1">
-                <AlertTriangle size={12} /> Bloqueadas
+              <span className="badge bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 text-xs flex items-center gap-1 font-semibold">
+                <AlertTriangle size={13} /> Bloqueadas
               </span>
             ) : (
-              <span className="badge bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 text-xs flex items-center gap-1">
-                <BellOff size={12} /> Sin Activar
+              <span className="badge bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 text-xs flex items-center gap-1 font-medium">
+                <BellOff size={13} /> Inactivas
               </span>
             )}
           </div>
 
-          <p className="text-xs text-gray-500 dark:text-gray-400 mb-4 leading-relaxed">
-            {isNative
-              ? 'Permite que el sistema te alerte con sonido y vibración nativos en este celular Android cada vez que te asignen una orden de trabajo o cambie el estado de tus tareas.'
-              : 'Permite que el sistema te alerte con sonido y vibración en este celular cuando te asignen una orden de trabajo, incluso si la app está cerrada o la pantalla bloqueada.'}
-          </p>
-
-          <div className="flex flex-col gap-2.5">
-            <button
-              onClick={handleEnablePush}
-              disabled={isRegisteringPush}
-              className="btn-primary w-full py-2.5 text-xs font-semibold flex items-center justify-center gap-2"
-            >
-              {isRegisteringPush ? (
-                <>
-                  <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  {isNative ? 'Solicitando permisos nativos...' : 'Vinculando dispositivo...'}
-                </>
-              ) : (
-                <>
-                  <BellRing size={15} />
-                  {pushPermission === 'granted'
-                    ? (isNative ? 'Permiso Concedido (Tocar para Re-verificar)' : 'Re-vincular / Actualizar este Celular')
-                    : (isNative ? 'Activar Notificaciones Nativas' : 'Activar / Vincular este Celular')}
-                </>
-              )}
-            </button>
-
-            {pushPermission === 'granted' && (
+          <div className="mt-4 flex flex-col gap-2">
+            {pushPermission !== 'granted' ? (
+              <button
+                onClick={handleEnablePush}
+                disabled={isRegisteringPush}
+                className="btn-primary w-full py-2.5 text-xs font-semibold flex items-center justify-center gap-2"
+              >
+                {isRegisteringPush ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Activando...
+                  </>
+                ) : (
+                  <>
+                    <BellRing size={15} />
+                    Activar notificaciones
+                  </>
+                )}
+              </button>
+            ) : (
               <button
                 onClick={handleTestNotification}
                 disabled={isTestingPush}
@@ -244,12 +242,12 @@ export default function ProfilePage() {
                 {isTestingPush ? (
                   <>
                     <div className="w-3.5 h-3.5 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
-                    Enviando prueba...
+                    Probando...
                   </>
                 ) : (
                   <>
                     <Send size={14} />
-                    Enviar Notificación de Prueba (Sonido / Vibración)
+                    Enviar notificación de prueba
                   </>
                 )}
               </button>
