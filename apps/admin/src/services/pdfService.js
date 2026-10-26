@@ -309,66 +309,86 @@ export const generateWorkOrderPDF = async (wo) => {
   // EVIDENCIA FOTOGRÁFICA
   // ==========================================
   if (wo.photos && wo.photos.length > 0) {
+    const isSurvey = Boolean(
+      wo.is_survey_only ||
+      wo.type === 'survey' ||
+      wo.type === 'diagnostic' ||
+      wo.type === 'technical_visit' ||
+      wo.type === 'relevamiento' ||
+      wo.type === 'evaluacion'
+    );
+
     doc.setFontSize(11);
     doc.setFont("helvetica", "bold");
-    doc.text("EVIDENCIA FOTOGRÁFICA", 15, currentY);
+    doc.text(isSurvey ? "EVIDENCIA FOTOGRÁFICA / RELEVAMIENTO" : "EVIDENCIA FOTOGRÁFICA", 15, currentY);
     currentY += 8;
 
-    // Obtener las imágenes en base64 (Esto puede demorar unos segundos)
+    // Obtener las imágenes en base64 para incluirlas en el PDF
     const photoWidth = 55;
-    const photoHeight = 40;
+    const photoHeight = 38;
     let photoX = 15;
 
-    // Desduplicar fotos por tipo (por si hubo re-sincronizaciones offline u otro bug que las duplicó)
+    // Desduplicar fotos únicamente si tienen la misma URL (conservando 1 a N fotos)
     const uniquePhotos = [];
-    const seenTypes = new Set();
-    
-    // Recorrer al revés para quedarnos con las más recientes (último id/fecha insertada)
-    for (let i = wo.photos.length - 1; i >= 0; i--) {
-      const p = wo.photos[i];
-      if (!seenTypes.has(p.type)) {
-        seenTypes.add(p.type);
-        uniquePhotos.unshift(p); // Agregarlas al principio para mantener orden
+    const seenUrls = new Set();
+    for (const p of wo.photos) {
+      const url = p.url || p.photo_url;
+      if (url && !seenUrls.has(url)) {
+        seenUrls.add(url);
+        uniquePhotos.push(p);
       }
     }
 
     for (const photo of uniquePhotos) {
       if (photoX + photoWidth > pageWidth - 15) {
         photoX = 15;
-        currentY += photoHeight + 10;
-        if (currentY > 240) {
+        currentY += photoHeight + 14;
+        if (currentY > 235) {
           doc.addPage();
           currentY = 20;
         }
       }
 
       try {
-        const base64Img = await getBase64ImageFromUrl(photo.url);
+        const photoUrl = photo.url || photo.photo_url;
+        const base64Img = await getBase64ImageFromUrl(photoUrl);
         if (base64Img && base64Img.dataUrl) {
           // Ajustar height usando el ratio para no estirar la foto
           let finalWidth = photoWidth;
           let finalHeight = photoWidth / base64Img.ratio;
           
-          // Si el height resultante es más alto de lo que permitimos (foto vertical muy alta), limitamos por height
           if (finalHeight > photoHeight) {
             finalHeight = photoHeight;
             finalWidth = finalHeight * base64Img.ratio;
           }
           
-          // Centrar la imagen en su caja asignada (photoWidth x photoHeight)
+          // Centrar la imagen en su caja asignada
           const offsetX = photoX + (photoWidth - finalWidth) / 2;
           const offsetY = currentY + (photoHeight - finalHeight) / 2;
 
           doc.addImage(base64Img.dataUrl, 'JPEG', offsetX, offsetY, finalWidth, finalHeight);
           
           doc.setFontSize(8);
-          doc.setFont("helvetica", "normal");
+          doc.setFont("helvetica", "bold");
           let pLabel = "Foto";
-          if (photo.type === 'before') pLabel = "Antes del servicio";
-          else if (photo.type === 'after') pLabel = "Después del servicio";
-          else if (photo.type === 'issue') pLabel = "Falla/Problema";
+          if (photo.type === 'before') {
+            pLabel = isSurvey ? "Relevamiento inicial" : "Antes del servicio";
+          } else if (photo.type === 'after') {
+            pLabel = "Después del servicio";
+          } else if (photo.type === 'issue') {
+            pLabel = "Incidencia / Detalle";
+          }
           
-          doc.text(pLabel, photoX + (photoWidth/2), currentY + photoHeight + 4, { align: 'center' });
+          doc.text(pLabel, photoX + (photoWidth / 2), currentY + photoHeight + 4, { align: 'center' });
+
+          const caption = photo.caption || photo.notes;
+          if (caption) {
+            doc.setFontSize(7);
+            doc.setFont("helvetica", "normal");
+            const captionTruncated = caption.length > 28 ? caption.substring(0, 26) + '...' : caption;
+            doc.text(captionTruncated, photoX + (photoWidth / 2), currentY + photoHeight + 8, { align: 'center' });
+          }
+
           photoX += photoWidth + 5;
         }
       } catch (e) {

@@ -354,6 +354,9 @@ export const useWorkOrderStore = create((set, get) => ({
 
             // Reemplazar blob con URL real para la base de datos
             dataToUpsert[urlKey] = publicUrl;
+            if (item.table === 'photos') {
+              dataToUpsert.photo_url = publicUrl;
+            }
             delete dataToUpsert[blobKey];
             delete dataToUpsert.content_type;
           } catch (uploadErr) {
@@ -366,9 +369,30 @@ export const useWorkOrderStore = create((set, get) => ({
           if (item.action === 'insert' || item.action === 'upsert') {
             const res = await supabase.from(item.table).upsert(dataToUpsert);
             error = res.error;
+            // Tolerancia a columnas aún no migradas en Supabase (ej. caption / notes / is_survey_only)
+            if (error && (error.code === '42703' || error.message?.includes('column'))) {
+              console.warn(`Reintentando sync ${item.table} con campos mínimos:`, error.message);
+              const sanitized = { ...dataToUpsert };
+              delete sanitized.caption;
+              delete sanitized.notes;
+              delete sanitized.photo_url;
+              delete sanitized.is_survey_only;
+              const retryRes = await supabase.from(item.table).upsert(sanitized);
+              error = retryRes.error;
+            }
           } else if (item.action === 'update') {
             const res = await supabase.from(item.table).update(dataToUpsert).eq('id', item.recordId);
             error = res.error;
+            if (error && (error.code === '42703' || error.message?.includes('column'))) {
+              console.warn(`Reintentando update ${item.table} con campos mínimos:`, error.message);
+              const sanitized = { ...dataToUpsert };
+              delete sanitized.caption;
+              delete sanitized.notes;
+              delete sanitized.photo_url;
+              delete sanitized.is_survey_only;
+              const retryRes = await supabase.from(item.table).update(sanitized).eq('id', item.recordId);
+              error = retryRes.error;
+            }
           } else if (item.action === 'delete') {
             const res = await supabase.from(item.table).delete().eq('id', item.recordId);
             error = res.error;

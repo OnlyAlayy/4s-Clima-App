@@ -135,6 +135,14 @@ export default function WorkOrderDetailPage() {
   const loc = resolveOrderLocation(order);
   const isTraveling = order.status === WORK_ORDER_STATUS.TRAVELING;
   const isInProgress = order.status === WORK_ORDER_STATUS.IN_PROGRESS;
+  const isSurveyOrder = Boolean(
+    order.is_survey_only ||
+    order.type === 'survey' ||
+    order.type === 'diagnostic' ||
+    order.type === 'technical_visit' ||
+    order.type === 'relevamiento' ||
+    order.type === 'evaluacion'
+  );
 
   return (
     <div>
@@ -489,33 +497,62 @@ export default function WorkOrderDetailPage() {
           {/* Fotos */}
           <div className="card p-6">
             <h3 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider mb-4 flex items-center gap-2">
-              <Camera size={16} className="text-brand-500" /> Fotos
-              {photos.length > 0 && <span className="text-xs font-medium text-gray-500 dark:text-gray-400 normal-case">({photos.length} fotos)</span>}
+              <Camera size={16} className="text-brand-500" /> Fotos y Evidencia
+              {photos.length > 0 && (
+                <span className="text-xs font-medium text-gray-500 dark:text-gray-400 normal-case">
+                  ({photos.length} {photos.length === 1 ? 'foto' : 'fotos'})
+                </span>
+              )}
             </h3>
             {photos.length === 0 ? (
-              <p className="text-gray-400 dark:text-gray-600 text-sm text-center py-6">No se subieron fotos para esta orden.</p>
+              <p className="text-gray-400 dark:text-gray-600 text-sm text-center py-6">
+                No se subieron fotos para esta orden.
+              </p>
             ) : (
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                {photos.map(photo => (
-                  <div
-                    key={photo.id}
-                    className="relative group cursor-pointer rounded-xl overflow-hidden border border-gray-100 dark:border-slate-800 aspect-square"
-                    onClick={() => setExpandedPhoto(expandedPhoto === photo.id ? null : photo.id)}
-                  >
-                    <img
-                      src={photo.url}
-                      alt={photo.caption || 'Foto'}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                    />
-                    <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-2">
-                      <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${photo.type === 'before' ? 'bg-amber-500 text-white' : 'bg-emerald-500 text-white'
-                        }`}>
-                        {photo.type === 'before' ? 'Antes' : 'Después'}
-                      </span>
-                      {photo.caption && <p className="text-white text-xs mt-1 truncate">{photo.caption}</p>}
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                {photos.map((photo) => {
+                  const photoUrl = photo.url || photo.photo_url;
+                  const caption = photo.caption || photo.notes;
+                  const isBefore = photo.type === 'before';
+                  const isIssue = photo.type === 'issue';
+                  const label = isBefore
+                    ? isSurveyOrder
+                      ? 'Relevamiento / Inicial'
+                      : 'Antes'
+                    : isIssue
+                    ? 'Incidencia / Detalle'
+                    : 'Después';
+
+                  const badgeClass = isBefore
+                    ? 'bg-amber-500 text-white'
+                    : isIssue
+                    ? 'bg-rose-500 text-white'
+                    : 'bg-emerald-500 text-white';
+
+                  return (
+                    <div
+                      key={photo.id}
+                      className="relative group cursor-pointer rounded-xl overflow-hidden border border-gray-100 dark:border-slate-800 aspect-square bg-gray-900 shadow-sm"
+                      onClick={() => setExpandedPhoto(expandedPhoto === photo.id ? null : photo.id)}
+                    >
+                      <img
+                        src={photoUrl}
+                        alt={caption || label}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      />
+                      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 via-black/50 to-transparent p-2.5">
+                        <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded shadow-sm inline-block ${badgeClass}`}>
+                          {label}
+                        </span>
+                        {caption && (
+                          <p className="text-white text-xs font-medium mt-1 truncate drop-shadow" title={caption}>
+                            {caption}
+                          </p>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -591,18 +628,58 @@ export default function WorkOrderDetailPage() {
       </div>
 
       {/* Modal de foto expandida */}
-      {expandedPhoto && (
-        <div
-          className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
-          onClick={() => setExpandedPhoto(null)}
-        >
-          <img
-            src={photos.find(p => p.id === expandedPhoto)?.url}
-            alt="Foto expandida"
-            className="max-w-full max-h-full rounded-xl object-contain"
-          />
-        </div>
-      )}
+      {expandedPhoto && (() => {
+        const p = photos.find((item) => item.id === expandedPhoto);
+        const pUrl = p?.url || p?.photo_url;
+        const pCaption = p?.caption || p?.notes;
+        const isBefore = p?.type === 'before';
+        const isIssue = p?.type === 'issue';
+        const label = isBefore
+          ? isSurveyOrder
+            ? 'Relevamiento / Estado Inicial'
+            : 'Antes del servicio'
+          : isIssue
+          ? 'Incidencia / Detalle'
+          : 'Después del servicio';
+
+        return (
+          <div
+            className="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex flex-col items-center justify-center p-4"
+            onClick={() => setExpandedPhoto(null)}
+          >
+            <div
+              className="relative max-w-4xl max-h-[90vh] flex flex-col items-center"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <img
+                src={pUrl}
+                alt="Foto expandida"
+                className="max-w-full max-h-[75vh] rounded-xl object-contain shadow-2xl"
+              />
+              <div className="mt-3 flex items-center gap-2 flex-wrap justify-center">
+                <span
+                  className={`text-xs font-bold uppercase px-2.5 py-0.5 rounded text-white ${
+                    isBefore ? 'bg-amber-500' : isIssue ? 'bg-rose-500' : 'bg-emerald-500'
+                  }`}
+                >
+                  {label}
+                </span>
+                {pCaption && (
+                  <span className="text-sm text-white font-medium bg-white/20 backdrop-blur-md px-3 py-0.5 rounded-lg">
+                    {pCaption}
+                  </span>
+                )}
+              </div>
+              <button
+                onClick={() => setExpandedPhoto(null)}
+                className="mt-3 px-4 py-1.5 bg-white/20 hover:bg-white/30 text-white rounded-lg text-xs font-semibold transition-colors"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

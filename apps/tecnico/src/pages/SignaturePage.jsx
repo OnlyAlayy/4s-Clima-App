@@ -23,12 +23,24 @@ export default function SignaturePage() {
   const [isEmpty, setIsEmpty] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Redirigir a fotos del después si aún no se tomaron
+  // Redirigir a fotos del después si aún no se tomaron (solo en órdenes con fotos obligatorias)
   useEffect(() => {
     if (currentOrder && currentOrder.id === id && currentOrder.status === 'in_progress') {
-      const hasAfter = currentOrder.photos?.some((p) => p.type === 'after');
-      if (!hasAfter) {
-        navigate(`/orden/${id}/fotos-despues`, { replace: true });
+      const isSurveyOrDiagnostic = Boolean(
+        currentOrder.is_survey_only ||
+        currentOrder.type === 'survey' ||
+        currentOrder.type === 'diagnostic' ||
+        currentOrder.type === 'technical_visit' ||
+        currentOrder.type === 'relevamiento' ||
+        currentOrder.type === 'evaluacion'
+      );
+
+      // Si es relevamiento o diagnóstico, la foto del después no es obligatoria
+      if (!isSurveyOrDiagnostic) {
+        const hasAfter = currentOrder.photos?.some((p) => p.type === 'after');
+        if (!hasAfter) {
+          navigate(`/orden/${id}/fotos-despues`, { replace: true });
+        }
       }
     }
   }, [currentOrder, id, navigate]);

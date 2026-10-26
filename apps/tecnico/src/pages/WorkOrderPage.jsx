@@ -68,6 +68,15 @@ export default function WorkOrderPage() {
   const loc = resolveOrderLocation(wo);
 
   // Verificación del flujo ordenado de evidencia
+  const isSurveyOrDiagnostic = Boolean(
+    wo.is_survey_only ||
+    wo.type === 'survey' ||
+    wo.type === 'diagnostic' ||
+    wo.type === 'technical_visit' ||
+    wo.type === 'relevamiento' ||
+    wo.type === 'evaluacion'
+  );
+
   const hasBeforePhoto = wo.photos?.some((p) => p.type === 'before');
   const hasAfterPhoto = wo.photos?.some((p) => p.type === 'after');
   const isChecklistSubmitted = wo.checklist_status === 'submitted';
@@ -330,17 +339,21 @@ export default function WorkOrderPage() {
           {isInProgress && (
             <div className="space-y-2.5">
               {!hasBeforePhoto ? (
-                /* 1. Obligatorio tomar fotos del antes antes de iniciar el formulario */
+                /* 1. Obligatorio tomar fotos de inicio o relevamiento */
                 <button
                   onClick={() => navigate(`/orden/${id}/fotos-antes`)}
                   className="btn-primary w-full shadow-lg shadow-brand-500/25 flex items-center justify-center gap-2 py-3.5 text-sm font-bold"
                 >
                   <Camera size={18} />
-                  <span>1. Tomar Fotos del Antes (Obligatorio)</span>
+                  <span>
+                    {isSurveyOrDiagnostic
+                      ? '1. Tomar Fotos de Relevamiento (Obligatorio)'
+                      : '1. Tomar Fotos del Antes (Obligatorio)'}
+                  </span>
                   <ChevronRight size={18} />
                 </button>
               ) : !isChecklistSubmitted ? (
-                /* 2. Completar checklist una vez tomadas las fotos del antes */
+                /* 2. Completar checklist una vez tomadas las fotos iniciales */
                 <button
                   onClick={() => navigate(`/orden/${id}/checklist`)}
                   className="btn-success w-full shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 py-3.5 text-sm font-bold"
@@ -349,8 +362,8 @@ export default function WorkOrderPage() {
                   <span>2. Completar Checklist</span>
                   <ChevronRight size={18} />
                 </button>
-              ) : !hasAfterPhoto ? (
-                /* 3. Tomar fotos del después una vez enviado el checklist */
+              ) : !hasAfterPhoto && !isSurveyOrDiagnostic ? (
+                /* 3. Tomar fotos del después (Obligatorio para preventivos / instalaciones) */
                 <button
                   onClick={() => navigate(`/orden/${id}/fotos-despues`)}
                   className="btn-primary w-full shadow-lg shadow-brand-500/25 flex items-center justify-center gap-2 py-3.5 text-sm font-bold"
@@ -360,15 +373,32 @@ export default function WorkOrderPage() {
                   <ChevronRight size={18} />
                 </button>
               ) : (
-                /* 4. Pasar a firma del cliente */
-                <button
-                  onClick={() => navigate(`/orden/${id}/firma`)}
-                  className="btn-success w-full shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 py-3.5 text-sm font-bold"
-                >
-                  <Check size={18} />
-                  <span>4. Firma del Cliente (Finalizar)</span>
-                  <ChevronRight size={18} />
-                </button>
+                /* 4. Pasar a firma del cliente (Habilitado directamente si es relevamiento o si ya cargó fotos después) */
+                <div className="space-y-2">
+                  <button
+                    onClick={() => navigate(`/orden/${id}/firma`)}
+                    className="btn-success w-full shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 py-3.5 text-sm font-bold"
+                  >
+                    <Check size={18} />
+                    <span>
+                      {isSurveyOrDiagnostic
+                        ? '3. Firma del Cliente (Finalizar Relevamiento)'
+                        : '4. Firma del Cliente (Finalizar)'}
+                    </span>
+                    <ChevronRight size={18} />
+                  </button>
+
+                  {/* En modo relevamiento sin fotos posteriores, dar acceso secundario opcional a agregarlas */}
+                  {isSurveyOrDiagnostic && !hasAfterPhoto && (
+                    <button
+                      onClick={() => navigate(`/orden/${id}/fotos-despues`)}
+                      className="w-full py-1.5 text-xs font-semibold text-gray-500 dark:text-gray-400 hover:text-brand-600 dark:hover:text-brand-400 flex items-center justify-center gap-1.5 transition-colors"
+                    >
+                      <Camera size={14} />
+                      <span>Agregar fotos del estado final (Opcional)</span>
+                    </button>
+                  )}
+                </div>
               )}
 
               {/* Botón secundario para materiales y repuestos */}
