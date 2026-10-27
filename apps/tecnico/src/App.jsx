@@ -22,6 +22,7 @@ import SignaturePage from './pages/SignaturePage';
 import ProfilePage from './pages/ProfilePage';
 import ExtrasPage from './pages/ExtrasPage';
 import ScannerPage from './pages/ScannerPage';
+import PublicEquipmentPortalPage from './pages/PublicEquipmentPortalPage';
 
 /**
  * Componente de ruta protegida.
@@ -128,6 +129,7 @@ export default function App() {
       <Routes>
         {/* Ruta pública */}
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/qr/:code" element={<PublicEquipmentPortalPage />} />
 
         {/* Rutas protegidas con layout */}
         <Route

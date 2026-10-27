@@ -13,6 +13,8 @@ export default function CreateEquipmentModal({ isOpen, onClose, onCreated, clien
   const [model, setModel] = useState('');
   const [serialNumber, setSerialNumber] = useState('');
   const [capacityBtu, setCapacityBtu] = useState('');
+  const [operationalStatus, setOperationalStatus] = useState('operativo');
+  const [qrToken, setQrToken] = useState('');
   const [locationDescription, setLocationDescription] = useState('');
   const [notes, setNotes] = useState('');
 
@@ -32,6 +34,8 @@ export default function CreateEquipmentModal({ isOpen, onClose, onCreated, clien
     setModel('');
     setSerialNumber('');
     setCapacityBtu('');
+    setOperationalStatus('operativo');
+    setQrToken('');
     setLocationDescription('');
     setNotes('');
     setError(null);
@@ -51,6 +55,8 @@ export default function CreateEquipmentModal({ isOpen, onClose, onCreated, clien
       model: model || null,
       serial_number: serialNumber || null,
       capacity_btu: capacityBtu ? parseInt(capacityBtu, 10) : null,
+      operational_status: operationalStatus,
+      ...(qrToken.trim() ? { qr_token: qrToken.trim().toUpperCase() } : {}),
       location_description: locationDescription || null,
       notes: notes || null
     });
@@ -131,6 +137,29 @@ export default function CreateEquipmentModal({ isOpen, onClose, onCreated, clien
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Capacidad (BTU)</label>
                 <input type="number" className="input" placeholder="Ej: 18000" value={capacityBtu} onChange={(e) => setCapacityBtu(e.target.value)} />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Estado Operativo</label>
+                <select className="select text-sm" value={operationalStatus} onChange={(e) => setOperationalStatus(e.target.value)}>
+                  <option value="operativo">Operativo (Normal)</option>
+                  <option value="con_observaciones">Con Observaciones</option>
+                  <option value="fuera_de_servicio">Fuera de Servicio</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Código Token QR <span className="text-gray-400 text-xs font-normal">(Opcional)</span>
+                </label>
+                <input
+                  type="text"
+                  className="input font-mono text-sm uppercase"
+                  placeholder="Ej: 4S-9F2A (o automático)"
+                  value={qrToken}
+                  onChange={(e) => setQrToken(e.target.value)}
+                />
               </div>
             </div>
 

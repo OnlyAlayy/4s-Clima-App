@@ -18,6 +18,10 @@ export {
   PHOTO_TYPES,
   EXTRA_UNITS,
   CHECKLIST_ORDER_STATUS,
+  WORK_ORDER_STATUS_LABELS,
+  WORK_ORDER_TYPE_LABELS,
+  EQUIPMENT_TYPE_LABELS,
+  CHECKLIST_STATUS_LABELS,
 } from './constants/index.js';
 
 // Checklists predefinidos

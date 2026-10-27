@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Building2, MapPin, Phone, Mail, FileText, Settings2, Plus, Box, DollarSign } from 'lucide-react';
+import { ArrowLeft, Building2, MapPin, Phone, Mail, FileText, Settings2, Plus, Box, DollarSign, QrCode, Printer } from 'lucide-react';
 import { supabase } from '@4s-clima/shared/supabase';
 import { EQUIPMENT_TYPE_LABELS } from '@4s-clima/shared/constants';
 import CreatePlantModal from '../components/CreatePlantModal';
 import CreateEquipmentModal from '../components/CreateEquipmentModal';
 import { EditClientButton, EditPlantButton, EditEquipmentButton } from '../components/edit';
+import { openAndDownloadPDF, generateEquipmentQRLabelsPDF } from '../services/pdfService';
 
 export default function ClientDetailsPage() {
   const { id } = useParams();
@@ -19,6 +20,23 @@ export default function ClientDetailsPage() {
   // Modals state
   const [isPlantModalOpen, setIsPlantModalOpen] = useState(false);
   const [isEquipModalOpen, setIsEquipModalOpen] = useState(false);
+
+  // Estados de impresión de etiquetas QR
+  const [selectedEquipIds, setSelectedEquipIds] = useState([]);
+  const [isPrintingLabels, setIsPrintingLabels] = useState(false);
+
+  const handlePrintLabels = async (equipList) => {
+    if (!equipList || equipList.length === 0) return;
+    try {
+      setIsPrintingLabels(true);
+      await openAndDownloadPDF(generateEquipmentQRLabelsPDF(equipList, client?.name || 'Cliente'));
+    } catch (err) {
+      console.error('Error al generar PDF de etiquetas QR:', err);
+      alert('Error al generar etiquetas QR: ' + err.message);
+    } finally {
+      setIsPrintingLabels(false);
+    }
+  };
 
   useEffect(() => {
     loadClientData();
@@ -234,60 +252,147 @@ export default function ClientDetailsPage() {
             )}
           </div>
 
-          {/* EQUIPOS */}
-          <div className="card">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-semibold text-gray-900 flex items-center gap-2">
-                <Settings2 size={18} className="text-brand-500" />
-                Equipamiento Inventariado ({equipment.length})
-              </h2>
-              <button 
-                onClick={() => setIsEquipModalOpen(true)} 
-                className="btn-secondary py-1.5 px-3 text-xs"
-                disabled={plants.length === 0}
-                title={plants.length === 0 ? "Debe crear una planta primero" : ""}
-              >
-                <Plus size={14} /> Nuevo Equipo
-              </button>
-            </div>
+            {/* EQUIPOS */}
+            <div className="card">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                <h2 className="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                  <Settings2 size={18} className="text-brand-500" />
+                  Equipamiento Inventariado ({equipment.length})
+                </h2>
+                <div className="flex items-center gap-2">
+                  {equipment.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const targetList = selectedEquipIds.length > 0
+                          ? equipment.filter(e => selectedEquipIds.includes(e.id))
+                          : equipment;
+                        handlePrintLabels(targetList);
+                      }}
+                      disabled={isPrintingLabels}
+                      className="btn-secondary py-1.5 px-3 text-xs flex items-center gap-1.5 text-slate-700 dark:text-slate-200"
+                      title="Genera hoja PDF con códigos QR ECC Nivel H y guías de corte"
+                    >
+                      <Printer size={14} />
+                      <span>
+                        {isPrintingLabels
+                          ? 'Generando PDF...'
+                          : selectedEquipIds.length > 0
+                            ? `Imprimir QR (${selectedEquipIds.length})`
+                            : 'Imprimir Etiquetas QR'}
+                      </span>
+                    </button>
+                  )}
+                  <button 
+                    onClick={() => setIsEquipModalOpen(true)} 
+                    className="btn-secondary py-1.5 px-3 text-xs"
+                    disabled={plants.length === 0}
+                    title={plants.length === 0 ? "Debe crear una planta primero" : ""}
+                  >
+                    <Plus size={14} /> Nuevo Equipo
+                  </button>
+                </div>
+              </div>
 
-            {equipment.length === 0 ? (
-              <div className="p-8 text-center bg-gray-50 rounded-xl border border-dashed border-gray-200">
-                <Box size={24} className="text-gray-300 mx-auto mb-2" />
-                <p className="text-gray-500 text-sm">No hay equipos registrados.</p>
-                {plants.length === 0 && <p className="text-xs text-gray-400 mt-1">Creá una planta primero.</p>}
-              </div>
-            ) : (
-              <div className="table-container border-0 mt-2">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Planta</th>
-                      <th>Tipo</th>
-                      <th>Marca / Modelo</th>
-                      <th>Capacidad</th>
-                      <th>Serie</th>
-                      <th className="w-10 text-right"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {equipment.map(eq => (
-                      <tr key={eq.id}>
-                        <td className="text-xs font-medium text-gray-700 dark:text-gray-300">{eq.plant?.name}</td>
-                        <td className="text-xs text-gray-500 dark:text-gray-400">{EQUIPMENT_TYPE_LABELS[eq.type] || eq.type}</td>
-                        <td className="text-xs text-gray-900 dark:text-white">{eq.brand} {eq.model}</td>
-                        <td className="text-xs text-gray-500 dark:text-gray-400">{eq.capacity_btu ? `${eq.capacity_btu} BTU` : '-'}</td>
-                        <td className="text-xs text-gray-500 dark:text-gray-400 font-mono">{eq.serial_number || '-'}</td>
-                        <td className="text-right">
-                          <EditEquipmentButton equipment={eq} plants={plants} onSuccess={loadClientData} />
-                        </td>
+              {equipment.length === 0 ? (
+                <div className="p-8 text-center bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                  <Box size={24} className="text-gray-300 mx-auto mb-2" />
+                  <p className="text-gray-500 text-sm">No hay equipos registrados.</p>
+                  {plants.length === 0 && <p className="text-xs text-gray-400 mt-1">Creá una planta primero.</p>}
+                </div>
+              ) : (
+                <div className="table-container border-0 mt-2">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th className="w-8">
+                          <input
+                            type="checkbox"
+                            checked={equipment.length > 0 && selectedEquipIds.length === equipment.length}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedEquipIds(equipment.map(item => item.id));
+                              } else {
+                                setSelectedEquipIds([]);
+                              }
+                            }}
+                            className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                            title="Seleccionar todos"
+                          />
+                        </th>
+                        <th>Token QR</th>
+                        <th>Planta</th>
+                        <th>Tipo</th>
+                        <th>Marca / Modelo</th>
+                        <th>Serie</th>
+                        <th>Estado</th>
+                        <th className="w-20 text-right">Acciones</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
+                    </thead>
+                    <tbody>
+                      {equipment.map(eq => {
+                        const isSelected = selectedEquipIds.includes(eq.id);
+                        return (
+                          <tr key={eq.id} className={isSelected ? 'bg-blue-50/40 dark:bg-blue-950/20' : ''}>
+                            <td>
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setSelectedEquipIds(prev => [...prev, eq.id]);
+                                  } else {
+                                    setSelectedEquipIds(prev => prev.filter(i => i !== eq.id));
+                                  }
+                                }}
+                                className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                              />
+                            </td>
+                            <td>
+                              <span className="font-mono tabular-nums text-xs font-bold px-2 py-0.5 bg-gray-100 dark:bg-slate-700 text-slate-800 dark:text-slate-200 rounded border border-gray-200 dark:border-slate-600">
+                                {eq.qr_token || 'S/TOKEN'}
+                              </span>
+                            </td>
+                            <td className="text-xs font-medium text-gray-700 dark:text-gray-300">{eq.plant?.name}</td>
+                            <td className="text-xs text-gray-500 dark:text-gray-400">{EQUIPMENT_TYPE_LABELS[eq.type] || eq.type}</td>
+                            <td className="text-xs text-gray-900 dark:text-white font-medium">{eq.brand} {eq.model}</td>
+                            <td className="text-xs text-gray-500 dark:text-gray-400 font-mono tabular-nums">{eq.serial_number || '-'}</td>
+                            <td>
+                              {eq.operational_status === 'fuera_de_servicio' ? (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold tracking-wide uppercase bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-400 border border-red-200 dark:border-red-800">
+                                  Fuera de servicio
+                                </span>
+                              ) : eq.operational_status === 'con_observaciones' ? (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold tracking-wide uppercase bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
+                                  Observaciones
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold tracking-wide uppercase bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
+                                  Operativo
+                                </span>
+                              )}
+                            </td>
+                            <td className="text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => handlePrintLabels([eq])}
+                                  className="p-1.5 text-gray-400 hover:text-brand-600 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
+                                  title="Imprimir Etiqueta QR Individual (Nivel H)"
+                                >
+                                  <QrCode size={14} />
+                                </button>
+                                <EditEquipmentButton equipment={eq} plants={plants} onSuccess={loadClientData} />
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
 
         </div>
       </div>

@@ -246,7 +246,7 @@ export default function CreateWorkOrderModal({ isOpen, onClose, onCreated }) {
                 <option value="">Aplica a toda la planta / Múltiples equipos</option>
                 {equipment.map(e => (
                   <option key={e.id} value={e.id}>
-                    {e.type.toUpperCase()} {e.brand} {e.model} - {e.location_description}
+                    {e.qr_token ? `[${e.qr_token}] ` : ''}{e.type.toUpperCase()} {e.brand} {e.model || ''} {e.location_description ? `- ${e.location_description}` : ''}
                   </option>
                 ))}
               </select>

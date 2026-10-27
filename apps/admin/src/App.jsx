@@ -17,6 +17,7 @@ import ClientDetailsPage from './pages/ClientDetailsPage';
 import TechniciansPage from './pages/TechniciansPage';
 import ExtrasPage from './pages/ExtrasPage';
 import FinancesPage from './pages/FinancesPage';
+import PublicEquipmentPortalPage from './pages/PublicEquipmentPortalPage';
 
 /**
  * Store de auth del admin (inline para simplicidad).
@@ -123,6 +124,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/qr/:code" element={<PublicEquipmentPortalPage />} />
       <Route
         element={
           <ProtectedRoute>

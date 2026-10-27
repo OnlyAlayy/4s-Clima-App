@@ -28,6 +28,8 @@ export default function EditEquipmentButton({
   const [model, setModel] = useState('');
   const [serialNumber, setSerialNumber] = useState('');
   const [capacityBtu, setCapacityBtu] = useState('');
+  const [operationalStatus, setOperationalStatus] = useState('operativo');
+  const [qrToken, setQrToken] = useState('');
   const [refrigerantType, setRefrigerantType] = useState('');
   const [locationDescription, setLocationDescription] = useState('');
   const [notes, setNotes] = useState('');
@@ -48,6 +50,8 @@ export default function EditEquipmentButton({
       setBrand(equipment.brand || '');
       setModel(equipment.model || '');
       setSerialNumber(equipment.serial_number || '');
+      setOperationalStatus(equipment.operational_status || 'operativo');
+      setQrToken(equipment.qr_token || '');
       setCapacityBtu(
         equipment.capacity_btu !== null && equipment.capacity_btu !== undefined
           ? String(equipment.capacity_btu)
@@ -100,6 +104,8 @@ export default function EditEquipmentButton({
         model: model.trim() || null,
         serial_number: serialNumber.trim() || null,
         capacity_btu: capacityBtu ? parseInt(capacityBtu, 10) : null,
+        operational_status: operationalStatus,
+        qr_token: qrToken.trim() ? qrToken.trim().toUpperCase() : null,
         refrigerant_type: refrigerantType.trim() || null,
         location_description: locationDescription.trim() || null,
         notes: notes.trim() || null,
@@ -274,6 +280,35 @@ export default function EditEquipmentButton({
                       placeholder="Ej: 18000"
                       value={capacityBtu}
                       onChange={(e) => setCapacityBtu(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Estado Operativo
+                    </label>
+                    <select
+                      className="select text-sm"
+                      value={operationalStatus}
+                      onChange={(e) => setOperationalStatus(e.target.value)}
+                    >
+                      <option value="operativo">Operativo (Normal)</option>
+                      <option value="con_observaciones">Con Observaciones</option>
+                      <option value="fuera_de_servicio">Fuera de Servicio</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Código Token QR
+                    </label>
+                    <input
+                      type="text"
+                      className="input font-mono text-sm uppercase"
+                      placeholder="Ej: 4S-9F2A"
+                      value={qrToken}
+                      onChange={(e) => setQrToken(e.target.value)}
                     />
                   </div>
                 </div>

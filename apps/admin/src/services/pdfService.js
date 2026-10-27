@@ -914,3 +914,180 @@ export const generateAccountStatementPDF = async (client, statementData) => {
   const fileName = `Estado_Cuenta_${(client.name || 'Cliente').replace(/\s+/g, '_')}.pdf`;
   return savePDF(doc, fileName);
 };
+
+/**
+ * Genera la grilla de etiquetas QR para activos/equipos con estándar industrial HVAC.
+ * Utiliza corrección de errores nivel 'H' (30% de redundancia física ante polvo, rayones o calor),
+ * alto contraste puro (#000000 sobre #FFFFFF), bordes de corte punteados y metadatos técnicos.
+ *
+ * @param {Array|Object} equipmentList - Lista de equipos o un único equipo a imprimir
+ * @param {string} [clientName] - Nombre del cliente o planta para el encabezado/archivo
+ */
+export const generateEquipmentQRLabelsPDF = async (equipmentList, clientName = 'Equipos') => {
+  const items = Array.isArray(equipmentList) ? equipmentList : [equipmentList];
+  if (items.length === 0) {
+    throw new Error('No hay equipos seleccionados para generar etiquetas QR.');
+  }
+
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4',
+  });
+
+  const marginLeft = 10;
+  const marginTop = 12;
+  const colGap = 6;
+  const rowGap = 5;
+  const labelWidth = 92;
+  const labelHeight = 64;
+  const labelsPerPage = 8; // 2 columnas x 4 filas
+
+  const origin = typeof window !== 'undefined' && window.location?.origin
+    ? window.location.origin
+    : 'https://4s-clima.com';
+
+  for (let i = 0; i < items.length; i++) {
+    const eq = items[i];
+    const indexOnPage = i % labelsPerPage;
+
+    if (i > 0 && indexOnPage === 0) {
+      doc.addPage();
+    }
+
+    const col = indexOnPage % 2;
+    const row = Math.floor(indexOnPage / 2);
+
+    const x = marginLeft + col * (labelWidth + colGap);
+    const y = marginTop + row * (labelHeight + rowGap);
+
+    // 1. Marco exterior con guías de corte industrial (línea punteada sobria)
+    doc.setDrawColor(203, 213, 225); // slate-300
+    doc.setLineWidth(0.3);
+    doc.setLineDashPattern([2, 2], 0);
+    doc.rect(x, y, labelWidth, labelHeight);
+    doc.setLineDashPattern([], 0); // restaurar patrón continuo
+
+    // 2. Encabezado corporativo institucional (fondo oscuro elegante)
+    doc.setFillColor(15, 23, 42); // slate-900
+    doc.rect(x + 1.5, y + 1.5, labelWidth - 3, 7.5, 'F');
+
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.text('4S CLIMA', x + 3.5, y + 6.3);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(5.8);
+    doc.setTextColor(203, 213, 225);
+    doc.text('CONTROL INDUSTRIAL DE ACTIVOS', x + labelWidth - 3.5, y + 6.3, { align: 'right' });
+
+    // 3. Generación de QR con ECC Nivel 'H' (High 30%)
+    const token = (eq.qr_token || eq.id || '').toString().trim();
+    const qrUrl = `${origin}/qr/${token}`;
+
+    try {
+      const qrDataUrl = await QRCode.toDataURL(qrUrl, {
+        errorCorrectionLevel: 'H',
+        margin: 2,
+        color: {
+          dark: '#000000',
+          light: '#FFFFFF',
+        },
+      });
+
+      // Dibujar QR a la izquierda (33mm x 33mm)
+      doc.addImage(qrDataUrl, 'PNG', x + 3, y + 11.5, 33, 33);
+    } catch (err) {
+      console.error('Error generando QR para equipo:', eq.id, err);
+      doc.setDrawColor(239, 68, 68);
+      doc.rect(x + 3, y + 11.5, 33, 33);
+      doc.setFontSize(6);
+      doc.setTextColor(239, 68, 68);
+      doc.text('ERROR QR', x + 10, y + 28);
+    }
+
+    // 4. Bloque técnico a la derecha del QR (desde x + 38)
+    const rightX = x + 38;
+
+    // Token destacado en tipografía tabular monoespaciada
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10.5);
+    doc.setTextColor(15, 23, 42);
+    doc.text(token, rightX, y + 15.5);
+
+    // Tipo de equipo y Marca / Modelo
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6);
+    doc.setTextColor(100, 116, 139); // slate-500
+    doc.text('EQUIPO:', rightX, y + 19.5);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.8);
+    doc.setTextColor(15, 23, 42);
+    const typeLabel = EQUIPMENT_TYPE_LABELS[eq.type] || eq.type || 'Climatizador';
+    const brandModel = `${eq.brand || ''} ${eq.model || ''}`.trim() || 'S/D';
+    const fullEquip = `${typeLabel} - ${brandModel}`;
+    doc.text(fullEquip.length > 25 ? fullEquip.substring(0, 24) + '...' : fullEquip, rightX, y + 23);
+
+    // Número de Serie
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6);
+    doc.setTextColor(100, 116, 139);
+    doc.text('N° DE SERIE:', rightX, y + 27);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.8);
+    doc.setTextColor(15, 23, 42);
+    doc.text(eq.serial_number || 'SIN NÚMERO', rightX, y + 30.5);
+
+    // Planta y Ubicación física
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6);
+    doc.setTextColor(100, 116, 139);
+    doc.text('UBICACIÓN EN PLANTA:', rightX, y + 34.5);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    doc.setTextColor(15, 23, 42);
+    const plantName = eq.plant?.name || clientName || 'Planta Principal';
+    const locationStr = eq.location_description
+      ? `${plantName} (${eq.location_description})`
+      : plantName;
+    doc.text(locationStr.length > 26 ? locationStr.substring(0, 25) + '...' : locationStr, rightX, y + 38);
+
+    // Estado Operativo con indicador industrial
+    const status = eq.operational_status || 'operativo';
+    const statusMap = {
+      operativo: { label: 'OPERATIVO', r: 21, g: 128, b: 61 },
+      con_observaciones: { label: 'OBSERVACIONES', r: 180, g: 83, b: 9 },
+      fuera_de_servicio: { label: 'FUERA DE SERVICIO', r: 185, g: 28, b: 28 },
+    };
+    const stConfig = statusMap[status] || statusMap.operativo;
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6);
+    doc.setTextColor(stConfig.r, stConfig.g, stConfig.b);
+    doc.text(`ESTADO: ${stConfig.label}`, rightX, y + 42.5);
+
+    // 5. Pie sobrio institucional con call-to-action
+    doc.setFillColor(248, 250, 252); // slate-50
+    doc.rect(x + 1.5, y + 48.5, labelWidth - 3, 14, 'F');
+    doc.setDrawColor(226, 232, 240);
+    doc.line(x + 1.5, y + 48.5, x + labelWidth - 1.5, y + 48.5);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.2);
+    doc.setTextColor(30, 41, 59);
+    doc.text('HISTORIAL TÉCNICO Y SOLICITUD DE SERVICE', x + (labelWidth / 2), y + 54, { align: 'center' });
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(5.2);
+    doc.setTextColor(100, 116, 139);
+    doc.text('Escanear con cámara para soporte técnico directo y trazabilidad', x + (labelWidth / 2), y + 58.5, { align: 'center' });
+  }
+
+  const cleanClient = (clientName || 'Equipos').replace(/[\s/\\:]+/g, '_');
+  const fileName = `Etiquetas_QR_${cleanClient}.pdf`;
+  return savePDF(doc, fileName);
+};

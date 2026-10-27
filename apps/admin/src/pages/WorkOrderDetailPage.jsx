@@ -385,6 +385,28 @@ export default function WorkOrderDetailPage() {
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Tipo</span><span className="font-bold text-gray-900 dark:text-white">{EQUIPMENT_TYPE_LABELS[order.equipment.type] || order.equipment.type}</span></div>
                     <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Marca/Modelo</span><span className="font-bold text-gray-900 dark:text-white">{order.equipment.brand} {order.equipment.model}</span></div>
+                    {order.equipment.qr_token && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-500 dark:text-gray-400">Token QR</span>
+                        <span className="font-mono tabular-nums text-xs font-bold bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 px-2 py-0.5 rounded">
+                          {order.equipment.qr_token}
+                        </span>
+                      </div>
+                    )}
+                    {order.equipment.operational_status && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-500 dark:text-gray-400">Estado Operativo</span>
+                        <span className={`text-[11px] font-bold uppercase px-2 py-0.5 rounded ${
+                          order.equipment.operational_status === 'fuera_de_servicio'
+                            ? 'bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-400 border border-red-200 dark:border-red-800'
+                            : order.equipment.operational_status === 'con_observaciones'
+                              ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 border border-amber-200 dark:border-amber-800'
+                              : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800'
+                        }`}>
+                          {order.equipment.operational_status.replace(/_/g, ' ')}
+                        </span>
+                      </div>
+                    )}
                     {order.equipment.serial_number && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">N° Serie</span><span className="font-mono text-xs bg-gray-100 dark:bg-slate-800 px-2 py-0.5 rounded text-gray-900 dark:text-white">{order.equipment.serial_number}</span></div>}
                     {order.equipment.capacity_btu && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Capacidad</span><span className="font-bold text-gray-900 dark:text-white">{order.equipment.capacity_btu.toLocaleString()} BTU</span></div>}
                   </div>
