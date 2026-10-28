@@ -15,6 +15,8 @@ import {
   ChevronRight,
   Calendar,
   ExternalLink,
+  User,
+  Wrench,
 } from 'lucide-react';
 import { supabase } from '@4s-clima/shared/supabase';
 import { EQUIPMENT_TYPE_LABELS, WORK_ORDER_TYPE_LABELS, getStatusColor, getStatusLabel } from '@4s-clima/shared';
@@ -135,7 +137,18 @@ export default function ScannerPage() {
       try {
         const { data: historyData } = await supabase
           .from('work_orders')
-          .select('id, order_number, type, status, scheduled_date, completed_at, observations')
+          .select(`
+            id,
+            order_number,
+            type,
+            status,
+            scheduled_date,
+            completed_at,
+            observations,
+            assigned:users(name),
+            extras(description, quantity, unit),
+            checklist_items(item_name, status, notes)
+          `)
           .eq('equipment_id', data.id)
           .order('scheduled_date', { ascending: false })
           .limit(10);
@@ -427,7 +440,7 @@ export default function ScannerPage() {
                       <div
                         key={wo.id}
                         onClick={() => navigate(`/orden/${wo.id}`)}
-                        className="p-3 bg-gray-50/70 dark:bg-slate-850 rounded-xl border border-gray-100 dark:border-slate-800 hover:border-brand-300 dark:hover:border-slate-700 transition-colors cursor-pointer space-y-1.5"
+                        className="p-3 bg-gray-50/70 dark:bg-slate-850 rounded-xl border border-gray-100 dark:border-slate-800 hover:border-brand-300 dark:hover:border-slate-700 transition-colors cursor-pointer space-y-2"
                       >
                         <div className="flex items-center justify-between gap-2">
                           <span className="text-xs font-bold text-slate-900 dark:text-white font-mono tabular-nums">
@@ -446,6 +459,22 @@ export default function ScannerPage() {
                             {WORK_ORDER_TYPE_LABELS[wo.type] || wo.type}
                           </span>
                         </div>
+
+                        {/* Técnico responsable */}
+                        <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300 text-[11px]">
+                          <User size={12} className="text-gray-400 shrink-0" />
+                          <span className="text-gray-500">Técnico:</span>
+                          <span className="font-semibold">{wo.assigned?.name || 'Técnico anterior'}</span>
+                        </div>
+
+                        {/* Repuestos / Insumos */}
+                        {wo.extras && wo.extras.length > 0 && (
+                          <div className="text-[10px] text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30 p-1.5 rounded border border-amber-200/50 dark:border-amber-900/40">
+                            <span className="font-semibold">Repuestos: </span>
+                            <span>{wo.extras.map((e) => `${e.description} (${e.quantity} ${e.unit || 'un'})`).join(', ')}</span>
+                          </div>
+                        )}
+
                         {wo.observations && (
                           <p className="text-[11px] text-gray-600 dark:text-gray-400 line-clamp-2 italic leading-relaxed">
                             "{wo.observations}"

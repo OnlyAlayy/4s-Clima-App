@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, ClipboardList, Building2, Users, DollarSign,
-  LogOut, CalendarDays, Sun, Moon, Wallet, ChevronLeft, ChevronRight
+  LogOut, CalendarDays, Sun, Moon, Wallet, ChevronLeft, ChevronRight, Clock
 } from 'lucide-react';
 import { useAdminAuth } from '../../App';
 import { useDarkMode } from '../../hooks/useDarkMode';
@@ -36,6 +36,7 @@ export default function Sidebar({ isCollapsed = false, toggleSidebar }) {
       items: [
         { to: '/clientes', icon: Building2, label: 'Clientes' },
         { to: '/tecnicos', icon: Users, label: 'Técnicos' },
+        { to: '/asistencia', icon: Clock, label: 'Control Asistencia' },
         { to: '/extras', icon: DollarSign, label: 'Catálogo Extras' },
       ]
     }

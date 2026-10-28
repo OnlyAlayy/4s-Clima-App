@@ -17,6 +17,7 @@ import ClientDetailsPage from './pages/ClientDetailsPage';
 import TechniciansPage from './pages/TechniciansPage';
 import ExtrasPage from './pages/ExtrasPage';
 import FinancesPage from './pages/FinancesPage';
+import AttendancePage from './pages/AttendancePage';
 import PublicEquipmentPortalPage from './pages/PublicEquipmentPortalPage';
 
 /**
@@ -139,6 +140,7 @@ export default function App() {
         <Route path="clientes" element={<ClientsPage />} />
         <Route path="clientes/:id" element={<ClientDetailsPage />} />
         <Route path="tecnicos" element={<TechniciansPage />} />
+        <Route path="asistencia" element={<AttendancePage />} />
         <Route path="extras" element={<ExtrasPage />} />
         <Route path="finanzas" element={<FinancesPage />} />
       </Route>

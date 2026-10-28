@@ -2,8 +2,10 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, MapPin, Phone, Clock, Wrench, Building2,
-  ClipboardCheck, Play, ChevronRight, Thermometer, Hash, Package, Check, Navigation, Camera
+  ClipboardCheck, Play, ChevronRight, Thermometer, Hash, Package, Check, Navigation, Camera,
+  User, QrCode
 } from 'lucide-react';
+import { supabase } from '@4s-clima/shared/supabase';
 import { useWorkOrderStore } from '../stores/workOrderStore';
 import { formatDate, getStatusLabel, getStatusColor, resolveOrderLocation } from '@4s-clima/shared';
 import { WORK_ORDER_STATUS, WORK_ORDER_TYPE_LABELS, EQUIPMENT_TYPE_LABELS } from '@4s-clima/shared/constants';
@@ -13,7 +15,7 @@ import nativeLocationTracker from '../services/nativeLocationTracker';
 
 /**
  * Página de detalle de una Orden de Trabajo.
- * Muestra toda la info del cliente, planta, equipo.
+ * Muestra toda la info del cliente, planta, equipo y su historial clínico.
  * Botón para iniciar el trabajo y acceder al checklist.
  */
 export default function WorkOrderPage() {
@@ -22,10 +24,52 @@ export default function WorkOrderPage() {
   const { currentOrder, isLoading, fetchWorkOrder, startTravel, arriveAtPlant } = useWorkOrderStore();
   const [isStarting, setIsStarting] = useState(false);
   const [techLocation, setTechLocation] = useState(null);
+  const [equipmentHistory, setEquipmentHistory] = useState([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
   useEffect(() => {
     fetchWorkOrder(id);
   }, [id, fetchWorkOrder]);
+
+  // Cargar historial de las últimas 3 intervenciones del equipo
+  useEffect(() => {
+    if (currentOrder?.equipment?.id) {
+      const loadHistory = async () => {
+        setIsLoadingHistory(true);
+        try {
+          const { data, error } = await supabase
+            .from('work_orders')
+            .select(`
+              id,
+              order_number,
+              type,
+              status,
+              scheduled_date,
+              completed_at,
+              observations,
+              assigned:users(name),
+              extras(description, quantity, unit),
+              checklist_items(item_name, status, notes)
+            `)
+            .eq('equipment_id', currentOrder.equipment.id)
+            .neq('id', currentOrder.id)
+            .order('scheduled_date', { ascending: false })
+            .limit(3);
+
+          if (!error && data) {
+            setEquipmentHistory(data);
+          }
+        } catch (err) {
+          console.warn('Error cargando historial de intervenciones del equipo:', err);
+        } finally {
+          setIsLoadingHistory(false);
+        }
+      };
+      loadHistory();
+    } else {
+      setEquipmentHistory([]);
+    }
+  }, [currentOrder?.equipment?.id, currentOrder?.id]);
 
   const handleStartTravel = async () => {
     setIsStarting(true);
@@ -229,13 +273,21 @@ export default function WorkOrderPage() {
           )}
         </div>
 
-        {/* Equipo */}
-        {wo.equipment && (
-          <div className="card">
-            <div className="flex items-center gap-2 mb-4 pb-3 border-b border-gray-100 dark:border-slate-800">
-              <Wrench size={18} className="text-brand-500" />
-              <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Equipo</h3>
+        {/* Equipo y Ficha Clínica */}
+        {wo.equipment ? (
+          <div className="card space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-slate-800">
+              <div className="flex items-center gap-2">
+                <Wrench size={18} className="text-brand-500" />
+                <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
+                  Ficha del Equipo
+                </h3>
+              </div>
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-gray-300">
+                {wo.equipment.refrigerant_type || 'Gas N/D'}
+              </span>
             </div>
+
             <div className="space-y-3 text-sm">
               <div className="flex items-center justify-between">
                 <span className="text-gray-500 dark:text-gray-400 font-medium">Tipo</span>
@@ -270,14 +322,140 @@ export default function WorkOrderPage() {
                 </div>
               )}
               {wo.equipment.location_description && (
-                <div className="mt-3 bg-blue-50/50 dark:bg-blue-900/20 p-3 rounded-xl border border-blue-100 dark:border-blue-800/50 flex items-start gap-2">
-                  <MapPin size={18} className="text-blue-500 dark:text-blue-400 flex-shrink-0 mt-0.5" />
-                  <p className="text-blue-800 dark:text-blue-300 text-xs font-semibold leading-relaxed mt-0.5">
+                <div className="mt-2 bg-blue-50/50 dark:bg-blue-900/20 p-2.5 rounded-xl border border-blue-100 dark:border-blue-800/50 flex items-start gap-2">
+                  <MapPin size={16} className="text-blue-500 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+                  <p className="text-blue-800 dark:text-blue-300 text-xs font-semibold leading-relaxed">
                     {wo.equipment.location_description}
                   </p>
                 </div>
               )}
             </div>
+
+            {/* Historial Clínico de las Últimas 3 Intervenciones */}
+            <div className="pt-3 border-t border-gray-100 dark:border-slate-800">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                  <Clock size={14} className="text-brand-500" />
+                  <span>Últimos Mantenimientos Realizados</span>
+                </span>
+                <span className="text-[10px] text-gray-400 font-medium">
+                  {equipmentHistory.length > 0 ? `${equipmentHistory.length} visitas previas` : 'Sin historial'}
+                </span>
+              </div>
+
+              {isLoadingHistory ? (
+                <div className="space-y-2 py-1">
+                  <div className="h-16 bg-gray-100 dark:bg-slate-800 rounded-xl animate-pulse" />
+                  <div className="h-16 bg-gray-100 dark:bg-slate-800 rounded-xl animate-pulse" />
+                </div>
+              ) : equipmentHistory.length === 0 ? (
+                <div className="p-3 bg-gray-50 dark:bg-slate-850 rounded-xl text-center border border-gray-100 dark:border-slate-800">
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Primer servicio técnico registrado para esta unidad en el sistema.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  {equipmentHistory.map((prevWo) => {
+                    const prevExtras = prevWo.extras || [];
+                    const checklistNotes = (prevWo.checklist_items || []).filter(
+                      (item) => item.notes && item.notes.trim().length > 0
+                    );
+
+                    return (
+                      <div
+                        key={prevWo.id}
+                        className="p-3 rounded-xl bg-gray-50 dark:bg-slate-850 border border-gray-100 dark:border-slate-800 space-y-2 text-xs"
+                      >
+                        {/* Cabecera de la visita anterior */}
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-mono font-bold text-slate-900 dark:text-white">
+                              {prevWo.order_number}
+                            </span>
+                            <span className="text-gray-400">·</span>
+                            <span className="text-gray-600 dark:text-gray-400 font-medium">
+                              {formatDate(prevWo.scheduled_date || prevWo.completed_at)}
+                            </span>
+                          </div>
+                          <span className="text-[10px] font-semibold text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-950/40 px-1.5 py-0.5 rounded border border-brand-200 dark:border-brand-800">
+                            {WORK_ORDER_TYPE_LABELS[prevWo.type] || prevWo.type}
+                          </span>
+                        </div>
+
+                        {/* Técnico que intervino */}
+                        <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300 text-[11px]">
+                          <User size={13} className="text-gray-400 shrink-0" />
+                          <span className="text-gray-500">Técnico anterior:</span>
+                          <span className="font-semibold">{prevWo.assigned?.name || 'Técnico asignado'}</span>
+                        </div>
+
+                        {/* Repuestos / Insumos cambiados */}
+                        {prevExtras.length > 0 ? (
+                          <div className="bg-amber-50/70 dark:bg-amber-950/30 p-2 rounded-lg border border-amber-200/60 dark:border-amber-900/40 text-[11px] text-amber-900 dark:text-amber-200">
+                            <span className="font-bold block mb-0.5">Repuestos utilizados:</span>
+                            <ul className="list-disc list-inside space-y-0.5 text-amber-800 dark:text-amber-300">
+                              {prevExtras.map((ex, i) => (
+                                <li key={i}>
+                                  {ex.description} ({ex.quantity} {ex.unit || 'un'})
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        ) : (
+                          <p className="text-[11px] text-gray-400 italic">
+                            Sin repuestos adicionales cargados.
+                          </p>
+                        )}
+
+                        {/* Parámetros de checklist relevantes */}
+                        {checklistNotes.length > 0 && (
+                          <div className="bg-blue-50/60 dark:bg-blue-950/30 p-2 rounded-lg border border-blue-200/50 dark:border-blue-900/40 text-[11px] text-blue-900 dark:text-blue-200 space-y-1">
+                            <span className="font-bold block">Mediciones técnicas registradas:</span>
+                            <div className="space-y-0.5 text-blue-800 dark:text-blue-300">
+                              {checklistNotes.slice(0, 3).map((item, i) => (
+                                <div key={i} className="flex justify-between">
+                                  <span>{item.item_name}:</span>
+                                  <span className="font-semibold font-mono">{item.notes}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Observaciones */}
+                        {prevWo.observations && (
+                          <p className="text-[11px] text-gray-600 dark:text-gray-400 bg-white/70 dark:bg-slate-900/50 p-2 rounded-lg border border-gray-100 dark:border-slate-800 italic">
+                            "{prevWo.observations}"
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="card border-dashed border-2 border-gray-200 dark:border-slate-700 bg-gray-50/40 dark:bg-slate-900/30 text-center p-5 space-y-3">
+            <div className="w-10 h-10 rounded-xl bg-brand-50 dark:bg-brand-900/40 text-brand-600 dark:text-brand-400 flex items-center justify-center mx-auto">
+              <QrCode size={20} />
+            </div>
+            <div>
+              <h3 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">
+                Unidad No Vinculada
+              </h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 max-w-sm mx-auto">
+                Escaneá el código QR del equipo físico en la planta para vincularlo a esta orden y acceder a su historial técnico completo.
+              </p>
+            </div>
+            <button
+              onClick={() => navigate('/scanner')}
+              className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold rounded-xl transition-colors inline-flex items-center gap-1.5 shadow-sm active:scale-95"
+            >
+              <QrCode size={14} />
+              <span>Escanear QR del Equipo</span>
+            </button>
           </div>
         )}
 
