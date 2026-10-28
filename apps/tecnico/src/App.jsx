@@ -4,6 +4,7 @@ import { Toaster } from 'react-hot-toast';
 import { Capacitor } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
 import { useAuthStore } from './stores/authStore';
+import { useShiftStore } from './stores/shiftStore';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
 import { useRealtimeNotifications } from './hooks/useRealtimeNotifications';
 import { WifiOff } from 'lucide-react';
@@ -54,12 +55,20 @@ export default function App() {
   const isOnline = useOnlineStatus();
   const initialize = useAuthStore((s) => s.initialize);
   const profile = useAuthStore((s) => s.profile);
+  const initShift = useShiftStore((s) => s.initShift);
   useDarkMode(); // Initialize dark mode globally
 
   // Inicializar auth al montar la app
   useEffect(() => {
     initialize();
   }, [initialize]);
+
+  // Inicializar jornada laboral y rastreo GPS continuo si hay turno activo
+  useEffect(() => {
+    if (profile?.id) {
+      initShift(profile.id);
+    }
+  }, [profile?.id, initShift]);
 
   // Hook para notificaciones push en tiempo real
   useRealtimeNotifications(profile);

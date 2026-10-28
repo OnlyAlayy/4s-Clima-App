@@ -52,7 +52,7 @@ const TILES = {
 /**
  * Generador de Icono Leaflet para el Técnico.
  */
-function createTechIcon({ name, isSelected, status, isDimmed }) {
+function createTechIcon({ name, isSelected, status, isDimmed, isShiftActive }) {
   const initials = (name || 'T')
     .split(' ')
     .map((n) => n[0])
@@ -63,7 +63,7 @@ function createTechIcon({ name, isSelected, status, isDimmed }) {
   const isTraveling = status === WORK_ORDER_STATUS.TRAVELING;
   const isInProgress = status === WORK_ORDER_STATUS.IN_PROGRESS;
 
-  let bg = '#475569'; // Gris (sin orden activa)
+  let bg = '#475569'; // Gris (fuera de turno)
   let dotColor = '#94a3b8';
   if (isTraveling) {
     bg = '#4f46e5'; // Indigo (en viaje)
@@ -74,6 +74,9 @@ function createTechIcon({ name, isSelected, status, isDimmed }) {
   } else if (status === WORK_ORDER_STATUS.PENDING) {
     bg = '#0284c7'; // Azul cielo (asignado)
     dotColor = '#38bdf8';
+  } else if (isShiftActive) {
+    bg = '#059669'; // Esmeralda (en jornada activa)
+    dotColor = '#10b981';
   }
 
   const opacity = isDimmed ? 'opacity: 0.25; filter: grayscale(80%);' : 'opacity: 1;';
@@ -168,12 +171,24 @@ function MapCameraHandler({ selectedTech, activeTechsWithCoords, isFocusMode }) 
   return null;
 }
 
+// Formateo de horario de turno en formato HH:MM hs tabular
+const formatShiftTime = (isoString) => {
+  if (!isoString) return '--:--';
+  const d = new Date(isoString);
+  return d.toLocaleTimeString('es-AR', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+};
+
 export default function FleetRadarMap() {
   const navigate = useNavigate();
   const { isDark } = useDarkMode();
 
   const [technicians, setTechnicians] = useState([]);
   const [activeOrders, setActiveOrders] = useState([]);
+  const [shifts, setShifts] = useState({}); // { [techId]: shift }
   const [liveLocations, setLiveLocations] = useState({}); // { [techId]: { lat, lng, speed, heading, timestamp } }
   const [isLoading, setIsLoading] = useState(true);
 
@@ -182,7 +197,7 @@ export default function FleetRadarMap() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTechId, setSelectedTechId] = useState(null);
 
-  // Cargar datos de técnicos y órdenes activas
+  // Cargar datos de técnicos, órdenes activas y turnos de jornada
   const loadFleetData = useCallback(async () => {
     try {
       // 1. Obtener todos los técnicos del sistema
@@ -222,6 +237,50 @@ export default function FleetRadarMap() {
 
       if (ordersError) throw ordersError;
 
+      // 3. Obtener turnos de jornada de hoy
+      const todayStr = new Date().toISOString().split('T')[0];
+      const { data: shiftRows, error: shiftsError } = await supabase
+        .from('technician_shifts')
+        .select('*')
+        .eq('shift_date', todayStr)
+        .order('created_at', { ascending: false });
+
+      if (!shiftsError && shiftRows) {
+        const shiftsMap = {};
+        for (const s of shiftRows) {
+          if (!shiftsMap[s.technician_id]) {
+            shiftsMap[s.technician_id] = s;
+          }
+        }
+        setShifts(shiftsMap);
+      }
+
+      // 4. Cargar últimas coordenadas registradas de hoy desde public.technician_locations
+      const { data: locations, error: locError } = await supabase
+        .from('technician_locations')
+        .select('technician_id, latitude, longitude, speed, heading, accuracy, battery_level, is_charging, recorded_at, work_order_id')
+        .gte('recorded_at', `${todayStr}T00:00:00Z`)
+        .order('recorded_at', { ascending: false });
+
+      if (!locError && locations) {
+        const locMap = {};
+        for (const loc of locations) {
+          if (!locMap[loc.technician_id]) {
+            locMap[loc.technician_id] = {
+              lat: Number(loc.latitude),
+              lng: Number(loc.longitude),
+              speed: loc.speed || 0,
+              heading: loc.heading || null,
+              battery: loc.battery_level ?? null,
+              batteryCharging: loc.is_charging ?? false,
+              timestamp: new Date(loc.recorded_at),
+              orderId: loc.work_order_id,
+            };
+          }
+        }
+        setLiveLocations((prev) => ({ ...locMap, ...prev }));
+      }
+
       setTechnicians(techs || []);
       setActiveOrders(orders || []);
     } catch (err) {
@@ -244,8 +303,47 @@ export default function FleetRadarMap() {
       )
       .subscribe();
 
+    // Suscripción a cambios en turnos de jornada
+    const shiftsChannel = supabase
+      .channel('radar-technician-shifts-changes')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'technician_shifts' },
+        () => loadFleetData()
+      )
+      .subscribe();
+
+    // Suscripción en tiempo real a nuevas ubicaciones registradas en base de datos
+    const locationsChannel = supabase
+      .channel('radar-technician-locations-feed')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'technician_locations' },
+        (payload) => {
+          const row = payload.new;
+          if (row && row.technician_id) {
+            setLiveLocations((prev) => ({
+              ...prev,
+              [row.technician_id]: {
+                lat: Number(row.latitude),
+                lng: Number(row.longitude),
+                speed: row.speed || 0,
+                heading: row.heading || null,
+                battery: row.battery_level ?? null,
+                batteryCharging: row.is_charging ?? false,
+                timestamp: new Date(row.recorded_at || Date.now()),
+                orderId: row.work_order_id,
+              },
+            }));
+          }
+        }
+      )
+      .subscribe();
+
     return () => {
       supabase.removeChannel(ordersChannel);
+      supabase.removeChannel(shiftsChannel);
+      supabase.removeChannel(locationsChannel);
     };
   }, [loadFleetData]);
 
@@ -316,10 +414,13 @@ export default function FleetRadarMap() {
           : null;
 
       // Ubicación del técnico:
-      // Estricta regla de fidelidad: ÚNICAMENTE se posiciona al técnico si existe telemetría GPS REAL
-      // emitida desde el dispositivo móvil por Supabase Realtime (nunca simular ni inventar coordenadas).
+      // Telemetría GPS real emitida desde el dispositivo móvil (Realtime broadcast o persistencia en BD)
       const live = liveLocations[tech.id];
-      const techCoords = live ? [Number(live.lat), Number(live.lng)] : null;
+      let techCoords = live ? [Number(live.lat), Number(live.lng)] : null;
+      const shift = shifts[tech.id] || null;
+      if (!techCoords && shift?.status === 'active' && shift.check_in_lat && shift.check_in_lng) {
+        techCoords = [Number(shift.check_in_lat), Number(shift.check_in_lng)];
+      }
 
       // Distancia restante real (solo si tenemos ambos puntos verdaderos)
       const distanceMeters =
@@ -350,13 +451,15 @@ export default function FleetRadarMap() {
           : null;
 
       const hasActiveWork =
-        activeOrder !== null &&
-        (activeOrder.status === WORK_ORDER_STATUS.TRAVELING ||
-          activeOrder.status === WORK_ORDER_STATUS.IN_PROGRESS ||
-          activeOrder.status === WORK_ORDER_STATUS.PENDING);
+        (activeOrder !== null &&
+          (activeOrder.status === WORK_ORDER_STATUS.TRAVELING ||
+            activeOrder.status === WORK_ORDER_STATUS.IN_PROGRESS ||
+            activeOrder.status === WORK_ORDER_STATUS.PENDING)) ||
+        (shift !== null && shift.status === 'active');
 
       return {
         ...tech,
+        shift,
         activeOrder,
         locationInfo,
         destCoords,
@@ -370,7 +473,7 @@ export default function FleetRadarMap() {
         hasActiveWork,
       };
     });
-  }, [technicians, activeOrders, liveLocations]);
+  }, [technicians, activeOrders, liveLocations, shifts]);
 
   // Filtrado de la lista por pestañas y búsqueda instantánea de doble criterio
   const filteredTechs = useMemo(() => {
@@ -548,10 +651,13 @@ export default function FleetRadarMap() {
                 const isTraveling = order?.status === WORK_ORDER_STATUS.TRAVELING;
                 const isInProgress = order?.status === WORK_ORDER_STATUS.IN_PROGRESS;
                 const isPending = order?.status === WORK_ORDER_STATUS.PENDING;
+                const shift = tech.shift;
+                const isShiftActive = shift?.status === 'active';
+                const isShiftCompleted = shift?.status === 'completed';
 
                 // Color del dot indicador
                 let dotClass = 'bg-gray-400 dark:bg-slate-600';
-                let statusLabel = 'Disponible';
+                let statusLabel = isShiftActive ? 'Disponible' : 'Fuera de turno';
                 let badgeClass =
                   'bg-gray-100 text-gray-600 dark:bg-slate-800 dark:text-gray-300';
 
@@ -570,6 +676,8 @@ export default function FleetRadarMap() {
                   statusLabel = 'Asignado';
                   badgeClass =
                     'bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300 border-sky-200 dark:border-sky-800';
+                } else if (isShiftActive) {
+                  dotClass = 'bg-emerald-500 animate-pulse';
                 }
 
                 // Resolver texto de destino
@@ -614,15 +722,32 @@ export default function FleetRadarMap() {
 
                     {/* Información del técnico y su ruta */}
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-1.5 mb-1">
+                      <div className="flex items-start justify-between gap-1.5 mb-1.5">
                         <span className="font-bold text-xs text-gray-900 dark:text-white truncate">
                           {tech.name}
                         </span>
-                        <span
-                          className={`text-[10px] font-semibold px-2 py-0.5 rounded-md border shrink-0 ${badgeClass}`}
-                        >
-                          {statusLabel}
-                        </span>
+                        <div className="flex items-center gap-1 shrink-0 flex-wrap justify-end">
+                          {order && (
+                            <span
+                              className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border shrink-0 ${badgeClass}`}
+                            >
+                              {statusLabel}
+                            </span>
+                          )}
+                          {isShiftActive ? (
+                            <span className="text-[10px] font-semibold font-mono tabular-nums px-2 py-0.5 rounded border shrink-0 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800">
+                              En Jornada ({formatShiftTime(shift.check_in_at)} hs)
+                            </span>
+                          ) : isShiftCompleted ? (
+                            <span className="text-[10px] font-medium font-mono tabular-nums px-1.5 py-0.5 rounded border shrink-0 bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300 border-slate-200 dark:border-slate-700">
+                              Jornada finalizada ({formatShiftTime(shift.check_in_at)} - {formatShiftTime(shift.check_out_at)} hs)
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded border shrink-0 bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 border-amber-200 dark:border-amber-800">
+                              Sin iniciar jornada hoy
+                            </span>
+                          )}
+                        </div>
                       </div>
 
                       {/* Relación Técnico -> Destino */}
@@ -677,9 +802,18 @@ export default function FleetRadarMap() {
                           </div>
                         </div>
                       ) : (
-                        <p className="text-[11px] text-gray-400 dark:text-gray-500 italic">
-                          Sin destino asignado
-                        </p>
+                        <div className="text-[11px] text-gray-400 dark:text-gray-500">
+                          {isShiftActive ? (
+                            <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-medium">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                              <span>En guardia · Transmitiendo ubicación en vivo</span>
+                            </div>
+                          ) : isShiftCompleted ? (
+                            <span className="italic">Jornada finalizada · Fuera de servicio</span>
+                          ) : (
+                            <span className="italic text-amber-600/80 dark:text-amber-400/80">Sin iniciar jornada hoy</span>
+                          )}
+                        </div>
                       )}
                     </div>
 
@@ -731,6 +865,7 @@ export default function FleetRadarMap() {
                         isSelected,
                         status: tech.activeOrder?.status,
                         isDimmed,
+                        isShiftActive: tech.shift?.status === 'active',
                       })}
                       eventHandlers={{
                         click: () => setSelectedTechId(tech.id),
@@ -740,6 +875,19 @@ export default function FleetRadarMap() {
                         <div className="text-xs p-1 space-y-1">
                           <p className="font-bold text-gray-900">{tech.name}</p>
                           <p className="text-gray-500 text-[10px]">{tech.phone || 'Sin teléfono'}</p>
+                          {tech.shift?.status === 'active' ? (
+                            <p className="text-[10px] text-emerald-600 font-semibold font-mono tabular-nums">
+                              En Jornada (Ingreso: {formatShiftTime(tech.shift.check_in_at)} hs)
+                            </p>
+                          ) : tech.shift?.status === 'completed' ? (
+                            <p className="text-[10px] text-slate-500 font-medium font-mono tabular-nums">
+                              Jornada finalizada ({formatShiftTime(tech.shift.check_in_at)} - {formatShiftTime(tech.shift.check_out_at)} hs)
+                            </p>
+                          ) : (
+                            <p className="text-[10px] text-amber-600 font-semibold">
+                              Sin iniciar jornada hoy
+                            </p>
+                          )}
                           {tech.activeOrder ? (
                             <p className="text-[11px] text-brand-600 font-medium">
                               Destino: {tech.activeOrder.client?.name || 'Cliente'}
@@ -813,10 +961,31 @@ export default function FleetRadarMap() {
                       <span className="font-bold text-xs text-gray-900 dark:text-white">
                         {selectedTech.name}
                       </span>
-                      <ArrowRight size={11} strokeWidth={1.75} className="text-gray-400 shrink-0 inline" />
-                      <span className="font-bold text-xs text-brand-600 dark:text-brand-400 truncate">
-                        {selectedTech.activeOrder?.client?.name || 'Cliente'}
-                      </span>
+                      {selectedTech.activeOrder ? (
+                        <>
+                          <ArrowRight size={11} strokeWidth={1.75} className="text-gray-400 shrink-0 inline" />
+                          <span className="font-bold text-xs text-brand-600 dark:text-brand-400 truncate">
+                            {selectedTech.activeOrder?.client?.name || 'Cliente'}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-xs text-gray-400 italic">
+                          (Sin orden asignada)
+                        </span>
+                      )}
+                      {selectedTech.shift?.status === 'active' ? (
+                        <span className="text-[10px] font-semibold font-mono tabular-nums bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 px-2 py-0.5 rounded">
+                          En Jornada ({formatShiftTime(selectedTech.shift.check_in_at)} hs)
+                        </span>
+                      ) : selectedTech.shift?.status === 'completed' ? (
+                        <span className="text-[10px] font-medium font-mono tabular-nums bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 px-2 py-0.5 rounded">
+                          Jornada finalizada ({formatShiftTime(selectedTech.shift.check_in_at)} - {formatShiftTime(selectedTech.shift.check_out_at)} hs)
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-semibold bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 px-2 py-0.5 rounded">
+                          Sin iniciar jornada hoy
+                        </span>
+                      )}
                       {selectedTech.activeOrder?.order_number && (
                         <span className="text-[10px] font-mono bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-gray-300 px-1.5 py-0.5 rounded border border-gray-200 dark:border-slate-700">
                           #{selectedTech.activeOrder.order_number}

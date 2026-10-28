@@ -28,6 +28,10 @@ class NativeLocationTracker {
     this.webWatchId = null;
     this.wakeLockSentinel = null;
     this.isTrackingActive = false;
+    this.isShiftActive = false;
+    this.currentOrderId = null;
+    this.currentTechnicianId = null;
+    this.locationListeners = new Set();
     this.lastDbPersistTime = 0;
     this.DB_PERSIST_THROTTLE_MS = 5000; // Máximo 1 inserción en BD cada 5 segundos
   }
@@ -90,28 +94,66 @@ class NativeLocationTracker {
   }
 
   /**
+   * Actualiza la orden activa en el tracker sin interrumpir el rastreo de jornada
+   */
+  setActiveOrderId(orderId) {
+    this.currentOrderId = orderId || null;
+  }
+
+  /**
+   * Declara si la jornada laboral del técnico está activa
+   */
+  setShiftActive(isActive, technicianId = null) {
+    this.isShiftActive = !!isActive;
+    if (technicianId) {
+      this.currentTechnicianId = technicianId;
+    }
+  }
+
+  /**
    * Inicia el rastreo continuo de geolocalización adaptativo (Web o Nativo)
    * 
    * @param {Object} config
-   * @param {string} config.orderId - ID de la orden de trabajo en viaje
+   * @param {string} [config.orderId] - ID de la orden de trabajo en viaje
    * @param {string} [config.technicianId] - UUID del técnico en Supabase auth
    * @param {string} [config.clientName] - Nombre del cliente/planta de destino
-   * @param {Function} config.onLocationUpdate - Callback con coords { lat, lng, speed, heading, accuracy }
+   * @param {Function} [config.onLocationUpdate] - Callback con coords { lat, lng, speed, heading, accuracy }
    * @param {Function} [config.onError] - Callback en caso de fallo de GPS o permisos
    */
   async startTracking({
-    orderId,
+    orderId = null,
     technicianId = null,
     clientName = '',
-    onLocationUpdate = () => {},
+    onLocationUpdate = null,
     onError = () => {},
-  }) {
+  } = {}) {
+    if (orderId !== undefined) {
+      this.currentOrderId = orderId;
+    }
+    if (technicianId) {
+      this.currentTechnicianId = technicianId;
+    }
+    if (onLocationUpdate && typeof onLocationUpdate === 'function') {
+      this.locationListeners.add(onLocationUpdate);
+    }
+
     if (this.isTrackingActive) {
-      console.log('[LocationTracker] Ya hay un rastreador activo.');
+      console.log('[LocationTracker] Rastreo ya activo en segundo plano. Contexto de orden actualizado:', this.currentOrderId);
       return;
     }
 
     this.isTrackingActive = true;
+
+    // Helper interno para notificar a todos los listeners registrados
+    const broadcastCoords = (coords) => {
+      this.locationListeners.forEach((fn) => {
+        try {
+          fn(coords);
+        } catch (e) {
+          console.warn('[LocationTracker] Error en listener de ubicación:', e);
+        }
+      });
+    };
 
     // ========================================================
     // CASO 1: ANDROID NATIVO (Capacitor Background Geolocation)
@@ -128,8 +170,8 @@ class NativeLocationTracker {
           if (initialPos?.coords) {
             const initialCoords = this._formatWebPosition(initialPos);
             initialCoords.isNative = true;
-            onLocationUpdate(initialCoords);
-            this._persistLocationToSupabase({ orderId, technicianId, coords: initialCoords });
+            broadcastCoords(initialCoords);
+            this._persistLocationToSupabase({ orderId: this.currentOrderId, technicianId: this.currentTechnicianId, coords: initialCoords });
           }
         } catch (e) {
           console.warn('[LocationTracker Nativo] Fix inicial omitido:', e);
@@ -137,10 +179,10 @@ class NativeLocationTracker {
 
         const watcherId = await BackgroundGeolocation.addWatcher(
           {
-            backgroundTitle: '4S Clima Técnico: Ruta Activa',
+            backgroundTitle: '4S Clima: Jornada de Servicio Activa',
             backgroundMessage: clientName 
-              ? `En viaje hacia ${clientName}. Ubicación transmitida en tiempo real.`
-              : 'Transmitiendo telemetría GPS al centro operativo 4S Clima.',
+              ? `En servicio hacia ${clientName}. Ubicación transmitida en tiempo real.`
+              : 'Transmitiendo telemetría GPS continua de jornada laboral.',
             requestPermissions: true,
             stale: false,
             distanceFilter: 3, // Metros mínimos de desplazamiento para reportar
@@ -167,13 +209,13 @@ class NativeLocationTracker {
               isNative: true,
             };
 
-            // Notificar a la UI (mapa y componentes React)
-            onLocationUpdate(coords);
+            // Notificar a todos los componentes React
+            broadcastCoords(coords);
 
             // Persistir periódicamente en public.technician_locations
             await this._persistLocationToSupabase({
-              orderId,
-              technicianId,
+              orderId: this.currentOrderId,
+              technicianId: this.currentTechnicianId,
               coords,
             });
           }
@@ -209,8 +251,8 @@ class NativeLocationTracker {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           const coords = this._formatWebPosition(pos);
-          onLocationUpdate(coords);
-          this._persistLocationToSupabase({ orderId, technicianId, coords });
+          broadcastCoords(coords);
+          this._persistLocationToSupabase({ orderId: this.currentOrderId, technicianId: this.currentTechnicianId, coords });
         },
         (err) => {
           console.warn('[LocationTracker PWA] Error en fix inicial:', err);
@@ -222,8 +264,8 @@ class NativeLocationTracker {
       this.webWatchId = navigator.geolocation.watchPosition(
         (pos) => {
           const coords = this._formatWebPosition(pos);
-          onLocationUpdate(coords);
-          this._persistLocationToSupabase({ orderId, technicianId, coords });
+          broadcastCoords(coords);
+          this._persistLocationToSupabase({ orderId: this.currentOrderId, technicianId: this.currentTechnicianId, coords });
         },
         (err) => {
           console.warn('[LocationTracker PWA] Error en watchPosition:', err);
@@ -238,11 +280,22 @@ class NativeLocationTracker {
   }
 
   /**
-   * Detiene el rastreo continuo y apaga los servicios de background
+   * Detiene el rastreo continuo y apaga los servicios de background.
+   * Si force es false y la jornada laboral está activa, solo desvincula la orden
+   * sin detener el envío global de coordenadas.
    */
-  async stopTracking() {
-    console.log('[LocationTracker] Deteniendo rastreo...');
+  async stopTracking(force = false) {
+    if (!force && this.isShiftActive) {
+      console.log('[LocationTracker] Jornada laboral activa: se desvincula orden pero continúa el rastreo global de turno.');
+      this.currentOrderId = null;
+      return;
+    }
+
+    console.log('[LocationTracker] Deteniendo rastreo por completo (Fin de jornada / Logout)...');
     this.isTrackingActive = false;
+    this.isShiftActive = false;
+    this.currentOrderId = null;
+    this.locationListeners.clear();
 
     // Detener watcher nativo
     if (this.activeWatcherId) {

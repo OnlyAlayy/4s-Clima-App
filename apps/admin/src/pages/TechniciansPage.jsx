@@ -5,6 +5,16 @@ import CreateTechnicianModal from '../components/CreateTechnicianModal';
 import ChangePasswordModal from '../components/ChangePasswordModal';
 import { useAdminAuth } from '../App';
 
+const formatShiftTime = (isoString) => {
+  if (!isoString) return '--:--';
+  const d = new Date(isoString);
+  return d.toLocaleTimeString('es-AR', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+};
+
 /**
  * Página de gestión de técnicos.
  * Muestra los técnicos activos con info de contacto y OTs asignadas.
@@ -32,6 +42,21 @@ export default function TechniciansPage() {
     }
   }, [page]);
 
+  useEffect(() => {
+    const channel = supabase
+      .channel('tech-shifts-admin-feed')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'technician_shifts' },
+        () => loadTechnicians(page)
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [page]);
+
   async function loadTechnicians(pageNumber = 1) {
     setIsLoading(true);
 
@@ -47,6 +72,21 @@ export default function TechniciansPage() {
 
     if (!error) {
       if (count !== null) setTotalCount(count);
+
+      // Cargar turnos de jornada de hoy
+      const todayStr = new Date().toISOString().split('T')[0];
+      const { data: shifts } = await supabase
+        .from('technician_shifts')
+        .select('*')
+        .eq('shift_date', todayStr)
+        .order('created_at', { ascending: false });
+
+      const shiftsMap = {};
+      (shifts || []).forEach((s) => {
+        if (!shiftsMap[s.technician_id]) {
+          shiftsMap[s.technician_id] = s;
+        }
+      });
       
       const withStats = await Promise.all(
         (data || []).map(async (tech) => {
@@ -62,8 +102,11 @@ export default function TechniciansPage() {
             .eq('assigned_to', tech.id)
             .eq('status', 'completed');
 
+          const shift = shiftsMap[tech.id] || null;
+
           return {
             ...tech,
+            shift,
             activeOrders: activeOrders || 0,
             completedOrders: completedOrders || 0,
           };
@@ -131,11 +174,30 @@ export default function TechniciansPage() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <h3 className="font-semibold text-gray-900 dark:text-white truncate">{tech.name}</h3>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 mt-0.5">
                       <span className={`w-2 h-2 rounded-full ${tech.active ? 'bg-emerald-500' : 'bg-gray-400'}`} />
                       <span className="text-xs text-gray-500">
                         {tech.active ? 'Activo' : 'Inactivo'}
                       </span>
+                    </div>
+                    {/* Badge de Jornada Laboral */}
+                    <div className="mt-2">
+                      {tech.shift?.status === 'active' ? (
+                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-semibold font-mono tabular-nums bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                          <span>En Jornada (Ingreso: {formatShiftTime(tech.shift.check_in_at)} hs)</span>
+                        </span>
+                      ) : tech.shift?.status === 'completed' ? (
+                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-medium font-mono tabular-nums bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                          <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                          <span>Jornada finalizada ({formatShiftTime(tech.shift.check_in_at)} - {formatShiftTime(tech.shift.check_out_at)} hs)</span>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                          <span>Sin iniciar jornada hoy</span>
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>

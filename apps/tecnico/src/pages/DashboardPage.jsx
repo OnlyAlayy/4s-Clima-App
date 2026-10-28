@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ClipboardList, Clock, ChevronRight, MapPin, Wrench, AlertCircle, ChevronDown } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
+import { useShiftStore } from '../stores/shiftStore';
 import { useWorkOrderStore } from '../stores/workOrderStore';
 import { formatDate, formatTime, getStatusLabel, getStatusColor } from '@4s-clima/shared/utils';
 import { WORK_ORDER_STATUS, WORK_ORDER_TYPE_LABELS } from '@4s-clima/shared/constants';
@@ -13,6 +14,7 @@ import { WORK_ORDER_STATUS, WORK_ORDER_TYPE_LABELS } from '@4s-clima/shared/cons
 export default function DashboardPage() {
   const navigate = useNavigate();
   const { profile } = useAuthStore();
+  const { activeShift, todayShift, isLoading: shiftLoading } = useShiftStore();
   const { workOrders, isLoading, fetchWorkOrders } = useWorkOrderStore();
 
   const [page, setPage] = useState(1);
@@ -69,6 +71,32 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* Aviso compacto de Jornada Laboral */}
+      {!activeShift && !todayShift && !shiftLoading && (
+        <div className="mb-6 p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-800/40 flex items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center shrink-0 text-amber-700 dark:text-amber-400">
+              <Clock size={18} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-bold uppercase tracking-wider text-amber-800 dark:text-amber-300">
+                Jornada no iniciada
+              </p>
+              <p className="text-xs text-amber-700 dark:text-amber-400/80 truncate">
+                Ficha tu ingreso para activar el registro de horario y GPS de servicio.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => navigate('/perfil')}
+            className="shrink-0 px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold transition-colors flex items-center gap-1 shadow-sm active:scale-95"
+          >
+            <span>Fichar</span>
+            <ChevronRight size={14} />
+          </button>
+        </div>
+      )}
 
       {/* Resumen del día */}
       <div className="grid grid-cols-2 gap-4 mb-8">

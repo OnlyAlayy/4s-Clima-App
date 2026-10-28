@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LogOut, User, Wifi, WifiOff, HardDrive, RefreshCw, Sun, Moon, Bell, BellRing, BellOff, CheckCircle2, AlertTriangle, Send } from 'lucide-react';
+import { LogOut, User, Wifi, WifiOff, HardDrive, RefreshCw, Sun, Moon, Bell, BellRing, BellOff, CheckCircle2, AlertTriangle, Send, MapPin, Play, Square, Clock } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { useAuthStore } from '../stores/authStore';
+import { useShiftStore } from '../stores/shiftStore';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { useWorkOrderStore } from '../stores/workOrderStore';
 import { clearLocalDatabase, getPendingSyncCount } from '../services/offlineDb';
@@ -27,6 +28,36 @@ export default function ProfilePage() {
   const [pushPermission, setPushPermission] = useState('prompt');
   const [isRegisteringPush, setIsRegisteringPush] = useState(false);
   const [isTestingPush, setIsTestingPush] = useState(false);
+
+  // Estado de Jornada Laboral y Rastreo GPS
+  const { activeShift, todayShift, isActionLoading: isShiftActionLoading, checkIn, checkOut } = useShiftStore();
+
+  const formatShiftTime = (isoString) => {
+    if (!isoString) return '--:--';
+    const d = new Date(isoString);
+    const hours = String(d.getHours()).padStart(2, '0');
+    const minutes = String(d.getMinutes()).padStart(2, '0');
+    return `${hours}:${minutes} hs`;
+  };
+
+  const handleCheckIn = async () => {
+    if (!profile?.id) return;
+    try {
+      await checkIn(profile.id);
+      toast.success('Jornada laboral iniciada. Rastreo GPS activo.');
+    } catch (err) {
+      toast.error('Error al iniciar jornada: ' + (err.message || 'Verifique permisos de ubicación'));
+    }
+  };
+
+  const handleCheckOut = async () => {
+    try {
+      await checkOut();
+      toast.success('Jornada laboral finalizada. Rastreo GPS detenido.');
+    } catch (err) {
+      toast.error('Error al finalizar jornada: ' + (err.message || 'Error de red'));
+    }
+  };
 
   useEffect(() => {
     getPendingSyncCount().then(setPendingCount);
@@ -179,6 +210,85 @@ export default function ProfilePage() {
             >
               <div className="w-4 h-4 bg-white rounded-full shadow-sm" />
             </button>
+          </div>
+        </div>
+
+        {/* Jornada Laboral y Ubicación */}
+        <div className="card">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                activeShift
+                  ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+              }`}>
+                <MapPin size={20} />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+                  Jornada Laboral y Ubicación
+                </h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  {activeShift ? (
+                    <span>Inicio de jornada: <strong className="font-mono tabular-nums text-slate-700 dark:text-slate-200">{formatShiftTime(activeShift.check_in_at)}</strong></span>
+                  ) : todayShift?.status === 'completed' ? (
+                    <span>Jornada de hoy completada ({formatShiftTime(todayShift.check_in_at)} - {formatShiftTime(todayShift.check_out_at)})</span>
+                  ) : (
+                    'Rastreo GPS continuo durante tu horario de servicio'
+                  )}
+                </p>
+              </div>
+            </div>
+
+            {activeShift ? (
+              <span className="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 text-xs flex items-center gap-1 font-semibold uppercase tracking-wide">
+                <CheckCircle2 size={13} /> EN JORNADA (GPS ACTIVO)
+              </span>
+            ) : (
+              <span className="badge bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 text-xs flex items-center gap-1 font-medium uppercase tracking-wide">
+                FUERA DE TURNO
+              </span>
+            )}
+          </div>
+
+          <div className="mt-4 flex flex-col gap-2">
+            {activeShift ? (
+              <button
+                onClick={handleCheckOut}
+                disabled={isShiftActionLoading}
+                className="w-full py-2.5 px-4 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 bg-red-50 hover:bg-red-100 dark:bg-red-950/40 dark:hover:bg-red-900/50 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800 transition-colors disabled:opacity-50"
+              >
+                {isShiftActionLoading ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-red-600 border-t-transparent rounded-full animate-spin" />
+                    Finalizando...
+                  </>
+                ) : (
+                  <>
+                    <Square size={14} className="fill-current" />
+                    Finalizar Jornada Laboral
+                  </>
+                )}
+              </button>
+            ) : (
+              <button
+                onClick={handleCheckIn}
+                disabled={isShiftActionLoading}
+                className="btn-primary w-full py-2.5 text-xs font-semibold flex items-center justify-center gap-2"
+              >
+                {isShiftActionLoading ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Iniciando jornada...
+                  </>
+                ) : (
+                  <>
+                    <Play size={14} className="fill-current" />
+                    Iniciar Jornada y Activar Ubicación
+                  </>
+                )}
+              </button>
+            )}
           </div>
         </div>
 
