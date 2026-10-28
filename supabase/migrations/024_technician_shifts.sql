@@ -1,12 +1,12 @@
 -- ========================================================
--- 4S Clima - Migración 024
+-- 4S Clima - Migración 024 (Blindada: Hora Argentina + Anti-Duplicados)
 -- Sistema de Jornada Laboral (Check-in / Check-out) con Rastreo GPS por Turno
 -- ========================================================
 
 CREATE TABLE IF NOT EXISTS public.technician_shifts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     technician_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    shift_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    shift_date DATE NOT NULL DEFAULT (now() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date,
     check_in_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     check_in_lat DOUBLE PRECISION NULL,
     check_in_lng DOUBLE PRECISION NULL,
@@ -17,12 +17,21 @@ CREATE TABLE IF NOT EXISTS public.technician_shifts (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Asegurar que el default de shift_date use siempre hora de Argentina
+ALTER TABLE public.technician_shifts 
+ALTER COLUMN shift_date SET DEFAULT (now() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date;
+
 -- Índices de alto rendimiento para búsquedas por técnico, estado y fecha de jornada
 CREATE INDEX IF NOT EXISTS idx_technician_shifts_tech_status_date 
 ON public.technician_shifts(technician_id, status, shift_date DESC);
 
 CREATE INDEX IF NOT EXISTS idx_technician_shifts_shift_date 
 ON public.technician_shifts(shift_date DESC);
+
+-- CANDADO INDUSTRIAL: Impedir que un técnico tenga 2 turnos 'active' al mismo tiempo por doble clic
+CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_active_shift_per_tech 
+ON public.technician_shifts(technician_id) 
+WHERE status = 'active';
 
 -- Habilitar Row Level Security (RLS)
 ALTER TABLE public.technician_shifts ENABLE ROW LEVEL SECURITY;
