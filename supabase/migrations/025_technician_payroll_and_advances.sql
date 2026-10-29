@@ -1,11 +1,5 @@
 -- ==============================================================================
--- Migración 025: Módulo de Liquidaciones Mixtas, Obras, Módulos Walter y Adelantos
--- ==============================================================================
--- Resuelve la realidad comercial de 4S Clima:
--- 1. Liquidación por Horas (jornales, horas ordinarias y extras registradas vía GPS).
--- 2. Liquidación por Obra / Módulo / A Destajo (módulos tarifarios de Walter o precio alzado).
--- 3. Registro y control de Adelantos / Anticipos a cuenta de técnicos.
--- 4. Liquidaciones consolidadas (quincenales, mensuales o por cierre de obra).
+-- Migración 025 (Corregida): Módulo de Liquidaciones Mixtas, Obras, Módulos Walter y Adelantos
 -- ==============================================================================
 
 -- 1. Nuevas columnas en public.work_orders para gestión de mano de obra
@@ -92,7 +86,7 @@ ALTER TABLE public.technician_settlements ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.technician_advances ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.settlement_items ENABLE ROW LEVEL SECURITY;
 
--- Políticas para technician_settlements
+-- Políticas para technician_settlements (Solo Admin/Owner ven y gestionan liquidaciones o el propio técnico si se habilita recibo)
 DROP POLICY IF EXISTS "Admin and Owner manage settlements" ON public.technician_settlements;
 CREATE POLICY "Admin and Owner manage settlements"
   ON public.technician_settlements FOR ALL
@@ -143,19 +137,22 @@ CREATE POLICY "Tech can read own settlement items"
 -- 6. Integración en Supabase Realtime
 DO $$
 BEGIN
-  BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables 
+    WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'technician_settlements'
+  ) THEN
     ALTER PUBLICATION supabase_realtime ADD TABLE public.technician_settlements;
-  EXCEPTION WHEN duplicate_object THEN
-    NULL;
-  END;
-  BEGIN
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables 
+    WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'technician_advances'
+  ) THEN
     ALTER PUBLICATION supabase_realtime ADD TABLE public.technician_advances;
-  EXCEPTION WHEN duplicate_object THEN
-    NULL;
-  END;
+  END IF;
 END $$;
 
--- 7. Función RPC de cálculo automático para vista previa de liquidación
+-- 7. Función RPC de cálculo automático para vista previa de liquidación (CORREGIDA)
 CREATE OR REPLACE FUNCTION public.get_technician_payroll_preview(
   p_technician_id UUID,
   p_start_date DATE,
@@ -179,12 +176,12 @@ DECLARE
   v_orders_json JSONB := '[]'::jsonb;
   v_advances_json JSONB := '[]'::jsonb;
 BEGIN
-  -- Validar permisos: solo admin/owner
+  -- Validar permisos: solo admin y owner
   IF NOT public.is_admin() THEN
     RAISE EXCEPTION 'Access Denied: Admin privileges required.';
   END IF;
 
-  -- 1. Calcular Horas desde technician_shifts
+  -- 1. Calcular Horas desde technician_shifts en el período seleccionado
   FOR v_rec IN 
     SELECT check_in_at, check_out_at
     FROM public.technician_shifts
@@ -192,7 +189,7 @@ BEGIN
       AND shift_date BETWEEN p_start_date AND p_end_date
       AND status = 'completed'
   LOOP
-    IF v_rec.check_out_at IS NOT NULL THEN
+    IF v_rec.check_out_at IS NOT NULL AND v_rec.check_out_at > v_rec.check_in_at THEN
       v_hours_dur := EXTRACT(EPOCH FROM (v_rec.check_out_at - v_rec.check_in_at)) / 3600.0;
       IF v_hours_dur <= p_standard_hours THEN
         v_total_reg := v_total_reg + v_hours_dur;
@@ -203,7 +200,7 @@ BEGIN
     END IF;
   END LOOP;
 
-  -- 2. Sumar Mano de Obra de Órdenes completadas pendientes de liquidar
+  -- 2. Sumar Mano de Obra de Órdenes completadas pendientes de liquidar (hasta p_end_date en hora AR)
   SELECT 
     COALESCE(SUM(technician_payout), 0),
     COALESCE(jsonb_agg(
@@ -214,16 +211,16 @@ BEGIN
         'labor_rate_type', labor_rate_type,
         'technician_payout', technician_payout,
         'observations', observations
-      )
+      ) ORDER BY completed_at DESC
     ), '[]'::jsonb)
   INTO v_orders_subtotal, v_orders_json
   FROM public.work_orders
   WHERE assigned_to = p_technician_id
     AND status = 'completed'
     AND payout_status = 'pending'
-    AND completed_at::date BETWEEN p_start_date AND p_end_date;
+    AND COALESCE((completed_at AT TIME ZONE 'America/Argentina/Buenos_Aires')::date, scheduled_date) <= p_end_date;
 
-  -- 3. Sumar Adelantos otorgados pendientes de descuento
+  -- 3. Sumar TODOS los Adelantos pendientes de descuento entregados hasta la fecha de cierre (incluye meses previos aún no descontados)
   SELECT 
     COALESCE(SUM(amount), 0),
     COALESCE(jsonb_agg(
@@ -234,13 +231,13 @@ BEGIN
         'payment_method', payment_method,
         'reference', reference,
         'notes', notes
-      )
+      ) ORDER BY advance_date DESC
     ), '[]'::jsonb)
   INTO v_advances_subtotal, v_advances_json
   FROM public.technician_advances
   WHERE technician_id = p_technician_id
     AND status = 'pending'
-    AND advance_date BETWEEN p_start_date AND p_end_date;
+    AND advance_date <= p_end_date;
 
   -- 4. Construir resultado final consolidado
   RETURN jsonb_build_object(
@@ -261,3 +258,5 @@ BEGIN
   );
 END;
 $$;
+
+GRANT EXECUTE ON FUNCTION public.get_technician_payroll_preview(UUID, DATE, DATE, NUMERIC, NUMERIC, NUMERIC) TO authenticated;

@@ -324,6 +324,7 @@ export default function PublicEquipmentPortalPage() {
                       value={emailInput}
                       onChange={(e) => setEmailInput(e.target.value)}
                       placeholder="nombre@tuempresa.com"
+                      maxLength={120}
                       required
                       className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
                     />
@@ -414,6 +415,7 @@ export default function PublicEquipmentPortalPage() {
                           value={contactName}
                           onChange={(e) => setContactName(e.target.value)}
                           placeholder="Ej: Ing. Martín Gómez"
+                          maxLength={100}
                           required
                           className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
                         />
@@ -444,6 +446,7 @@ export default function PublicEquipmentPortalPage() {
                         onChange={(e) => setIssueDescription(e.target.value)}
                         placeholder="Describa el comportamiento anormal observado, códigos de error en display o sector afectado..."
                         rows={3}
+                        maxLength={1500}
                         required
                         className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
                       />
