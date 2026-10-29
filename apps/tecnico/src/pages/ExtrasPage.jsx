@@ -51,7 +51,7 @@ export default function ExtrasPage() {
         const { data, error } = await supabase
           .from('extras')
           .insert([newExtra])
-          .select();
+          .select('id, work_order_id, description, quantity, unit, created_at');
 
         if (error) throw error;
         if (data && data.length > 0) {

@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import { supabase } from '@4s-clima/shared/supabase';
 import { nativeLocationTracker } from '../services/nativeLocationTracker';
 
+let shiftRealtimeChannel = null;
+
 export const useShiftStore = create((set, get) => ({
   activeShift: null,
   todayShift: null,
@@ -16,9 +18,49 @@ export const useShiftStore = create((set, get) => ({
    */
   initShift: async (technicianId) => {
     if (!technicianId) {
+      if (shiftRealtimeChannel) {
+        supabase.removeChannel(shiftRealtimeChannel);
+        shiftRealtimeChannel = null;
+      }
       set({ activeShift: null, todayShift: null, isLoading: false });
       return;
     }
+
+    // Registrar listener global para desconexión de GPS provocada por tracker en background
+    if (typeof window !== 'undefined') {
+      window.__4s_onShiftClosedRemotely = () => {
+        console.warn('[ShiftStore] Cierre remoto notificado por tracker. Actualizando estado a completado...');
+        set({ activeShift: null });
+      };
+    }
+
+    // Suscripción Realtime para cierre administrativo instantáneo
+    if (shiftRealtimeChannel) {
+      supabase.removeChannel(shiftRealtimeChannel);
+      shiftRealtimeChannel = null;
+    }
+
+    shiftRealtimeChannel = supabase
+      .channel(`shift-status-${technicianId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'technician_shifts',
+          filter: `technician_id=eq.${technicianId}`,
+        },
+        async (payload) => {
+          const current = get().activeShift;
+          if (payload.new && payload.new.status === 'completed' && current && current.id === payload.new.id) {
+            console.log('[ShiftStore] Turno cerrado remotamente vía Realtime. Apagando GPS...');
+            await nativeLocationTracker.stopTracking(true);
+            nativeLocationTracker.setShiftActive(false);
+            set({ activeShift: null, todayShift: payload.new });
+          }
+        }
+      )
+      .subscribe();
 
     set({ isLoading: true, error: null });
 

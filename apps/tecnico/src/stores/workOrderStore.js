@@ -73,7 +73,7 @@ export const useWorkOrderStore = create((set, get) => ({
             plant:plants(id, name, address, floor, contact_name, contact_phone, notes, latitude, longitude),
             equipment:equipment(id, type, brand, model, serial_number, capacity_btu, refrigerant_type, location_description),
             checklist_items(*),
-            extras(*),
+            extras(id, work_order_id, description, quantity, unit, created_at),
             photos(*),
             signatures(*)
           `)

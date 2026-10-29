@@ -33,6 +33,7 @@ class NativeLocationTracker {
     this.currentTechnicianId = null;
     this.locationListeners = new Set();
     this.lastDbPersistTime = 0;
+    this.lastShiftCheckTime = 0;
     this.DB_PERSIST_THROTTLE_MS = 5000; // Máximo 1 inserción en BD cada 5 segundos
   }
 
@@ -377,6 +378,30 @@ class NativeLocationTracker {
       }
 
       if (!techId) return;
+
+      // Salvaguarda: verificación periódica de turno activo (cada 20 segundos)
+      // Si Admin aplicó cierre forzado ('completed'), apagamos inmediatamente el GPS nativo/web
+      if (this.isShiftActive) {
+        if (!this.lastShiftCheckTime || now - this.lastShiftCheckTime > 20000) {
+          this.lastShiftCheckTime = now;
+          const { data: activeShifts, error: shiftErr } = await supabase
+            .from('technician_shifts')
+            .select('id')
+            .eq('technician_id', techId)
+            .eq('status', 'active')
+            .limit(1);
+
+          if (!shiftErr && (!activeShifts || activeShifts.length === 0)) {
+            console.warn('[LocationTracker] Cierre forzado de turno detectado desde Admin. Apagando GPS nativo inmediatamente...');
+            await this.stopTracking(true);
+            this.setShiftActive(false);
+            if (typeof window !== 'undefined' && typeof window.__4s_onShiftClosedRemotely === 'function') {
+              window.__4s_onShiftClosedRemotely();
+            }
+            return;
+          }
+        }
+      }
 
       await supabase.from('technician_locations').insert({
         technician_id: techId,
