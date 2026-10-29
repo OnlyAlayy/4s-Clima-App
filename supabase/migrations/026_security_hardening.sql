@@ -231,7 +231,7 @@ BEGIN
         );
     END IF;
 
-    -- Obtener historial de work_orders cerradas/en curso EXCLUYENDO precios, costos o márgenes
+    -- Obtener historial de work_orders cerradas/en curso EXCLUYENDO precios, costos y sanitizando datos de contacto privados del solicitante
     SELECT COALESCE(jsonb_agg(
         jsonb_build_object(
             'id', wo.id,
@@ -240,8 +240,16 @@ BEGIN
             'status', wo.status,
             'scheduled_date', wo.scheduled_date,
             'completed_at', wo.completed_at,
-            'observations', wo.observations,
-            'technical_diagnostic', wo.observations
+            'observations', CASE 
+                WHEN wo.observations ~ '^\[SOLICITUD QR\]' THEN 
+                    regexp_replace(wo.observations, '^\[SOLICITUD QR\].*?- Falla:\s*', 'Solicitud: ')
+                ELSE wo.observations
+            END,
+            'technical_diagnostic', CASE 
+                WHEN wo.observations ~ '^\[SOLICITUD QR\]' THEN 
+                    regexp_replace(wo.observations, '^\[SOLICITUD QR\].*?- Falla:\s*', 'Solicitud: ')
+                ELSE wo.observations
+            END
         ) ORDER BY COALESCE(wo.completed_at, wo.scheduled_date::timestamptz, wo.created_at) DESC
     ), '[]'::jsonb) INTO v_history
     FROM public.work_orders wo
