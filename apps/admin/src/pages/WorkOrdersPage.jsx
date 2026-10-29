@@ -67,7 +67,7 @@ export default function WorkOrdersPage() {
         *,
         client:clients!inner(name),
         plant:plants(name, address),
-        assigned:users!work_orders_assigned_to_fkey!inner(name),
+        assigned:users!work_orders_assigned_to_fkey(name),
         extras(id, billed)
       `, { count: 'exact' })
       .order('scheduled_date', { ascending: false });

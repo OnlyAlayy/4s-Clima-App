@@ -419,3 +419,4 @@ WITH CHECK (
   AND auth.role() = 'authenticated'
   AND (LOWER(storage.extension(name)) IN ('jpg', 'jpeg', 'png', 'webp', 'pdf'))
 );
+

@@ -56,6 +56,15 @@ export default function AttendancePage() {
   const loadShifts = useCallback(async () => {
     setIsLoading(true);
     try {
+      // Cargar técnicos/usuarios para mapear datos
+      const { data: usersData } = await supabase
+        .from('users')
+        .select('id, name, email, phone');
+      const usersMap = {};
+      (usersData || []).forEach((u) => {
+        usersMap[u.id] = u;
+      });
+
       let query = supabase
         .from('technician_shifts')
         .select(`
@@ -69,8 +78,7 @@ export default function AttendancePage() {
           check_out_lat,
           check_out_lng,
           status,
-          created_at,
-          technician:users(id, name, email, phone)
+          created_at
         `)
         .gte('shift_date', startDate)
         .lte('shift_date', endDate)
@@ -83,7 +91,13 @@ export default function AttendancePage() {
 
       const { data, error } = await query;
       if (error) throw error;
-      setShifts(data || []);
+
+      const shiftsWithTech = (data || []).map((s) => ({
+        ...s,
+        technician: usersMap[s.technician_id] || { name: 'Técnico', email: '' },
+      }));
+
+      setShifts(shiftsWithTech);
     } catch (err) {
       console.error('Error cargando turnos de asistencia:', err);
     } finally {

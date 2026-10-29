@@ -112,8 +112,7 @@ export default function ScannerPage() {
         .from('equipment')
         .select(`
           *,
-          plant:plants(name, address, client_id),
-          client:clients(name)
+          plant:plants(name, address, client:clients(name))
         `);
 
       if (isUuid) {
