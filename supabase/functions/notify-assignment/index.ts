@@ -42,13 +42,37 @@ serve(async (req) => {
 
     // Validación de Webhook Secret (si está configurado en Supabase Secrets)
     const expectedWebhookSecret = Deno.env.get("NOTIFY_WEBHOOK_SECRET");
-    if (expectedWebhookSecret) {
-      const incomingSecret = req.headers.get("x-webhook-secret");
-      if (incomingSecret !== expectedWebhookSecret) {
-        console.warn("Rechazado: Header x-webhook-secret no coincide con NOTIFY_WEBHOOK_SECRET");
+    const incomingSecret = req.headers.get("x-webhook-secret");
+    const isAuthorizedWebhook = !!expectedWebhookSecret && incomingSecret === expectedWebhookSecret;
+
+    if (!isAuthorizedWebhook) {
+      // Si no es un webhook autenticado por secreto, debe ser una llamada autorizada por un admin u owner
+      const authHeader = req.headers.get("Authorization");
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
         return new Response(
-          JSON.stringify({ error: "Unauthorized: Invalid webhook secret" }),
+          JSON.stringify({ error: "Unauthorized: Authorization Bearer token or valid webhook secret required." }),
           { headers, status: 401 }
+        );
+      }
+      const token = authHeader.replace("Bearer ", "");
+      const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
+      if (authError || !user) {
+        return new Response(
+          JSON.stringify({ error: "Unauthorized: Invalid or expired token." }),
+          { headers, status: 401 }
+        );
+      }
+
+      const { data: callerProfile } = await supabaseClient
+        .from("users")
+        .select("role, active")
+        .eq("id", user.id)
+        .single();
+
+      if (!callerProfile || !callerProfile.active || !["admin", "owner"].includes(callerProfile.role)) {
+        return new Response(
+          JSON.stringify({ error: "Forbidden: Only admins and owners can trigger push notifications." }),
+          { headers, status: 403 }
         );
       }
     }

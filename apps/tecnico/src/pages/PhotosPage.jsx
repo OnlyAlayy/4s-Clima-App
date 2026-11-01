@@ -184,7 +184,10 @@ export default function PhotosPage({ step: propStep }) {
 
       for (let i = 0; i < photosToUpload.length; i++) {
         const item = photosToUpload[i];
-        const fileName = `photos/${id}/${item.type}-${Date.now()}-${i}.jpg`;
+        const randomId = typeof crypto !== 'undefined' && crypto.randomUUID 
+          ? crypto.randomUUID() 
+          : (Math.random().toString(36).substring(2) + Date.now().toString(36));
+        const fileName = `photos/${id}/${item.type}-${Date.now()}-${randomId}-${i}.jpg`;
 
         if (navigator.onLine) {
           const { error: uploadError } = await supabase.storage

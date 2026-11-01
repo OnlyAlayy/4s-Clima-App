@@ -4,13 +4,24 @@ import Afip from '@afipsdk/afip.js';
 import { createClient } from '@supabase/supabase-js';
 
 export default async function handler(req, res) {
-  // CORS configuration
+  // CORS configuration segura con lista blanca
   const origin = req.headers.origin;
-  if (origin) {
+  const allowedOrigins = [
+    'http://localhost:5174',
+    'http://127.0.0.1:5174',
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+    ...(process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim()) : [])
+  ];
+
+  const isAllowedOrigin = origin && (
+    allowedOrigins.includes(origin) ||
+    /^https:\/\/[a-zA-Z0-9_-]+\.vercel\.app$/.test(origin)
+  );
+
+  if (isAllowedOrigin) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Access-Control-Allow-Credentials', 'true');
-  } else {
-    res.setHeader('Access-Control-Allow-Origin', '*');
   }
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
   res.setHeader('Access-Control-Allow-Headers', 'Authorization, X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
@@ -59,7 +70,7 @@ export default async function handler(req, res) {
       return res.status(403).json({ error: 'Prohibido: Solo administradores o propietarios pueden facturar.' });
     }
 
-    // 2. Procesar solicitud de factura A (Responsable Inscripto)
+    // 2. Procesar solicitud de comprobante fiscal AFIP (Soporte Factura A y Factura C)
     const orderId = req.body.orderId;
     if (!orderId) {
       return res.status(400).json({ error: 'Falta orderId' });
@@ -71,11 +82,14 @@ export default async function handler(req, res) {
     if (isNaN(impNeto) || impNeto <= 0) {
       return res.status(400).json({ error: 'Monto neto a facturar inválido (debe ser mayor a 0).' });
     }
-    const impIVA = roundCurrency(impNeto * 0.21);
-    const impTotal = roundCurrency(impNeto + impIVA);
 
     const isCreditNote = req.body.isCreditNote === true;
     const associatedInvoice = req.body.associatedInvoice; // Required if isCreditNote
+    const voucherLetter = (req.body.voucherLetter || req.body.voucher_letter || 'A').toUpperCase();
+    const isTypeC = voucherLetter === 'C';
+
+    const impIVA = isTypeC ? 0 : roundCurrency(impNeto * 0.21);
+    const impTotal = isTypeC ? impNeto : roundCurrency(impNeto + impIVA);
 
     // 2.5 Fetch Client & Order Data from DB (Idempotencia y validación fiscal)
     const { data: orderData, error: orderError } = await supabase
@@ -91,20 +105,30 @@ export default async function handler(req, res) {
     // Prevención de Doble Facturación (Idempotencia)
     if (orderData.afip_cae && !isCreditNote) {
       return res.status(409).json({ 
-        error: `Esta orden ya cuenta con una Factura AFIP emitida (Comprobante: ${orderData.afip_voucher_number || 'A-00001-N/D'}, CAE: ${orderData.afip_cae}). Operación cancelada para evitar duplicación fiscal.` 
+        error: `Esta orden ya cuenta con un comprobante AFIP emitido (Comprobante: ${orderData.afip_voucher_number || 'A-00001-N/D'}, CAE: ${orderData.afip_cae}). Operación cancelada para evitar duplicación fiscal.` 
       });
     }
     
-    // Validación estricta de CUIT para Factura A (DocTipo 80)
+    // Validación fiscal: Factura A exige CUIT 11 dígitos; Factura C permite CUIT o Consumidor Final
     const clientCuit = (orderData.clients?.cuit || '').replace(/\D/g, '');
-    if (!clientCuit || clientCuit.length !== 11) {
-      return res.status(400).json({ 
-        error: 'Para emitir Factura A, el cliente debe poseer un CUIT válido de 11 dígitos registrado.' 
-      });
+    let docTipo = 80; // CUIT por defecto
+    let docNro = 0;
+    let condicionIva = 1; // 1 = IVA Responsable Inscripto (RG 5616)
+
+    if (clientCuit && clientCuit.length === 11) {
+      docTipo = 80;
+      docNro = parseInt(clientCuit, 10);
+      condicionIva = isTypeC ? 4 : 1; // 4 = IVA Sujeto Exento/Monotributo, 1 = IVA Responsable Inscripto
+    } else {
+      if (!isTypeC) {
+        return res.status(400).json({ 
+          error: 'Para emitir Factura A, el cliente debe poseer un CUIT válido de 11 dígitos registrado.' 
+        });
+      }
+      docTipo = 99; // Consumidor Final
+      docNro = 0;
+      condicionIva = 5;
     }
-    const docTipo = 80; // CUIT
-    const docNro = parseInt(clientCuit, 10);
-    const condicionIva = 1; // 1 = IVA Responsable Inscripto (RG 5616)
     
     // In Vercel, we need to extract certificates from env vars and write to /tmp
     // For local testing, we can use the env vars if present, otherwise fallback to local files if they exist
@@ -136,10 +160,15 @@ export default async function handler(req, res) {
     const date = new Date(Date.now() - ((new Date()).getTimezoneOffset() * 60000)).toISOString().split('T')[0].replace(/-/g, '');
 
     const ptoVta = parseInt(process.env.AFIP_PTO_VTA || '1', 10);
-    const cbteTipo = isCreditNote ? 3 : 1; // 1 = Factura A, 3 = Nota de Crédito A
+    // Tipos de comprobante en AFIP:
+    // Factura A: 1, Nota de Crédito A: 3
+    // Factura C: 11, Nota de Crédito C: 13
+    const cbteTipo = isTypeC 
+      ? (isCreditNote ? 13 : 11) 
+      : (isCreditNote ? 3 : 1);
     const lastVoucher = await afip.ElectronicBilling.getLastVoucher(ptoVta, cbteTipo);
     const voucherNumber = lastVoucher + 1;
-    const formattedVoucherNumber = `A-${String(ptoVta).padStart(5, '0')}-${String(voucherNumber).padStart(8, '0')}`;
+    const formattedVoucherNumber = `${voucherLetter}-${String(ptoVta).padStart(5, '0')}-${String(voucherNumber).padStart(8, '0')}`;
 
     const data = {
       'CantReg' 	: 1,  
@@ -163,19 +192,22 @@ export default async function handler(req, res) {
       'MonId' 	: 'PES', 
       'MonCotiz' 	: 1,
       'CondicionIVAReceptorId': condicionIva,
-      'Iva': [
+    };
+
+    if (!isTypeC) {
+      data['Iva'] = [
         {
           'Id': 5, // 21% en AFIP/ARCA
           'BaseImp': impNeto,
           'Importe': impIVA
         }
-      ]
-    };
+      ];
+    }
 
     if (isCreditNote && associatedInvoice) {
       data['CbtesAsoc'] = [
         {
-          'Tipo' 	: 1, // Factura A original
+          'Tipo' 	: isTypeC ? 11 : 1,
           'PtoVta' 	: ptoVta,
           'Nro' 	: associatedInvoice
         }

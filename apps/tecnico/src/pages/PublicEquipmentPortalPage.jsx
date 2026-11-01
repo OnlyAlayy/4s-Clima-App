@@ -109,8 +109,8 @@ export default function PublicEquipmentPortalPage() {
         throw error;
       }
 
-      if (!data) {
-        setValidationError('El correo ingresado no coincide con el cliente o dominio corporativo autorizado para este activo.');
+      if (!data || data.success === false) {
+        setValidationError(data?.error || 'El correo ingresado no coincide con el cliente o dominio corporativo autorizado para este activo.');
       } else {
         setUnlockedData(data);
         setIsUnlocked(true);

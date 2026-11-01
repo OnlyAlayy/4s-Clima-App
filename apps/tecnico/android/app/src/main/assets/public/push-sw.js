@@ -27,9 +27,18 @@ self.addEventListener('push', function (event) {
 self.addEventListener('notificationclick', function (event) {
   event.notification.close();
   
-  // Si la notificación tiene una URL, intentamos abrirla
+  // Si la notificación tiene una URL, validamos que sea relativa interna
   if (event.notification.data) {
-    const urlToOpen = new URL(event.notification.data, self.location.origin).href;
+    let rawPath = String(event.notification.data).trim();
+    if (!rawPath.startsWith('/')) {
+      rawPath = '/' + rawPath.replace(/^https?:\/\/[^\/]+/, '');
+      if (!rawPath.startsWith('/')) rawPath = '/';
+    }
+    const parsedUrl = new URL(rawPath, self.location.origin);
+    if (parsedUrl.origin !== self.location.origin) {
+      return;
+    }
+    const urlToOpen = parsedUrl.href;
 
     event.waitUntil(
       clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {

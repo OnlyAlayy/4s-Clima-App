@@ -457,14 +457,20 @@ export const useWorkOrderStore = create((set, get) => ({
           }
         } else {
           console.error(`Error sync ${item.table} (${item.action}):`, error);
-          // Si el error es de PostgREST (el servidor rechazó la petición por RLS o validación),
-          // guardar en failedSyncLog y eliminar de pendingSync para evitar un bucle tóxico.
-          if (error.code || error.status >= 400) {
-            console.warn(`Moviendo operación fallida a failedSyncLog:`, item.id);
+          const currentRetries = (item.retry_count || 0) + 1;
+          if (currentRetries < 3) {
+            console.warn(`Reintentando operacion (${currentRetries}/3) para pendingSync:`, item.id);
+            await db.pendingSync.update(item.id, {
+              retry_count: currentRetries,
+              last_error: error.message || String(error)
+            });
+          } else {
+            console.warn(`Alcanzado maximo de 3 reintentos. Moviendo operacion fallida a failedSyncLog:`, item.id);
             await db.failedSyncLog.add({
               ...item,
               id: undefined, // Let Dexie auto-increment
               error: error,
+              retry_count: currentRetries,
               failed_at: new Date().toISOString()
             });
             await db.pendingSync.delete(item.id);

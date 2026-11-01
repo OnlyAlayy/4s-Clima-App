@@ -116,60 +116,77 @@ serve(async (req) => {
       production: false
     });
 
+    const voucherLetter = (body.voucherLetter || body.voucher_letter || "A").toUpperCase();
+    const isTypeC = voucherLetter === "C";
     const roundCurrency = (val: number | string) => Math.round((Number(val) + Number.EPSILON) * 100) / 100;
     const rawNet = body.netAmount !== undefined ? body.netAmount : (body.amount || 100);
     const impNeto = roundCurrency(rawNet);
-    const impIVA = roundCurrency(impNeto * 0.21);
-    const impTotal = roundCurrency(impNeto + impIVA);
+    const impIVA = isTypeC ? 0 : roundCurrency(impNeto * 0.21);
+    const impTotal = isTypeC ? impNeto : roundCurrency(impNeto + impIVA);
 
-    const clientCuit = (body.clientCuit || '').toString().replace(/\D/g, '');
-    const docTipo = clientCuit.length === 11 ? 80 : 99;
-    const docNro = clientCuit.length === 11 ? parseInt(clientCuit, 10) : 0;
-    const condicionIva = clientCuit.length === 11 ? 1 : 5;
+    const clientCuit = (body.clientCuit || "").toString().replace(/\D/g, "");
+    let docTipo = 80;
+    let docNro = 0;
+    let condicionIva = 1;
 
-    const cbteTipo = isCreditNote ? 3 : 1;
+    if (clientCuit.length === 11) {
+      docTipo = 80;
+      docNro = parseInt(clientCuit, 10);
+      condicionIva = isTypeC ? 4 : 1;
+    } else {
+      docTipo = 99;
+      docNro = 0;
+      condicionIva = 5;
+    }
+
+    // Factura A: 1, Nota de Crédito A: 3
+    // Factura C: 11, Nota de Crédito C: 13
+    const cbteTipo = isTypeC ? (isCreditNote ? 13 : 11) : (isCreditNote ? 3 : 1);
     const ptoVta = body.ptoVta || 1;
     const lastVoucher = await afip.ElectronicBilling.getLastVoucher(ptoVta, cbteTipo);
 
-    const date = new Date(Date.now() - ((new Date()).getTimezoneOffset() * 60000)).toISOString().split('T')[0].replace(/-/g, '');
+    const date = new Date(Date.now() - ((new Date()).getTimezoneOffset() * 60000)).toISOString().split("T")[0].replace(/-/g, "");
 
     const data: any = {
-      'CantReg' 	: 1,
-      'PtoVta' 	: ptoVta,
-      'CbteTipo' 	: cbteTipo,
-      'Concepto' 	: 3,
-      'DocTipo' 	: docTipo,
-      'DocNro' 	: docNro,  
-      'CbteDesde' 	: lastVoucher + 1,
-      'CbteHasta' 	: lastVoucher + 1,
-      'CbteFch' 	: parseInt(date),
-      'ImpTotal' 	: impTotal,
-      'ImpTotConc' 	: 0,
-      'ImpNeto' 	: impNeto,
-      'ImpOpEx' 	: 0,
-      'ImpIVA' 	: impIVA,
-      'ImpTrib' 	: 0,
-      'FchServDesde' 	: parseInt(date),
-      'FchServHasta' 	: parseInt(date),
-      'FchVtoPago' 	: parseInt(date),
-      'MonId' 	: 'PES', 
-      'MonCotiz' 	: 1,
-      'CondicionIVAReceptorId': condicionIva,
-      'Iva': [
-        {
-          'Id': 5,
-          'BaseImp': impNeto,
-          'Importe': impIVA
-        }
-      ]
+      "CantReg" 	: 1,
+      "PtoVta" 	: ptoVta,
+      "CbteTipo" 	: cbteTipo,
+      "Concepto" 	: 3,
+      "DocTipo" 	: docTipo,
+      "DocNro" 	: docNro,
+      "CbteDesde" 	: lastVoucher + 1,
+      "CbteHasta" 	: lastVoucher + 1,
+      "CbteFch" 	: parseInt(date),
+      "ImpTotal" 	: impTotal,
+      "ImpTotConc" 	: 0,
+      "ImpNeto" 	: impNeto,
+      "ImpOpEx" 	: 0,
+      "ImpIVA" 	: impIVA,
+      "ImpTrib" 	: 0,
+      "FchServDesde" 	: parseInt(date),
+      "FchServHasta" 	: parseInt(date),
+      "FchVtoPago" 	: parseInt(date),
+      "MonId" 	: "PES",
+      "MonCotiz" 	: 1,
+      "CondicionIVAReceptorId": condicionIva,
     };
 
-    if (isCreditNote && body.associatedInvoice) {
-      data['CbtesAsoc'] = [
+    if (!isTypeC) {
+      data["Iva"] = [
         {
-          'Tipo': 1,
-          'PtoVta': ptoVta,
-          'Nro': body.associatedInvoice
+          "Id": 5,
+          "BaseImp": impNeto,
+          "Importe": impIVA
+        }
+      ];
+    }
+
+    if (isCreditNote && body.associatedInvoice) {
+      data["CbtesAsoc"] = [
+        {
+          "Tipo": isTypeC ? 11 : 1,
+          "PtoVta": ptoVta,
+          "Nro": body.associatedInvoice
         }
       ];
     }
@@ -177,7 +194,7 @@ serve(async (req) => {
     // 7. Autorización electrónica con AFIP
     const res = await afip.ElectronicBilling.createVoucher(data);
     const voucherNumber = lastVoucher + 1;
-    const formattedVoucherNumber = `A-${String(ptoVta).padStart(5, '0')}-${String(voucherNumber).padStart(8, '0')}`;
+    const formattedVoucherNumber = `${voucherLetter}-${String(ptoVta).padStart(5, "0")}-${String(voucherNumber).padStart(8, "0")}`;
 
     // 8. Registro en base de datos si se proporcionó orderId
     if (orderId) {

@@ -26,7 +26,13 @@ serve(async (req) => {
     )
 
     // 2. Extraer el token del usuario que hace el click
-    const authHeader = req.headers.get('Authorization')!
+    const authHeader = req.headers.get('Authorization')
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return new Response(
+        JSON.stringify({ error: 'No autorizado: Token de autorización Bearer requerido' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+      )
+    }
     const token = authHeader.replace('Bearer ', '')
 
     // 3. Verificar si el token es válido
@@ -52,13 +58,17 @@ serve(async (req) => {
     }
 
     // 5.5. Verificar el rol del usuario objetivo para prevenir escalada
-    const { data: targetProfile } = await supabaseClient
+    const { data: targetProfile, error: targetError } = await supabaseClient
       .from('users')
       .select('role')
       .eq('id', userId)
       .single()
       
-    if (profile.role === 'admin' && targetProfile && targetProfile.role !== 'tecnico') {
+    if (targetError || !targetProfile) {
+      throw new Error('Usuario objetivo no encontrado en la base de datos.')
+    }
+
+    if (profile.role === 'admin' && targetProfile.role !== 'tecnico') {
       throw new Error('Un administrador solo puede cambiar la contraseña de técnicos.')
     }
 

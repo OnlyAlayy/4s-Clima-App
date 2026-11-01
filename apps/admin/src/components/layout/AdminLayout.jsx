@@ -20,13 +20,13 @@ export default function AdminLayout() {
   };
 
   return (
-    <div className="min-h-screen flex bg-gray-50 dark:bg-slate-900 transition-colors duration-200">
+    <div className="min-h-screen flex w-full bg-gray-50 dark:bg-slate-950 transition-colors duration-200">
       {/* Sidebar */}
       <Sidebar isCollapsed={isCollapsed} toggleSidebar={toggleSidebar} />
 
       {/* Main content adaptable al ancho colapsado */}
       <main
-        className={`flex-1 ${
+        className={`flex-1 min-w-0 ${
           isCollapsed ? 'ml-20' : 'ml-64'
         } p-6 lg:p-8 min-h-screen transition-all duration-300 ease-in-out`}
       >

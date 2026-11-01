@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Mail, Lock, Eye, EyeOff, Snowflake } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff } from 'lucide-react';
 import { useAdminAuth } from '../App';
 
 /**
  * Login del panel administrativo.
- * Solo permite acceso a usuarios con role='admin'.
+ * Estilo visual oscuro idéntico al panel del técnico.
  */
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -39,84 +39,99 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-brand-900 px-4">
-      <div className="w-full max-w-md">
-        {/* Logo */}
-        <div className="text-center mb-8">
-          <div className="h-16 flex items-center justify-center mx-auto mb-2">
-            <img src="/logo4sclima.webp" alt="4S Clima Logo" className="h-full w-auto object-contain brightness-0 invert" />
-          </div>
-          <p className="text-gray-400 text-sm mt-1 uppercase tracking-widest font-semibold">Panel de Gestión</p>
+    <div className="min-h-screen flex flex-col items-center justify-center px-6 bg-gray-50 dark:bg-slate-950 transition-colors">
+      {/* Logo y marca */}
+      <div className="flex flex-col items-center mb-10 animate-fade-in">
+        <div className="h-16 flex items-center justify-center mb-2">
+          <img
+            src="/logo4sclima.webp"
+            alt="4S Clima Logo"
+            className="h-full w-auto object-contain dark:brightness-0 dark:invert"
+          />
         </div>
-
-        {/* Form card */}
-        <div className="card p-8">
-          <h2 className="text-lg font-semibold text-gray-900 mb-6 text-center">
-            Iniciar Sesión
-          </h2>
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {error && (
-              <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-red-600 text-sm text-center">
-                {error}
-              </div>
-            )}
-
-            <div className="relative">
-              <Mail size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input
-                id="admin-login-email"
-                type="email"
-                placeholder="Email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="input pl-10"
-                required
-              />
-            </div>
-
-            <div className="relative">
-              <Lock size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input
-                id="admin-login-password"
-                type={showPassword ? 'text' : 'password'}
-                placeholder="Contraseña"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="input pl-10 pr-10"
-                required
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-              >
-                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-              </button>
-            </div>
-
-            <button
-              id="admin-login-submit"
-              type="submit"
-              disabled={isSubmitting}
-              className="btn-primary w-full py-3"
-            >
-              {isSubmitting ? (
-                <>
-                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  Ingresando...
-                </>
-              ) : (
-                'Ingresar'
-              )}
-            </button>
-          </form>
-        </div>
-
-        <p className="text-gray-600 text-xs text-center mt-6">
-          © {new Date().getFullYear()} 4S Clima — Acceso exclusivo para administradores
+        <p className="text-gray-500 dark:text-gray-400 text-sm mt-1 uppercase tracking-widest font-semibold">
+          Panel de Gestión
         </p>
       </div>
+
+      {/* Formulario */}
+      <form
+        onSubmit={handleSubmit}
+        className="w-full max-w-sm space-y-4 animate-slide-up"
+      >
+        {/* Error */}
+        {error && (
+          <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 text-red-400 text-sm text-center">
+            {error}
+          </div>
+        )}
+
+        {/* Email */}
+        <div className="relative">
+          <Mail
+            size={18}
+            className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500"
+          />
+          <input
+            id="admin-login-email"
+            type="email"
+            placeholder="Email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="input pl-11"
+            autoComplete="email"
+            required
+          />
+        </div>
+
+        {/* Contraseña */}
+        <div className="relative">
+          <Lock
+            size={18}
+            className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500"
+          />
+          <input
+            id="admin-login-password"
+            type={showPassword ? 'text' : 'password'}
+            placeholder="Contraseña"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="input pl-11 pr-11"
+            autoComplete="current-password"
+            required
+          />
+          <button
+            type="button"
+            onClick={() => setShowPassword(!showPassword)}
+            className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-400 active:text-gray-300"
+            aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+          >
+            {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+          </button>
+        </div>
+
+        {/* Botón submit */}
+        <button
+          id="admin-login-submit"
+          type="submit"
+          disabled={isSubmitting}
+          className="btn-primary w-full text-base"
+        >
+          {isSubmitting ? (
+            <>
+              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              Ingresando...
+            </>
+          ) : (
+            'Ingresar'
+          )}
+        </button>
+      </form>
+
+      {/* Footer */}
+      <p className="text-gray-600 dark:text-gray-400 text-xs mt-10 text-center">
+        © {new Date().getFullYear()} 4S Clima — Acceso exclusivo para administradores
+      </p>
     </div>
   );
 }

@@ -73,7 +73,10 @@ export default function SignaturePage() {
       const byteArray = new Uint8Array(byteNumbers);
       const blob = new Blob([byteArray], { type: 'image/png' });
 
-      const fileName = `signatures/${id}/${Date.now()}.png`;
+      const randomId = typeof crypto !== 'undefined' && crypto.randomUUID 
+        ? crypto.randomUUID() 
+        : (Math.random().toString(36).substring(2) + Date.now().toString(36));
+      const fileName = `signatures/${id}/${Date.now()}-${randomId}.png`;
       let signatureUrl = signatureDataUrl; // Fallback: guardar como data URL
 
       if (navigator.onLine) {

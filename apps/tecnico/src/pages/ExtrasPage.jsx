@@ -42,8 +42,6 @@ export default function ExtrasPage() {
       description,
       quantity: parseFloat(quantity),
       unit,
-      unit_price: 0,
-      billed: false,
     };
 
     try {

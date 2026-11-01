@@ -469,22 +469,30 @@ export const generateInvoicePDF = async (wo) => {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const pageWidth = doc.internal.pageSize.getWidth();
   
-  // Header AFIP - Factura C
-  doc.setLineWidth(0.4);
-  doc.rect(10, 10, pageWidth - 20, 45); // Cuadro principal
-  doc.line(pageWidth / 2, 10, pageWidth / 2, 55); // Linea divisoria central
+  const voucherRaw = String(wo.afip_voucher_number || wo.voucher_number || '');
+  const isLetterC = voucherRaw.startsWith('C') || wo.voucher_letter === 'C';
+  const voucherLetter = isLetterC ? 'C' : 'A';
+  const isCreditNote = Boolean(wo.is_credit_note || wo.voucher_type === 'credit_note');
 
-  // Letra C en el medio
-  doc.setFillColor(255, 255, 255); // Fondo blanco para tapar la línea central
-  doc.rect((pageWidth / 2) - 8, 10, 16, 16, 'FD'); // FD = Fill and Draw
+  // Header AFIP - Factura A / C
+  doc.setLineWidth(0.4);
+  doc.rect(10, 10, pageWidth - 20, 45);
+  doc.line(pageWidth / 2, 10, pageWidth / 2, 55);
+
+  // Letra en el recuadro central (A o C)
+  doc.setFillColor(255, 255, 255);
+  doc.rect((pageWidth / 2) - 8, 10, 16, 16, 'FD');
   doc.setFontSize(28);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(0, 0, 0);
-  doc.text('C', pageWidth / 2, 21, { align: 'center' });
+  doc.text(voucherLetter, pageWidth / 2, 21, { align: 'center' });
   
   doc.setFontSize(8);
   doc.setFont('helvetica', 'bold');
-  const docCode = wo.is_credit_note ? 'COD. 013' : 'COD. 011';
+  // Factura A: 001, NC A: 003 | Factura C: 011, NC C: 013
+  const docCode = isLetterC
+    ? (isCreditNote ? 'COD. 013' : 'COD. 011')
+    : (isCreditNote ? 'COD. 003' : 'COD. 001');
   doc.text(docCode, pageWidth / 2, 31, { align: 'center' });
 
   // Datos Empresa (Izquierda)
@@ -495,7 +503,7 @@ export const generateInvoicePDF = async (wo) => {
   doc.setFont('helvetica', 'normal');
   doc.text('Razón Social: 4S CLIMA S.A.', 15, 30);
   doc.text('Domicilio Comercial: CABA', 15, 35);
-  doc.text('Condición frente al IVA: Monotributista', 15, 40);
+  doc.text('Condición frente al IVA: IVA Responsable Inscripto', 15, 40);
 
   // Datos Factura (Derecha)
   doc.setFontSize(14);
@@ -623,7 +631,7 @@ export const generateInvoicePDF = async (wo) => {
       fecha: emissionDate, 
       cuit: 23477380719, 
       ptoVta: 1, 
-      tipoCmp: wo.is_credit_note ? 13 : 11, 
+      tipoCmp: isLetterC ? (isCreditNote ? 13 : 11) : (isCreditNote ? 3 : 1), 
       nroCmp: wo.afip_voucher_number, 
       importe: wo.total_amount 
     };
@@ -644,9 +652,9 @@ export const generateInvoicePDF = async (wo) => {
     doc.text('Vencimiento CAE: 31/12/2026', pageWidth - 60, 265);
   }
 
-  const docPrefix = wo.is_credit_note ? 'NotaCredito' : 'Factura';
+  const docPrefix = isCreditNote ? `NotaCredito_${voucherLetter}` : `Factura_${voucherLetter}`;
   const voucherNum = String(wo.afip_voucher_number || '00000001').padStart(8, '0');
-  const fileName = `${docPrefix}_C_${voucherNum}.pdf`;
+  const fileName = `${docPrefix}_${voucherNum}.pdf`;
   return savePDF(doc, fileName);
 };
 
@@ -943,9 +951,12 @@ export const generateEquipmentQRLabelsPDF = async (equipmentList, clientName = '
   const labelHeight = 64;
   const labelsPerPage = 8; // 2 columnas x 4 filas
 
-  const origin = typeof window !== 'undefined' && window.location?.origin
-    ? window.location.origin
-    : 'https://4s-clima.com';
+  const configuredUrl = import.meta.env?.VITE_PUBLIC_PORTAL_URL;
+  const origin = configuredUrl && configuredUrl.trim()
+    ? configuredUrl.trim().replace(/\/+$/, '')
+    : typeof window !== 'undefined' && window.location?.origin
+      ? window.location.origin
+      : 'https://4s-clima.com';
 
   for (let i = 0; i < items.length; i++) {
     const eq = items[i];
@@ -1043,18 +1054,25 @@ export const generateEquipmentQRLabelsPDF = async (equipmentList, clientName = '
 
     // Planta y Ubicación física
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(6);
+    doc.setFontSize(5.8);
     doc.setTextColor(100, 116, 139);
-    doc.text('UBICACIÓN EN PLANTA:', rightX, y + 34.5);
+    doc.text('UBICACIÓN EN PLANTA:', rightX, y + 33);
 
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(6.5);
+    doc.setFontSize(6.2);
     doc.setTextColor(15, 23, 42);
     const plantName = eq.plant?.name || clientName || 'Planta Principal';
-    const locationStr = eq.location_description
-      ? `${plantName} (${eq.location_description})`
-      : plantName;
-    doc.text(locationStr.length > 26 ? locationStr.substring(0, 25) + '...' : locationStr, rightX, y + 38);
+    const maxContentWidth = labelWidth - 41; // 51 mm de ancho útil
+    const plantLines = doc.splitTextToSize(plantName, maxContentWidth);
+    doc.text(plantLines[0], rightX, y + 36.2);
+
+    if (eq.location_description) {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(5.8);
+      doc.setTextColor(71, 85, 105);
+      const locLines = doc.splitTextToSize(eq.location_description, maxContentWidth);
+      doc.text(locLines[0], rightX, y + 39.5);
+    }
 
     // Estado Operativo con indicador industrial
     const status = eq.operational_status || 'operativo';
@@ -1089,5 +1107,265 @@ export const generateEquipmentQRLabelsPDF = async (equipmentList, clientName = '
 
   const cleanClient = (clientName || 'Equipos').replace(/[\s/\\:]+/g, '_');
   const fileName = `Etiquetas_QR_${cleanClient}.pdf`;
+  return savePDF(doc, fileName);
+};
+
+
+/**
+ * Genera el PDF del Recibo Oficial de Liquidación de Haberes y Servicios Técnicos
+ * Integra cómputo de horas, obras / módulos de Walter y deducción de adelantos a cuenta.
+ *
+ * @param {Object} settlement - Registro de technician_settlements
+ * @param {Object} technician - Usuario técnico (name, email)
+ * @param {Array} items - Obras o ítems incluidos en la liquidación
+ * @param {Array} advances - Adelantos deducidos en la liquidación
+ * @returns {Promise<{ doc: jsPDF, fileName: string }>}
+ */
+export const generateSettlementPDF = async (settlement, technician = {}, items = [], advances = []) => {
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const pageWidth = doc.internal.pageSize.getWidth();
+
+  // 1. Marco exterior sobrio
+  doc.setLineWidth(0.4);
+  doc.rect(10, 10, pageWidth - 20, 277);
+
+  // 2. Cabecera Institucional
+  doc.setFillColor(15, 23, 42); // slate-900
+  doc.rect(10, 10, pageWidth - 20, 24, 'F');
+
+  doc.setFontSize(16);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(255, 255, 255);
+  doc.text('4S CLIMA', 15, 20);
+
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(203, 213, 225);
+  doc.text('INSTALACIONES Y MANTENIMIENTO TÉRMICO INDUSTRIAL', 15, 25);
+
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(255, 255, 255);
+  doc.text('RECIBO DE LIQUIDACIÓN DE SERVICIOS TÉCNICOS', pageWidth - 15, 20, { align: 'right' });
+
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(226, 232, 240);
+  doc.text(`N°: ${settlement.settlement_number || 'LIQ-000000'}`, pageWidth - 15, 25, { align: 'right' });
+
+  // 3. Ficha de Datos del Técnico y Período
+  doc.setDrawColor(226, 232, 240);
+  doc.setFillColor(248, 250, 252);
+  doc.rect(14, 38, pageWidth - 28, 24, 'FD');
+
+  doc.setTextColor(30, 41, 59);
+  doc.setFontSize(8.5);
+
+  // Columna Izquierda: Técnico
+  doc.setFont('helvetica', 'bold');
+  doc.text('TÉCNICO:', 18, 45);
+  doc.setFont('helvetica', 'normal');
+  doc.text(technician.name || 'Técnico 4S Clima', 42, 45);
+
+  doc.setFont('helvetica', 'bold');
+  doc.text('EMAIL / ID:', 18, 52);
+  doc.setFont('helvetica', 'normal');
+  doc.text(technician.email || '-', 42, 52);
+
+  doc.setFont('helvetica', 'bold');
+  doc.text('MODALIDAD:', 18, 57);
+  doc.setFont('helvetica', 'normal');
+  const modalLabel = settlement.settlement_type === 'mixed' ? 'Liquidación Mixta (Horas + Obras)' : (settlement.settlement_type === 'piecework' ? 'Pago por Obra' : 'Por Horas');
+  doc.text(modalLabel, 42, 57);
+
+  // Columna Derecha: Período y Fechas
+  const startStr = settlement.period_start ? formatDate(settlement.period_start) : '-';
+  const endStr = settlement.period_end ? formatDate(settlement.period_end) : '-';
+  doc.setFont('helvetica', 'bold');
+  doc.text('PERÍODO:', pageWidth / 2 + 10, 45);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`${startStr} al ${endStr}`, pageWidth / 2 + 35, 45);
+
+  doc.setFont('helvetica', 'bold');
+  doc.text('FECHA EMISIÓN:', pageWidth / 2 + 10, 52);
+  doc.setFont('helvetica', 'normal');
+  doc.text(formatDate(settlement.created_at || new Date()), pageWidth / 2 + 35, 52);
+
+  doc.setFont('helvetica', 'bold');
+  doc.text('ESTADO:', pageWidth / 2 + 10, 57);
+  doc.setFont('helvetica', 'normal');
+  const stText = settlement.status === 'paid' ? 'PAGADA' : (settlement.status === 'approved' ? 'APROBADA PENDIENTE PAGO' : 'BORRADOR');
+  doc.text(stText, pageWidth / 2 + 35, 57);
+
+  let currentY = 66;
+
+  // 4. Tabla 1: Cómputo de Horas
+  const hoursData = [];
+  const regHs = Number(settlement.total_regular_hours) || 0;
+  const regRate = Number(settlement.hourly_rate_regular) || 0;
+  const overHs = Number(settlement.total_overtime_hours) || 0;
+  const overRate = Number(settlement.hourly_rate_overtime) || 0;
+
+  if (regHs > 0 || regRate > 0) {
+    hoursData.push([
+      'Horas Ordinarias de Jornada',
+      `${regHs.toFixed(2)} hs`,
+      `$${regRate.toLocaleString('es-AR', { minimumFractionDigits: 2 })}`,
+      `$${(regHs * regRate).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`
+    ]);
+  }
+  if (overHs > 0 || overRate > 0) {
+    hoursData.push([
+      'Horas Extras (Cómputo >8/9 hs)',
+      `${overHs.toFixed(2)} hs`,
+      `$${overRate.toLocaleString('es-AR', { minimumFractionDigits: 2 })}`,
+      `$${(overHs * overRate).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`
+    ]);
+  }
+
+  if (hoursData.length > 0) {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(15, 23, 42);
+    doc.text('1. CÓMPUTO DE JORNADAS Y HORAS TRABAJADAS', 14, currentY + 3);
+
+    autoTable(doc, {
+      startY: currentY + 5,
+      margin: { left: 14, right: 14 },
+      head: [['Concepto', 'Cantidad', 'Valor / Hora', 'Subtotal']],
+      body: hoursData,
+      theme: 'grid',
+      headStyles: { fillColor: [51, 65, 85], textColor: [255, 255, 255], fontSize: 8, fontStyle: 'bold' },
+      styles: { fontSize: 8, cellPadding: 2.5 },
+      columnStyles: {
+        0: { cellWidth: 'auto' },
+        1: { cellWidth: 30, halign: 'center' },
+        2: { cellWidth: 35, halign: 'right' },
+        3: { cellWidth: 35, halign: 'right', fontStyle: 'bold' }
+      }
+    });
+
+    currentY = doc.lastAutoTable.finalY + 6;
+  }
+
+  // 5. Tabla 2: Obras y Módulos Walter
+  const workItems = Array.isArray(items) && items.length > 0 ? items : [];
+  if (workItems.length > 0) {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(15, 23, 42);
+    doc.text('2. SERVICIOS Y OBRAS REALIZADAS (MÓDULOS WALTER / MANO DE OBRA)', 14, currentY + 3);
+
+    const workData = workItems.map(it => [
+      it.order_number || it.work_order_id?.slice(0, 8) || 'OT-4S',
+      it.description || 'Mano de obra especializada',
+      `$${(Number(it.amount || it.technician_payout) || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`
+    ]);
+
+    autoTable(doc, {
+      startY: currentY + 5,
+      margin: { left: 14, right: 14 },
+      head: [['N° Orden', 'Descripción del Servicio / Obra', 'Mano de Obra']],
+      body: workData,
+      theme: 'grid',
+      headStyles: { fillColor: [51, 65, 85], textColor: [255, 255, 255], fontSize: 8, fontStyle: 'bold' },
+      styles: { fontSize: 8, cellPadding: 2.5 },
+      columnStyles: {
+        0: { cellWidth: 35 },
+        1: { cellWidth: 'auto' },
+        2: { cellWidth: 40, halign: 'right', fontStyle: 'bold' }
+      }
+    });
+
+    currentY = doc.lastAutoTable.finalY + 6;
+  }
+
+  // 6. Tabla 3: Adelantos a Cuenta Deducidos
+  const advList = Array.isArray(advances) && advances.length > 0 ? advances : [];
+  if (advList.length > 0) {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(185, 28, 28);
+    doc.text('3. DEDUCCIÓN DE ADELANTOS Y ANTICIPOS A CUENTA', 14, currentY + 3);
+
+    const advData = advList.map(adv => [
+      adv.advance_date ? formatDate(adv.advance_date) : '-',
+      (adv.payment_method || 'Transferencia').toUpperCase(),
+      adv.reference || adv.notes || 'Anticipo de haberes',
+      `-$${(Number(adv.amount) || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`
+    ]);
+
+    autoTable(doc, {
+      startY: currentY + 5,
+      margin: { left: 14, right: 14 },
+      head: [['Fecha', 'Medio de Pago', 'Comprobante / Detalle', 'Monto Deducido']],
+      body: advData,
+      theme: 'grid',
+      headStyles: { fillColor: [153, 27, 27], textColor: [255, 255, 255], fontSize: 8, fontStyle: 'bold' },
+      styles: { fontSize: 8, cellPadding: 2.5 },
+      columnStyles: {
+        0: { cellWidth: 28, halign: 'center' },
+        1: { cellWidth: 35 },
+        2: { cellWidth: 'auto' },
+        3: { cellWidth: 40, halign: 'right', fontStyle: 'bold', textColor: [185, 28, 28] }
+      }
+    });
+
+    currentY = doc.lastAutoTable.finalY + 6;
+  }
+
+  // 7. Cuadro Consolidado de Totales
+  const boxHeight = 28;
+  const boxY = Math.min(currentY + 2, 230);
+  doc.setFillColor(241, 245, 249);
+  doc.rect(pageWidth - 95, boxY, 81, boxHeight, 'F');
+  doc.setDrawColor(203, 213, 225);
+  doc.rect(pageWidth - 95, boxY, 81, boxHeight, 'D');
+
+  doc.setFontSize(8.5);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(71, 85, 105);
+  doc.text('Total Bruto (Horas + Obras):', pageWidth - 90, boxY + 7);
+  doc.setFont('helvetica', 'bold');
+  doc.text(`$${(Number(settlement.gross_total) || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`, pageWidth - 18, boxY + 7, { align: 'right' });
+
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(185, 28, 28);
+  doc.text('Menos Adelantos a Cuenta:', pageWidth - 90, boxY + 14);
+  doc.setFont('helvetica', 'bold');
+  doc.text(`-$${(Number(settlement.advances_subtotal) || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`, pageWidth - 18, boxY + 14, { align: 'right' });
+
+  doc.setLineWidth(0.3);
+  doc.setDrawColor(203, 213, 225);
+  doc.line(pageWidth - 92, boxY + 17, pageWidth - 18, boxY + 17);
+
+  doc.setFontSize(10.5);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(15, 23, 42);
+  doc.text('TOTAL NETO A PERCIBIR:', pageWidth - 90, boxY + 23);
+  doc.setTextColor(22, 101, 52); // green-800
+  doc.text(`$${(Number(settlement.net_total) || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`, pageWidth - 18, boxY + 23, { align: 'right' });
+
+  // 8. Espacio de Firmas
+  const signY = 262;
+  doc.setDrawColor(148, 163, 184);
+  doc.setLineWidth(0.4);
+  doc.line(25, signY, 75, signY);
+  doc.line(pageWidth - 75, signY, pageWidth - 25, signY);
+
+  doc.setFontSize(7.5);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(71, 85, 105);
+  doc.text('FIRMA Y CONFORMIDAD DEL TÉCNICO', 50, signY + 4, { align: 'center' });
+  doc.setFont('helvetica', 'normal');
+  doc.text('Recibí conforme el importe neto', 50, signY + 8, { align: 'center' });
+
+  doc.setFont('helvetica', 'bold');
+  doc.text('4S CLIMA S.A.', pageWidth - 50, signY + 4, { align: 'center' });
+  doc.setFont('helvetica', 'normal');
+  doc.text('Administración / Liquidaciones', pageWidth - 50, signY + 8, { align: 'center' });
+
+  const cleanTech = (technician.name || 'Tecnico').replace(/[s/\:]+/g, '_');
+  const fileName = `Liquidacion_${settlement.settlement_number || '0001'}_${cleanTech}.pdf`;
   return savePDF(doc, fileName);
 };

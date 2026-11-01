@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { create } from 'zustand';
 import { supabase } from '@4s-clima/shared/supabase';
 import { useEffect } from 'react';
+import { useDarkMode } from './hooks/useDarkMode';
 
 // Layout
 import AdminLayout from './components/layout/AdminLayout';
@@ -50,15 +51,21 @@ export const useAdminAuth = create((set) => ({
 
     supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_IN' && session?.user) {
+        set({ isLoading: true });
         const { data: profile } = await supabase
           .from('users')
           .select('*')
           .eq('id', session.user.id)
           .in('role', ['admin', 'owner'])
           .single();
-        set({ user: session.user, profile: profile || null });
+        if (profile && ['admin', 'owner'].includes(profile.role)) {
+          set({ user: session.user, profile, isLoading: false });
+        } else {
+          await supabase.auth.signOut();
+          set({ user: null, profile: null, isLoading: false });
+        }
       } else if (event === 'SIGNED_OUT') {
-        set({ user: null, profile: null });
+        set({ user: null, profile: null, isLoading: false });
       }
     });
   },
@@ -95,11 +102,11 @@ export const useAdminAuth = create((set) => ({
 }));
 
 function ProtectedRoute({ children }) {
-  const { user, isLoading } = useAdminAuth();
+  const { user, profile, isLoading, logout } = useAdminAuth();
 
-  if (isLoading) {
+  if (isLoading || (user && !profile)) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
         <div className="flex flex-col items-center gap-3">
           <div className="w-10 h-10 border-4 border-brand-500 border-t-transparent rounded-full animate-spin" />
           <p className="text-gray-400 text-sm">Cargando panel...</p>
@@ -108,7 +115,10 @@ function ProtectedRoute({ children }) {
     );
   }
 
-  if (!user) {
+  if (!user || !profile || !['admin', 'owner'].includes(profile.role)) {
+    if (user && (!profile || profile.role === 'tecnico')) {
+      logout();
+    }
     return <Navigate to="/login" replace />;
   }
 
@@ -117,6 +127,7 @@ function ProtectedRoute({ children }) {
 
 export default function App() {
   const initialize = useAdminAuth((s) => s.initialize);
+  useDarkMode();
 
   useEffect(() => {
     initialize();

@@ -106,7 +106,7 @@ export default function ClientDetailsPage() {
   if (!client) {
     return (
       <div className="p-12 text-center">
-        <h2 className="text-xl font-bold text-gray-900">Cliente no encontrado</h2>
+        <h2 className="text-xl font-bold text-gray-900 dark:text-white">Cliente no encontrado</h2>
         <button onClick={() => navigate('/clientes')} className="mt-4 btn-primary">Volver a Clientes</button>
       </div>
     );
@@ -223,7 +223,7 @@ export default function ClientDetailsPage() {
           {/* PLANTAS */}
           <div className="card">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="font-semibold text-gray-900 flex items-center gap-2">
+              <h2 className="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
                 <MapPin size={18} className="text-brand-500" />
                 Plantas / Sucursales ({plants.length})
               </h2>
@@ -233,8 +233,8 @@ export default function ClientDetailsPage() {
             </div>
             
             {plants.length === 0 ? (
-              <div className="p-8 text-center bg-gray-50 rounded-xl border border-dashed border-gray-200">
-                <p className="text-gray-500 text-sm">No hay plantas registradas para este cliente.</p>
+              <div className="p-8 text-center bg-gray-50 dark:bg-slate-800/40 rounded-xl border border-dashed border-gray-200 dark:border-slate-700">
+                <p className="text-gray-500 dark:text-gray-400 text-sm">No hay plantas registradas para este cliente.</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -295,10 +295,10 @@ export default function ClientDetailsPage() {
               </div>
 
               {equipment.length === 0 ? (
-                <div className="p-8 text-center bg-gray-50 rounded-xl border border-dashed border-gray-200">
-                  <Box size={24} className="text-gray-300 mx-auto mb-2" />
-                  <p className="text-gray-500 text-sm">No hay equipos registrados.</p>
-                  {plants.length === 0 && <p className="text-xs text-gray-400 mt-1">Creá una planta primero.</p>}
+                <div className="p-8 text-center bg-gray-50 dark:bg-slate-800/40 rounded-xl border border-dashed border-gray-200 dark:border-slate-700">
+                  <Box size={24} className="text-gray-300 dark:text-gray-600 mx-auto mb-2" />
+                  <p className="text-gray-500 dark:text-gray-400 text-sm">No hay equipos registrados.</p>
+                  {plants.length === 0 && <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Creá una planta primero.</p>}
                 </div>
               ) : (
                 <div className="table-container border-0 mt-2">

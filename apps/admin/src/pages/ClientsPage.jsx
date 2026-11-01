@@ -74,8 +74,8 @@ export default function ClientsPage() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Clientes</h1>
-          <p className="text-gray-500 text-sm mt-1">{totalCount} clientes registrados</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Clientes</h1>
+          <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">{totalCount} clientes registrados</p>
         </div>
         <button 
           onClick={() => setIsModalOpen(true)}
@@ -88,7 +88,7 @@ export default function ClientsPage() {
 
       {/* Búsqueda */}
       <div className="relative max-w-md mb-6">
-        <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+        <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 dark:text-slate-500" />
         <input
           type="text"
           placeholder="Buscar por nombre, CUIT o dirección..."
@@ -102,13 +102,13 @@ export default function ClientsPage() {
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {[1, 2, 3, 4, 5, 6].map((i) => (
-            <div key={i} className="h-40 bg-white rounded-2xl animate-pulse border border-gray-100" />
+            <div key={i} className="h-40 bg-white dark:bg-slate-900 rounded-2xl animate-pulse border border-gray-100 dark:border-slate-800" />
           ))}
         </div>
       ) : clients.length === 0 ? (
         <div className="text-center py-16 card">
-          <Building2 size={40} className="text-gray-300 mx-auto mb-3" />
-          <p className="text-gray-400">No se encontraron clientes.</p>
+          <Building2 size={40} className="text-gray-300 dark:text-gray-600 mx-auto mb-3" />
+          <p className="text-gray-400 dark:text-gray-500">No se encontraron clientes.</p>
         </div>
       ) : (
         <div className="space-y-6">
@@ -120,38 +120,38 @@ export default function ClientsPage() {
                 onClick={() => navigate(`/clientes/${client.id}`)}
               >
                 <div className="flex items-start justify-between mb-3">
-                  <div className="w-10 h-10 rounded-xl bg-brand-50 flex items-center justify-center flex-shrink-0">
-                    <Building2 size={18} className="text-brand-500" />
+                  <div className="w-10 h-10 rounded-xl bg-brand-50 dark:bg-brand-950/50 border border-transparent dark:border-brand-800/40 flex items-center justify-center flex-shrink-0">
+                    <Building2 size={18} className="text-brand-600 dark:text-brand-400" />
                   </div>
-                  <span className="badge bg-gray-100 text-gray-600">
+                  <span className="badge bg-gray-100 text-gray-600 dark:bg-slate-800 dark:text-gray-300 dark:border dark:border-slate-700">
                     {client.plants?.length || 0} plantas
                   </span>
                 </div>
                 <h3 className="font-semibold text-gray-900 dark:text-white mb-1 flex items-center gap-2">
                   {client.name}
                   {client.active === false && (
-                    <span className="px-1.5 py-0.5 bg-red-100 text-red-700 rounded text-[10px] font-bold uppercase">Baja</span>
+                    <span className="px-1.5 py-0.5 bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-400 dark:border dark:border-red-800/50 rounded text-[10px] font-bold uppercase">Baja</span>
                   )}
                 </h3>
                 {client.cuit && (
-                  <p className="text-xs text-gray-500 mb-2">CUIT: {client.cuit}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">CUIT: {client.cuit}</p>
                 )}
                 {client.address && (
-                  <div className="flex items-center gap-1 text-xs text-gray-400">
+                  <div className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
                     <MapPin size={12} />
                     <span className="truncate">{client.address}</span>
                   </div>
                 )}
                 {client.contact_phone && (
-                  <div className="flex items-center gap-1 text-xs text-gray-400 mt-1">
+                  <div className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 mt-1">
                     <Phone size={12} />
                     <span>{client.contact_name}: {client.contact_phone}</span>
                   </div>
                 )}
-                <div className="mt-4 pt-3 border-t border-gray-50 flex justify-between items-center h-8">
+                <div className="mt-4 pt-3 border-t border-gray-100 dark:border-slate-800 flex justify-between items-center h-8">
                   <div>
                     {client.contract_type && (
-                      <span className="badge bg-emerald-50 text-emerald-700">
+                      <span className="badge bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border dark:border-emerald-800/40">
                         {client.contract_type}
                       </span>
                     )}
@@ -189,21 +189,21 @@ export default function ClientsPage() {
           {/* Controles de Paginación */}
           {totalPages > 1 && (
             <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-500">
+              <span className="text-sm text-gray-500 dark:text-gray-400">
                 Mostrando {(page - 1) * PAGE_SIZE + 1} a {Math.min(page * PAGE_SIZE, totalCount)} de {totalCount}
               </span>
               <div className="flex gap-2">
                 <button 
                   onClick={() => setPage(p => Math.max(1, p - 1))}
                   disabled={page === 1}
-                  className="px-3 py-1.5 text-sm font-medium bg-white border border-gray-200 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-3 py-1.5 text-sm font-medium bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Anterior
                 </button>
                 <button 
                   onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                   disabled={page === totalPages}
-                  className="px-3 py-1.5 text-sm font-medium bg-white border border-gray-200 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-3 py-1.5 text-sm font-medium bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Siguiente
                 </button>

@@ -116,7 +116,7 @@ export default function FinancesPage() {
           billedWos.forEach(w => {
             movements.push({
               date: w.completed_at || w.created_at,
-              voucherType: w.afip_voucher_number ? `Factura C N° ${w.afip_voucher_number}` : `OT ${w.order_number || w.id.slice(0, 8)}`,
+              voucherType: w.afip_voucher_number ? `${(w.afip_voucher_number.startsWith('C') ? 'Factura C' : 'Factura A')} N° ${w.afip_voucher_number}` : `OT ${w.order_number || w.id.slice(0, 8)}`,
               concept: `Servicio técnico OT ${w.order_number || w.id.slice(0, 8)}`,
               debit: Number(w.total_amount) || 0,
               credit: 0,
@@ -750,7 +750,8 @@ export default function FinancesPage() {
 
       filteredVouchers.forEach(v => {
         const fecha = v.created_at ? formatDate(v.created_at) : '';
-        const tipo = v.voucher_type === 'credit_note' ? 'Nota de Credito C' : 'Factura C';
+        const isLetterC = String(v.voucher_number || '').startsWith('C') || v.voucher_letter === 'C';
+        const tipo = v.voucher_type === 'credit_note' ? (isLetterC ? 'Nota de Credito C' : 'Nota de Credito A') : (isLetterC ? 'Factura C' : 'Factura A');
         const nro = v.voucher_number || '';
         const cae = v.cae || '';
         const nroOrden = v.work_order?.order_number || '';
@@ -786,9 +787,21 @@ export default function FinancesPage() {
     }
 
     // Delimitador punto y coma (;) estándar para Excel en español (Argentina/Latam)
+    const sanitizeText = (val) => {
+      if (typeof val === 'number') return String(val);
+      const str = String(val ?? '');
+      if (/^[=+\-@]/.test(str.trim())) {
+        return `'${str}`;
+      }
+      return str;
+    };
+
     const csvContent = rows.map(r => 
       r.map(val => {
-        const str = String(val ?? '');
+        if (typeof val === 'number') {
+          return String(val);
+        }
+        const str = sanitizeText(val);
         return `"${str.replace(/"/g, '""')}"`;
       }).join(';')
     ).join('\r\n');
@@ -871,7 +884,7 @@ export default function FinancesPage() {
 
     const phone = (client?.contact_phone || '').replace(/\D/g, '');
     if (phone) {
-      window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank');
+      window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank', 'noopener,noreferrer');
     } else {
       navigator.clipboard.writeText(text);
       Swal.fire({
@@ -1216,7 +1229,7 @@ export default function FinancesPage() {
                     <td>
                       <div className="flex flex-col">
                         <span className={`font-semibold text-sm ${voucher.voucher_type === 'credit_note' ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'}`}>
-                          {voucher.voucher_type === 'credit_note' ? 'Nota de Crédito C' : 'Factura C'} Nro {voucher.voucher_number}
+                          {(String(voucher.voucher_number || '').startsWith('C') || voucher.voucher_letter === 'C') ? (voucher.voucher_type === 'credit_note' ? 'Nota de Crédito C' : 'Factura C') : (voucher.voucher_type === 'credit_note' ? 'Nota de Crédito A' : 'Factura A')} Nro {voucher.voucher_number}
                         </span>
                         <span className="text-xs text-gray-500 dark:text-gray-400">CAE: {voucher.cae}</span>
                       </div>
