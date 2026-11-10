@@ -110,6 +110,7 @@ jobs:
           if [ -n "$APK_FILE" ]; then
             echo "Found APK at: $APK_FILE"
             cp -v "$APK_FILE" apk_output/4S-Clima-Tecnico.apk
+            cp -v "$APK_FILE" apk_output/4S-Clima-Tecnico-v1.3.apk
           else
             echo "ERROR: No APK found after assembleDebug"
             exit 1
@@ -131,4 +132,6 @@ jobs:
           tag_name: v1.0.0-apk-test
           name: "4S Clima Técnico (APK Android)"
           body: "Descarga directa de APK para celulares de técnicos de 4S Clima con rastreo GPS en segundo plano."
-          files: apk_output/4S-Clima-Tecnico.apk
+          files: |
+            apk_output/4S-Clima-Tecnico.apk
+            apk_output/4S-Clima-Tecnico-v1.3.apk
