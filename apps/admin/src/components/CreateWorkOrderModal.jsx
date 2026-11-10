@@ -120,7 +120,7 @@ export default function CreateWorkOrderModal({ isOpen, onClose, onCreated }) {
     const randomHex = Math.random().toString(16).slice(2, 6).toUpperCase();
     const orderNumber = `OT-${date.replace(/-/g, '')}-${randomHex}`;
 
-    const { error: insertError } = await supabase.from('work_orders').insert({
+    const { data: insertedOrder, error: insertError } = await supabase.from('work_orders').insert({
       order_number: orderNumber,
       client_id: clientId,
       plant_id: isCustom ? null : plantId,
@@ -137,13 +137,18 @@ export default function CreateWorkOrderModal({ isOpen, onClose, onCreated }) {
       custom_latitude: customCoords.lat,
       custom_longitude: customCoords.lng,
       is_custom_location: isCustom,
-    });
+    }).select().single();
 
     setIsSubmitting(false);
 
     if (insertError) {
       setError(insertError.message);
     } else {
+      if (technicianId) {
+        supabase.functions.invoke('notify-assignment', {
+          body: { record: insertedOrder || { order_number: orderNumber, assigned_to: technicianId } }
+        }).catch(() => {});
+      }
       onCreated();
       onClose();
     }

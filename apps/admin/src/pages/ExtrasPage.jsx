@@ -130,6 +130,20 @@ export default function ExtrasPage() {
     setIsLoading(false);
   }
 
+  async function updateExtraPrice(extraId, newPrice) {
+    const priceNum = Math.max(0, parseFloat(newPrice) || 0);
+    const { error } = await supabase
+      .from('extras')
+      .update({ unit_price: priceNum })
+      .eq('id', extraId);
+
+    if (!error) {
+      setExtras((prev) =>
+        prev.map((e) => (e.id === extraId ? { ...e, unit_price: priceNum } : e))
+      );
+    }
+  }
+
   async function markAsBilled(extraId) {
     const { error } = await supabase
       .from('extras')
@@ -1220,7 +1234,29 @@ export default function ExtrasPage() {
                             {extra.quantity} {extra.unit}
                           </td>
                           <td className="text-gray-600 dark:text-gray-300 text-sm font-mono">
-                            {formatCurrency(extra.unit_price)}
+                            {!extra.billed ? (
+                              <input
+                                type="number"
+                                step="100"
+                                min="0"
+                                defaultValue={extra.unit_price || 0}
+                                onBlur={(e) => {
+                                  const val = parseFloat(e.target.value) || 0;
+                                  if (val !== extra.unit_price) {
+                                    updateExtraPrice(extra.id, val);
+                                  }
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.target.blur();
+                                  }
+                                }}
+                                className="input py-1 px-2 text-xs w-28 text-right font-mono"
+                                title="Editar precio unitario"
+                              />
+                            ) : (
+                              formatCurrency(extra.unit_price)
+                            )}
                           </td>
                           <td className="font-semibold text-gray-900 dark:text-white font-mono">
                             {formatCurrency(total)}

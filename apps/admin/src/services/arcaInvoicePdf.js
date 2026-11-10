@@ -35,7 +35,7 @@ const getImageDataUrl = async (url) => {
  * Configura los metadatos y retorna { doc, fileName }
  */
 const savePDF = (doc, fileName) => {
-  const cleanFileName = (fileName || 'Factura_A.pdf')
+  const cleanFileName = (fileName || 'Factura.pdf')
     .replace(/[\\/:*?"<>|]/g, '_')
     .trim();
   const validFileName = cleanFileName.endsWith('.pdf') ? cleanFileName : `${cleanFileName}.pdf`;
@@ -72,11 +72,15 @@ const formatCuit = (cuit) => {
 };
 
 /**
- * Genera el documento PDF de Factura A (CbteTipo 001) clonando al 100%
- * la factura oficial A-00004-00000264 de 4S Clima.
+ * Genera el documento PDF de Comprobante Fiscal Electrónico ARCA / AFIP
+ * con soporte dinámico para:
+ * - Factura A (CbteTipo 1, COD. 001)
+ * - Nota de Crédito A (CbteTipo 3, COD. 003)
+ * - Factura C (CbteTipo 11, COD. 011)
+ * - Nota de Crédito C (CbteTipo 13, COD. 013)
  *
  * @param {Object} wo - Orden de trabajo con client, plant, extras, etc.
- * @param {Object} [customData] - Datos opcionales (concept, netAmount, etc.)
+ * @param {Object} [customData] - Datos opcionales (concept, netAmount, voucherLetter, etc.)
  * @returns {Promise<{ doc: jsPDF, fileName: string }>}
  */
 export const generateArcaInvoicePDF = async (wo, customData = {}) => {
@@ -92,22 +96,66 @@ export const generateArcaInvoicePDF = async (wo, customData = {}) => {
   const clientCuit = formatCuit(client.cuit || '30712345678');
   const rawClientCuit = (client.cuit || '30712345678').toString().replace(/\D/g, '');
 
-  // Parsear número de comprobante y punto de venta
+  // 1. Identificar Tipo de Comprobante, Letra (A / C) y Código Fiscal
+  const explicitLetter = (customData.voucherLetter || wo.voucher_letter || '').toUpperCase();
+  const voucherRaw = String(wo.afip_voucher_number || customData.voucherNumber || 'A-00004-00000264');
+
+  let letter = explicitLetter || (voucherRaw.toUpperCase().startsWith('C') ? 'C' : 'A');
   let ptoVta = 4;
   let nroCmp = 264;
-  const voucherRaw = wo.afip_voucher_number || customData.voucherNumber || 'A-00004-00000264';
-  const match = String(voucherRaw).match(/A?-?0*(\d{1,5})-0*(\d+)/i) || String(voucherRaw).match(/0*(\d+)/);
 
+  const match = voucherRaw.match(/^([A-Za-z])?-?0*(\d{1,5})-0*(\d+)/i) || voucherRaw.match(/0*(\d+)/);
   if (match) {
-    if (match[2]) {
+    if (match[1] && isNaN(match[1])) {
+      letter = match[1].toUpperCase();
+    }
+    if (match[3]) {
+      ptoVta = parseInt(match[2], 10) || 4;
+      nroCmp = parseInt(match[3], 10) || 264;
+    } else if (match[2]) {
       ptoVta = parseInt(match[1], 10) || 4;
       nroCmp = parseInt(match[2], 10) || 264;
-    } else if (match[1]) {
+    } else if (match[1] && !isNaN(match[1])) {
       nroCmp = parseInt(match[1], 10) || 264;
     }
   }
 
-  const formattedVoucherNumber = `A-${String(ptoVta).padStart(5, '0')}-${String(nroCmp).padStart(8, '0')}`;
+  const isCreditNote = Boolean(
+    customData.isCreditNote ||
+    wo.is_credit_note ||
+    wo.voucher_type === 'credit_note' ||
+    customData.voucherType === 'credit_note' ||
+    voucherRaw.toUpperCase().includes('NC') ||
+    voucherRaw.toUpperCase().includes('NOTA')
+  );
+
+  let docCode = '001';
+  let tipoCmp = 1;
+  let docTitle = 'FACTURA DE VENTA';
+
+  if (letter === 'C') {
+    if (isCreditNote) {
+      docCode = '013';
+      tipoCmp = 13;
+      docTitle = 'NOTA DE CRÉDITO';
+    } else {
+      docCode = '011';
+      tipoCmp = 11;
+      docTitle = 'FACTURA';
+    }
+  } else {
+    if (isCreditNote) {
+      docCode = '003';
+      tipoCmp = 3;
+      docTitle = 'NOTA DE CRÉDITO';
+    } else {
+      docCode = '001';
+      tipoCmp = 1;
+      docTitle = 'FACTURA DE VENTA';
+    }
+  }
+
+  const formattedVoucherNumber = `${letter}-${String(ptoVta).padStart(5, '0')}-${String(nroCmp).padStart(8, '0')}`;
 
   // Fechas
   const emissionDateObj = wo.completed_at ? new Date(wo.completed_at) : (wo.created_at ? new Date(wo.created_at) : new Date());
@@ -118,29 +166,41 @@ export const generateArcaInvoicePDF = async (wo, customData = {}) => {
   vtoDateObj.setDate(vtoDateObj.getDate() + 4);
   const vtoDateStr = formatDate(vtoDateObj);
 
-  // Cálculos matemáticos de Factura A (Neto + 21% IVA)
+  // Cálculos matemáticos según letra (A: Neto + 21% IVA; C: No discrimina IVA)
   let impTotal = 0;
   let impNeto = 0;
   let impIVA = 0;
 
-  if (customData.netAmount !== undefined && Number(customData.netAmount) > 0) {
-    impNeto = roundCurrency(customData.netAmount);
-    impIVA = roundCurrency(impNeto * 0.21);
-    impTotal = roundCurrency(impNeto + impIVA);
-  } else if (wo.total_amount && Number(wo.total_amount) > 0) {
-    impTotal = roundCurrency(wo.total_amount);
-    impNeto = roundCurrency(impTotal / 1.21);
-    impIVA = roundCurrency(impTotal - impNeto);
+  if (letter === 'C') {
+    if (customData.netAmount !== undefined && Number(customData.netAmount) > 0) {
+      impTotal = roundCurrency(customData.netAmount);
+    } else if (wo.total_amount && Number(wo.total_amount) > 0) {
+      impTotal = roundCurrency(wo.total_amount);
+    } else {
+      const extrasTotal = (wo.extras || []).reduce((sum, e) => sum + ((e.quantity || 1) * (e.unit_price || 0)), 0);
+      impTotal = extrasTotal > 0 ? roundCurrency(extrasTotal) : 187305.41;
+    }
+    impNeto = impTotal;
+    impIVA = 0;
   } else {
-    // Cálculo a partir de extras si no hay monto fijo
-    const extrasTotal = (wo.extras || []).reduce((sum, e) => sum + (e.quantity * e.unit_price), 0);
-    impNeto = extrasTotal > 0 ? roundCurrency(extrasTotal) : 187305.41;
-    impIVA = roundCurrency(impNeto * 0.21);
-    impTotal = roundCurrency(impNeto + impIVA);
+    // Letra A: Discrimina Neto e IVA 21%
+    if (customData.netAmount !== undefined && Number(customData.netAmount) > 0) {
+      impNeto = roundCurrency(customData.netAmount);
+      impIVA = roundCurrency(impNeto * 0.21);
+      impTotal = roundCurrency(impNeto + impIVA);
+    } else if (wo.total_amount && Number(wo.total_amount) > 0) {
+      impTotal = roundCurrency(wo.total_amount);
+      impNeto = roundCurrency(impTotal / 1.21);
+      impIVA = roundCurrency(impTotal - impNeto);
+    } else {
+      const extrasTotal = (wo.extras || []).reduce((sum, e) => sum + ((e.quantity || 1) * (e.unit_price || 0)), 0);
+      impNeto = extrasTotal > 0 ? roundCurrency(extrasTotal) : 187305.41;
+      impIVA = roundCurrency(impNeto * 0.21);
+      impTotal = roundCurrency(impNeto + impIVA);
+    }
   }
 
   const cae = wo.afip_cae || customData.cae || '74391823791823';
-  // Fecha Vto. CAE (+10 días habituales de AFIP)
   const caeVtoDateObj = new Date(emissionDateObj);
   caeVtoDateObj.setDate(caeVtoDateObj.getDate() + 10);
   const caeVtoDateStr = wo.afip_cae_expiration ? formatDate(wo.afip_cae_expiration) : formatDate(caeVtoDateObj);
@@ -159,8 +219,7 @@ export const generateArcaInvoicePDF = async (wo, customData = {}) => {
   // Línea divisoria central
   doc.line(105, 10, 105, 52);
 
-  // --- MITAD IZQUIERDA (Emisor) ---
-  // Logo
+  // --- MITAD IZQUIERDA (Emisor 4S Clima) ---
   try {
     const logoData = await getImageDataUrl('/logopngremito.png') || await getImageDataUrl('/logo4sclima.webp');
     if (logoData && logoData.dataUrl) {
@@ -191,21 +250,21 @@ export const generateArcaInvoicePDF = async (wo, customData = {}) => {
 
   doc.setFontSize(9);
   doc.setFont('helvetica', 'bold');
-  doc.text('Responsable Inscripto', 14, 48);
+  doc.text('IVA Responsable Inscripto', 14, 48);
 
-  // --- CAJA CENTRAL SUPERIOR (Letra Fiscal 'A' / '001') ---
+  // --- CAJA CENTRAL SUPERIOR (Letra Fiscal 'A' / 'C' y Código '001' / '003' / '011' / '013') ---
   doc.setFillColor(255, 255, 255);
   doc.rect(98, 10, 14, 13, 'FD');
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(20);
-  doc.text('A', 105, 19, { align: 'center' });
+  doc.text(letter, 105, 19, { align: 'center' });
   doc.setFontSize(7.5);
-  doc.text('001', 105, 22.5, { align: 'center' });
+  doc.text(docCode, 105, 22.5, { align: 'center' });
 
   // --- MITAD DERECHA (Datos del Comprobante) ---
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(13);
-  doc.text('FACTURA DE VENTA', 112, 17);
+  doc.text(docTitle, 112, 17);
 
   doc.setFontSize(10);
   doc.text(`Comp. Nro: ${formattedVoucherNumber}`, 112, 23.5);
@@ -235,6 +294,12 @@ export const generateArcaInvoicePDF = async (wo, customData = {}) => {
   // 2. RECUADRO DE DATOS DEL CLIENTE
   // =========================================================================
   doc.rect(10, 54, 190, 24);
+
+  // Condición IVA receptor
+  let defaultClientIva = 'Consumidor Final';
+  if (rawClientCuit.length === 11) {
+    defaultClientIva = letter === 'C' ? 'IVA Sujeto Exento' : 'IVA Responsable Inscripto';
+  }
 
   // Columna Izquierda
   doc.setFontSize(8.5);
@@ -268,7 +333,7 @@ export const generateArcaInvoicePDF = async (wo, customData = {}) => {
   doc.setFont('helvetica', 'bold');
   doc.text('Cond. IVA:', 112, 64.5);
   doc.setFont('helvetica', 'normal');
-  doc.text('Responsable Inscripto', 130, 64.5);
+  doc.text(client.tax_condition || defaultClientIva, 130, 64.5);
 
   doc.setFont('helvetica', 'bold');
   doc.text('Fecha Vto.:', 112, 69.5);
@@ -281,26 +346,65 @@ export const generateArcaInvoicePDF = async (wo, customData = {}) => {
   doc.text(wo.payment_method || 'Cuenta Corriente', 138, 74.5);
 
   // =========================================================================
-  // 3. TABLA PRINCIPAL DE CONCEPTOS (9 Columnas Exactas)
+  // 3. TABLA PRINCIPAL DE CONCEPTOS (Adaptada A / C)
   // =========================================================================
-  const rows = [
-    [
-      '01',
-      serviceType,
-      observationText,
-      '1.00',
-      formatNumberAR(impNeto),
-      '0.00',
-      formatNumberAR(impNeto),
-      '21.00%',
-      formatNumberAR(impTotal)
-    ]
-  ];
+  const isA = letter === 'A';
+  const tableHead = isA
+    ? [['Cód.', 'Artículo', 'Observaciones', 'Cantidad', 'Precio', '% Dto.', 'Importe', 'Alíc. IVA', 'Impt. c/IVA']]
+    : [['Cód.', 'Artículo', 'Observaciones', 'Cantidad', 'Precio', '% Dto.', 'Subtotal']];
+
+  const tableRows = isA
+    ? [
+        [
+          '01',
+          serviceType,
+          observationText,
+          '1.00',
+          formatNumberAR(impNeto),
+          '0.00',
+          formatNumberAR(impNeto),
+          '21.00%',
+          formatNumberAR(impTotal)
+        ]
+      ]
+    : [
+        [
+          '01',
+          serviceType,
+          observationText,
+          '1.00',
+          formatNumberAR(impTotal),
+          '0.00',
+          formatNumberAR(impTotal)
+        ]
+      ];
+
+  const columnStyles = isA
+    ? {
+        0: { cellWidth: 10, halign: 'center' },
+        1: { cellWidth: 26 },
+        2: { cellWidth: 50 },
+        3: { cellWidth: 14, halign: 'center' },
+        4: { cellWidth: 22, halign: 'right' },
+        5: { cellWidth: 12, halign: 'center' },
+        6: { cellWidth: 22, halign: 'right' },
+        7: { cellWidth: 14, halign: 'center' },
+        8: { cellWidth: 20, halign: 'right' }
+      }
+    : {
+        0: { cellWidth: 10, halign: 'center' },
+        1: { cellWidth: 32 },
+        2: { cellWidth: 68 },
+        3: { cellWidth: 16, halign: 'center' },
+        4: { cellWidth: 24, halign: 'right' },
+        5: { cellWidth: 14, halign: 'center' },
+        6: { cellWidth: 26, halign: 'right' }
+      };
 
   autoTable(doc, {
     startY: 80,
-    head: [['Cód.', 'Artículo', 'Observaciones', 'Cantidad', 'Precio', '% Dto.', 'Importe', 'Alíc. IVA', 'Impt. c/IVA']],
-    body: rows,
+    head: tableHead,
+    body: tableRows,
     theme: 'grid',
     headStyles: {
       fillColor: [240, 240, 240],
@@ -318,17 +422,7 @@ export const generateArcaInvoicePDF = async (wo, customData = {}) => {
       lineColor: [0, 0, 0],
       cellPadding: 3
     },
-    columnStyles: {
-      0: { cellWidth: 10, halign: 'center' },
-      1: { cellWidth: 26 },
-      2: { cellWidth: 50 },
-      3: { cellWidth: 14, halign: 'center' },
-      4: { cellWidth: 22, halign: 'right' },
-      5: { cellWidth: 12, halign: 'center' },
-      6: { cellWidth: 22, halign: 'right' },
-      7: { cellWidth: 14, halign: 'center' },
-      8: { cellWidth: 20, halign: 'right' }
-    },
+    columnStyles,
     margin: { left: 10, right: 10 }
   });
 
@@ -341,7 +435,7 @@ export const generateArcaInvoicePDF = async (wo, customData = {}) => {
   doc.setLineWidth(0.3);
   doc.setDrawColor(0, 0, 0);
 
-  // 5 Celdas de IVA
+  // 5 Celdas de IVA (Discriminadas en Factura A, en Factura C son 0.00 / no aplica)
   const ivaBoxes = [
     { label: 'IVA 2.5: 0.00', x: 10 },
     { label: 'IVA 5: 0.00', x: 10 + colWidth },
@@ -360,15 +454,20 @@ export const generateArcaInvoicePDF = async (wo, customData = {}) => {
 
   // Barra Gris de Totales
   const yTotalsBar = yIvaGrid + 7;
-  doc.setFillColor(204, 204, 204); // #cccccc
+  doc.setFillColor(204, 204, 204);
   doc.rect(10, yTotalsBar, 190, 8.5, 'FD');
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8.5);
   doc.setTextColor(0, 0, 0);
 
-  doc.text(`Bruto: ${formatNumberAR(impNeto)}`, 14, yTotalsBar + 5.5);
-  doc.text(`Impuestos: ${formatNumberAR(impIVA)}`, 105, yTotalsBar + 5.5, { align: 'center' });
+  if (isA) {
+    doc.text(`Bruto: ${formatNumberAR(impNeto)}`, 14, yTotalsBar + 5.5);
+    doc.text(`Impuestos: ${formatNumberAR(impIVA)}`, 105, yTotalsBar + 5.5, { align: 'center' });
+  } else {
+    doc.text(`Subtotal: ${formatNumberAR(impTotal)}`, 14, yTotalsBar + 5.5);
+    doc.text('Impuestos: 0.00', 105, yTotalsBar + 5.5, { align: 'center' });
+  }
   doc.text(`Total: $ ${formatNumberAR(impTotal)}`, 195, yTotalsBar + 5.5, { align: 'right' });
 
   // =========================================================================
@@ -377,21 +476,23 @@ export const generateArcaInvoicePDF = async (wo, customData = {}) => {
   const yFooter = yTotalsBar + 10.5;
   doc.rect(10, yFooter, 190, 39);
 
-  // Formato de fecha para QR oficial AFIP: YYYY-MM-DD
+  // Formato de fecha para QR oficial AFIP / ARCA: YYYY-MM-DD
   const qrDateStr = emissionDateObj.toISOString().split('T')[0];
+  const qrDocTipo = rawClientCuit.length === 11 ? 80 : 99;
+  const qrDocRec = rawClientCuit.length === 11 ? (parseInt(rawClientCuit, 10) || 0) : 0;
 
   const qrPayload = {
     ver: 1,
     fecha: qrDateStr,
     cuit: 20224347546,
     ptoVta: ptoVta,
-    tipoCmp: 1,
+    tipoCmp: tipoCmp, // 1 (Factura A), 3 (NC A), 11 (Factura C), 13 (NC C)
     nroCmp: nroCmp,
     importe: impTotal,
     moneda: 'PES',
     ctz: 1,
-    tipoDocRec: 80,
-    nroDocRec: parseInt(rawClientCuit, 10) || 30712345678,
+    tipoDocRec: qrDocTipo,
+    nroDocRec: qrDocRec,
     tipoCodAut: 'E',
     codAut: parseInt(String(cae).replace(/\D/g, ''), 10) || 74391823791823
   };
@@ -445,13 +546,14 @@ export const generateArcaInvoicePDF = async (wo, customData = {}) => {
 
   // Guardado
   const cleanNum = formattedVoucherNumber.replace(/[^\w-]/g, '_');
-  const fileName = `Factura_A_${cleanNum}_${clientName.replace(/\s+/g, '_')}.pdf`;
+  const docTypeSlug = isCreditNote ? `Nota_Credito_${letter}` : `Factura_${letter}`;
+  const fileName = `${docTypeSlug}_${cleanNum}_${clientName.replace(/\s+/g, '_')}.pdf`;
 
   return savePDF(doc, fileName);
 };
 
 /**
- * Helper de descarga rápida para Factura A compatible con openAndDownloadPDF
+ * Helper de descarga rápida compatible con openAndDownloadPDF
  */
 export const openAndDownloadArcaInvoicePDF = async (generatePromise, preOpenedTab) => {
   try {
@@ -466,7 +568,7 @@ export const openAndDownloadArcaInvoicePDF = async (generatePromise, preOpenedTa
         const fileHandle = await window.showSaveFilePicker({
           suggestedName: fileName,
           types: [{
-            description: 'Factura A (PDF)',
+            description: 'Comprobante Fiscal (PDF)',
             accept: { 'application/pdf': ['.pdf'] }
           }]
         });

@@ -78,6 +78,7 @@ export default function WorkOrderDetailPage() {
   }
 
   const handleSaveEdit = async () => {
+    const isReassigned = editData.assigned_to && editData.assigned_to !== order.assigned_to;
     const { error } = await supabase
       .from('work_orders')
       .update({
@@ -92,6 +93,11 @@ export default function WorkOrderDetailPage() {
     if (error) {
       alert('Error al guardar: ' + error.message);
     } else {
+      if (isReassigned) {
+        supabase.functions.invoke('notify-assignment', {
+          body: { record: { ...order, assigned_to: editData.assigned_to } }
+        }).catch(() => {});
+      }
       setIsEditing(false);
       loadOrder();
     }
