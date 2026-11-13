@@ -12,6 +12,7 @@ import com.getcapacitor.BridgeActivity;
 public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        registerPlugin(NativeLocationTrackerPlugin.class);
         super.onCreate(savedInstanceState);
 
         WebView webView = this.bridge.getWebView();

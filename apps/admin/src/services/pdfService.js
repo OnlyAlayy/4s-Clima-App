@@ -1013,17 +1013,21 @@ export const generateSettlementPDF = async (settlement, technician = {}, items =
 
   // 4. Tabla 1: Cómputo de Horas
   const hoursData = [];
-  const regHs = Number(settlement.total_regular_hours) || 0;
+  const regHs = Number(Number(settlement.total_regular_hours || 0).toFixed(2));
   const regRate = Number(settlement.hourly_rate_regular) || 0;
-  const overHs = Number(settlement.total_overtime_hours) || 0;
+  const overHs = Number(Number(settlement.total_overtime_hours || 0).toFixed(2));
   const overRate = Number(settlement.hourly_rate_overtime) || 0;
+
+  const regSubtotal = Math.round((regHs * regRate) * 100) / 100;
+  const overSubtotal = Math.round((overHs * overRate) * 100) / 100;
+  const hoursSubtotal = Math.round((regSubtotal + overSubtotal) * 100) / 100;
 
   if (regHs > 0 || regRate > 0) {
     hoursData.push([
       'Horas Ordinarias de Jornada',
       `${regHs.toFixed(2)} hs`,
       `$${regRate.toLocaleString('es-AR', { minimumFractionDigits: 2 })}`,
-      `$${(regHs * regRate).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`
+      `$${regSubtotal.toLocaleString('es-AR', { minimumFractionDigits: 2 })}`
     ]);
   }
   if (overHs > 0 || overRate > 0) {
@@ -1031,7 +1035,7 @@ export const generateSettlementPDF = async (settlement, technician = {}, items =
       'Horas Extras (Cómputo >8/9 hs)',
       `${overHs.toFixed(2)} hs`,
       `$${overRate.toLocaleString('es-AR', { minimumFractionDigits: 2 })}`,
-      `$${(overHs * overRate).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`
+      `$${overSubtotal.toLocaleString('es-AR', { minimumFractionDigits: 2 })}`
     ]);
   }
 
@@ -1060,8 +1064,10 @@ export const generateSettlementPDF = async (settlement, technician = {}, items =
     currentY = doc.lastAutoTable.finalY + 6;
   }
 
-  // 5. Tabla 2: Obras y Módulos Walter
-  const workItems = Array.isArray(items) && items.length > 0 ? items : [];
+  // 5. Tabla 2: Obras y Módulos Walter (solo órdenes con pago por obra pactado > 0)
+  const workItems = (Array.isArray(items) ? items : []).filter(
+    (it) => (Number(it.amount || it.technician_payout) || 0) > 0
+  );
   if (workItems.length > 0) {
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9);
@@ -1134,18 +1140,25 @@ export const generateSettlementPDF = async (settlement, technician = {}, items =
   doc.setDrawColor(203, 213, 225);
   doc.rect(pageWidth - 95, boxY, 81, boxHeight, 'D');
 
+  const pieceworkSubtotal = Math.round(workItems.reduce((acc, it) => acc + (Number(it.amount || it.technician_payout) || 0), 0) * 100) / 100;
+  const advancesSubtotal = Math.round(advList.reduce((acc, a) => acc + (Number(a.amount) || 0), 0) * 100) / 100;
+
+  // Cuadratura matemática exacta: Total Bruto = Subtotal Horas + Subtotal Obras
+  const grossTotal = Math.round((hoursSubtotal + pieceworkSubtotal) * 100) / 100;
+  const netTotal = Math.round((grossTotal - advancesSubtotal) * 100) / 100;
+
   doc.setFontSize(8.5);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(71, 85, 105);
   doc.text('Total Bruto (Horas + Obras):', pageWidth - 90, boxY + 7);
   doc.setFont('helvetica', 'bold');
-  doc.text(`$${(Number(settlement.gross_total) || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`, pageWidth - 18, boxY + 7, { align: 'right' });
+  doc.text(`$${grossTotal.toLocaleString('es-AR', { minimumFractionDigits: 2 })}`, pageWidth - 18, boxY + 7, { align: 'right' });
 
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(185, 28, 28);
   doc.text('Menos Adelantos a Cuenta:', pageWidth - 90, boxY + 14);
   doc.setFont('helvetica', 'bold');
-  doc.text(`-$${(Number(settlement.advances_subtotal) || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`, pageWidth - 18, boxY + 14, { align: 'right' });
+  doc.text(`-$${advancesSubtotal.toLocaleString('es-AR', { minimumFractionDigits: 2 })}`, pageWidth - 18, boxY + 14, { align: 'right' });
 
   doc.setLineWidth(0.3);
   doc.setDrawColor(203, 213, 225);
@@ -1156,7 +1169,7 @@ export const generateSettlementPDF = async (settlement, technician = {}, items =
   doc.setTextColor(15, 23, 42);
   doc.text('TOTAL NETO A PERCIBIR:', pageWidth - 90, boxY + 23);
   doc.setTextColor(22, 101, 52); // green-800
-  doc.text(`$${(Number(settlement.net_total) || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`, pageWidth - 18, boxY + 23, { align: 'right' });
+  doc.text(`$${netTotal.toLocaleString('es-AR', { minimumFractionDigits: 2 })}`, pageWidth - 18, boxY + 23, { align: 'right' });
 
   // 8. Espacio de Firmas
   const signY = 262;

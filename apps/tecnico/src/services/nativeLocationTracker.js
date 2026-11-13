@@ -21,6 +21,7 @@ import { supabase } from '@4s-clima/shared/supabase';
 
 // Lazy-register del plugin de geolocalización en background
 const BackgroundGeolocation = registerPlugin('BackgroundGeolocation');
+const NativeLocationTrackerPlugin = registerPlugin('NativeLocationTracker');
 
 class NativeLocationTracker {
   constructor() {
@@ -157,13 +158,54 @@ class NativeLocationTracker {
     };
 
     // ========================================================
-    // CASO 1: ANDROID NATIVO (Capacitor Background Geolocation)
+    // CASO 1: ANDROID NATIVO (Capacitor Background Geolocation + ForegroundService Nativo)
     // ========================================================
     if (this.isNativePlatform()) {
       console.log('[LocationTracker] Iniciando rastreo Nativo Android con Foreground Service...');
       try {
         // Solicitar permisos nativos explícitamente sin pasar por el WebView
         await this.requestPermissions();
+
+        // 1. Solicitar exención de Doze Mode / optimización de batería
+        try {
+          await NativeLocationTrackerPlugin.requestIgnoreBatteryOptimizations();
+        } catch (battErr) {
+          console.warn('[LocationTracker Nativo] Exención de optimización de batería omitida:', battErr);
+        }
+
+        // 2. Obtener credenciales de Supabase y JWT de la sesión activa
+        let supabaseUrl = import.meta.env.VITE_SUPABASE_URL || supabase?.supabaseUrl || '';
+        let supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || supabase?.supabaseKey || '';
+        let accessToken = '';
+
+        try {
+          const { data: sessionData } = await supabase.auth.getSession();
+          if (sessionData?.session) {
+            accessToken = sessionData.session.access_token || '';
+            if (!this.currentTechnicianId && sessionData.session.user?.id) {
+              this.currentTechnicianId = sessionData.session.user.id;
+            }
+          }
+        } catch (authErr) {
+          console.warn('[LocationTracker Nativo] Error obteniendo sesión para servicio nativo:', authErr);
+        }
+
+        // 3. Iniciar el ForegroundService nativo con START_STICKY y stopWithTask="false"
+        try {
+          await NativeLocationTrackerPlugin.startTracking({
+            supabaseUrl,
+            supabaseAnonKey,
+            accessToken,
+            technicianId: this.currentTechnicianId,
+            workOrderId: this.currentOrderId || null,
+            distanceFilter: 15,
+            backgroundTitle: '4S Clima — Jornada Activa',
+            backgroundMessage: 'Transmitiendo ubicación operativa en ruta',
+          });
+          console.log('[LocationTracker] NativeLocationService iniciado en Android con persistencia Swipe-Away.');
+        } catch (serviceErr) {
+          console.error('[LocationTracker] Error al iniciar NativeLocationService nativo:', serviceErr);
+        }
 
         // Fix inicial instantáneo usando Geolocation nativo para feedback inmediato
         try {
@@ -180,13 +222,11 @@ class NativeLocationTracker {
 
         const watcherId = await BackgroundGeolocation.addWatcher(
           {
-            backgroundTitle: '4S Clima: Jornada de Servicio Activa',
-            backgroundMessage: clientName 
-              ? `En servicio hacia ${clientName}. Ubicación transmitida en tiempo real.`
-              : 'Transmitiendo telemetría GPS continua de jornada laboral.',
+            backgroundTitle: '4S Clima — Jornada Activa',
+            backgroundMessage: 'Transmitiendo ubicación operativa en ruta',
             requestPermissions: true,
             stale: false,
-            distanceFilter: 3, // Metros mínimos de desplazamiento para reportar
+            distanceFilter: 15,
           },
           async (location, error) => {
             if (error) {
@@ -298,6 +338,16 @@ class NativeLocationTracker {
     this.currentOrderId = null;
     this.locationListeners.clear();
 
+    // Detener servicio nativo persistente en Android
+    if (this.isNativePlatform()) {
+      try {
+        await NativeLocationTrackerPlugin.stopTracking();
+        console.log('[LocationTracker] NativeLocationService nativo detenido y credenciales purgadas.');
+      } catch (e) {
+        console.warn('[LocationTracker] Error al detener NativeLocationService:', e);
+      }
+    }
+
     // Detener watcher nativo
     if (this.activeWatcherId) {
       try {
@@ -322,6 +372,14 @@ class NativeLocationTracker {
       } catch {}
       this.wakeLockSentinel = null;
     }
+  }
+
+  /**
+   * Detiene y desactiva de forma explícita el rastreo de ubicación en vivo del dispositivo (Live Location Tracking).
+   * Libera watchers, listeners y asegura que no se sigan emitiendo coordenadas.
+   */
+  async stopLiveLocationTracking(force = true) {
+    return this.stopTracking(force);
   }
 
   /**
@@ -363,6 +421,9 @@ class NativeLocationTracker {
    * Persiste la coordenada en la tabla public.technician_locations con throttling
    */
   async _persistLocationToSupabase({ orderId, technicianId, coords }) {
+    if (!this.isTrackingActive && !this.isShiftActive) {
+      return;
+    }
     const now = Date.now();
     if (now - this.lastDbPersistTime < this.DB_PERSIST_THROTTLE_MS) {
       return;
@@ -403,6 +464,12 @@ class NativeLocationTracker {
         }
       }
 
+      // En Android nativo, la inserción en public.technician_locations la realiza
+      // exclusivamente NativeLocationService en segundo plano para evitar duplicados.
+      if (this.isNativePlatform()) {
+        return;
+      }
+
       await supabase.from('technician_locations').insert({
         technician_id: techId,
         work_order_id: orderId || null,
@@ -421,5 +488,18 @@ class NativeLocationTracker {
   }
 }
 
+
+// Mantener el token de acceso JWT sincronizado con la capa nativa Android
+if (typeof window !== 'undefined') {
+  try {
+    supabase.auth.onAuthStateChange((event, session) => {
+      if (session?.access_token && Capacitor.isNativePlatform()) {
+        NativeLocationTrackerPlugin.updateAccessToken({ accessToken: session.access_token }).catch(() => {});
+      }
+    });
+  } catch {}
+}
+
 export const nativeLocationTracker = new NativeLocationTracker();
+export const stopLiveLocationTracking = (force = true) => nativeLocationTracker.stopLiveLocationTracking(force);
 export default nativeLocationTracker;

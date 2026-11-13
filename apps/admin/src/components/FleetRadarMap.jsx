@@ -127,46 +127,151 @@ function createDestIcon({ isSelected, isDimmed }) {
 }
 
 /**
- * Controlador de Cámara Leaflet: Encuadra fluidamente según el modo (Foco vs General).
+ * Controlador de Cámara Leaflet: Control inteligente de encuadre.
+ * Evita zoom out automático en cada ping de GPS.
+ * Permite mantener zoom y posición manual del administrador.
  */
-function MapCameraHandler({ selectedTech, activeTechsWithCoords, isFocusMode }) {
+function MapCameraHandler({
+  selectedTech,
+  selectedTechId,
+  mapTechs,
+  filterMode,
+  fitFleetTrigger,
+  forceCenterTrigger,
+}) {
   const map = useMap();
-  const lastTargetRef = useRef(null);
+  const hasFittedInitialBounds = useRef(false);
+  const prevSelectedTechIdRef = useRef(selectedTechId);
+  const prevFilterModeRef = useRef(filterMode);
+  const prevFitFleetTriggerRef = useRef(fitFleetTrigger);
+  const prevForceCenterTriggerRef = useRef(forceCenterTrigger);
+  const userDraggedRef = useRef(false);
+  const lastTechCoordsRef = useRef(null);
 
+  const mapTechsRef = useRef(mapTechs);
+  mapTechsRef.current = mapTechs;
+
+  // Registrar arrastre manual del usuario en el mapa para no interrumpirlo
+  useEffect(() => {
+    if (!map) return;
+    const handleDragStart = () => {
+      userDraggedRef.current = true;
+    };
+    map.on('dragstart', handleDragStart);
+    return () => {
+      map.off('dragstart', handleDragStart);
+    };
+  }, [map]);
+
+  // Función para encuadrar toda la flota según los datos en mapTechsRef
+  const fitFleetBounds = useCallback(() => {
+    if (!map) return;
+    const allPoints = [];
+    (mapTechsRef.current || []).forEach((t) => {
+      if (t.techCoords) allPoints.push(t.techCoords);
+      if (t.hasActiveWork && t.destCoords) allPoints.push(t.destCoords);
+    });
+
+    if (allPoints.length > 0) {
+      const bounds = L.latLngBounds(allPoints);
+      map.fitBounds(bounds, { padding: [60, 60], maxZoom: 13, animate: true, duration: 0.7 });
+    } else {
+      map.setView(DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM, { animate: true });
+    }
+  }, [map]);
+
+  // 1. Encuadre inicial ÚNICO al cargar los primeros datos del mapa
+  // PROHIBIDO depender de las coordenadas en vivo para ejecutar fitBounds general recurrente
+  useEffect(() => {
+    if (!map) return;
+    if (!hasFittedInitialBounds.current && mapTechs && mapTechs.length > 0) {
+      const hasAnyCoords = mapTechs.some(
+        (t) => t.techCoords || (t.hasActiveWork && t.destCoords)
+      );
+      if (hasAnyCoords) {
+        hasFittedInitialBounds.current = true;
+        if (!selectedTechId) {
+          fitFleetBounds();
+        }
+      }
+    }
+  }, [map, mapTechs, selectedTechId, fitFleetBounds]);
+
+  // 2. Cambio de pestaña (filterMode) o pulsación explícita de "Ver toda la flota activa"
   useEffect(() => {
     if (!map) return;
 
-    if (isFocusMode && selectedTech) {
-      const targetKey = `${selectedTech.id}-${selectedTech.activeOrder?.id}`;
-      if (lastTargetRef.current === targetKey) return;
-      lastTargetRef.current = targetKey;
+    let shouldFit = false;
 
-      const points = [];
-      if (selectedTech.techCoords) points.push(selectedTech.techCoords);
-      if (selectedTech.destCoords) points.push(selectedTech.destCoords);
-
-      if (points.length === 2) {
-        const bounds = L.latLngBounds(points);
-        map.fitBounds(bounds, { padding: [70, 70], maxZoom: 15, animate: true, duration: 0.7 });
-      } else if (points.length === 1) {
-        map.setView(points[0], 15, { animate: true, duration: 0.6 });
-      }
-    } else if (!isFocusMode) {
-      lastTargetRef.current = 'all';
-      const allPoints = [];
-      activeTechsWithCoords.forEach((t) => {
-        if (t.techCoords) allPoints.push(t.techCoords);
-        if (t.destCoords) allPoints.push(t.destCoords);
-      });
-
-      if (allPoints.length > 0) {
-        const bounds = L.latLngBounds(allPoints);
-        map.fitBounds(bounds, { padding: [60, 60], maxZoom: 13, animate: true, duration: 0.7 });
-      } else {
-        map.setView(DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM, { animate: true });
+    if (prevFilterModeRef.current !== filterMode) {
+      prevFilterModeRef.current = filterMode;
+      if (!selectedTechId) {
+        shouldFit = true;
       }
     }
-  }, [selectedTech, isFocusMode, activeTechsWithCoords, map]);
+
+    if (prevFitFleetTriggerRef.current !== fitFleetTrigger) {
+      prevFitFleetTriggerRef.current = fitFleetTrigger;
+      shouldFit = true;
+    }
+
+    if (shouldFit) {
+      fitFleetBounds();
+    }
+  }, [filterMode, fitFleetTrigger, selectedTechId, fitFleetBounds, map]);
+
+  // 3. Manejo de Selección de Técnico y Telemetría en Vivo
+  useEffect(() => {
+    if (!map) return;
+
+    const isNewSelection = prevSelectedTechIdRef.current !== selectedTechId;
+    const isForceCenter = prevForceCenterTriggerRef.current !== forceCenterTrigger;
+
+    if (isNewSelection || isForceCenter) {
+      prevSelectedTechIdRef.current = selectedTechId;
+      prevForceCenterTriggerRef.current = forceCenterTrigger;
+
+      if (selectedTechId && selectedTech) {
+        // Reiniciar estado de arrastre del usuario para este técnico
+        userDraggedRef.current = false;
+        lastTechCoordsRef.current = selectedTech.techCoords ? [...selectedTech.techCoords] : null;
+
+        const points = [];
+        if (selectedTech.techCoords) points.push(selectedTech.techCoords);
+        if (selectedTech.hasActiveWork && selectedTech.destCoords) points.push(selectedTech.destCoords);
+
+        if (points.length === 2) {
+          const bounds = L.latLngBounds(points);
+          map.fitBounds(bounds, { padding: [70, 70], maxZoom: 15, animate: true, duration: 0.7 });
+        } else if (points.length === 1) {
+          map.setView(points[0], 15, { animate: true, duration: 0.6 });
+        }
+        return;
+      } else if (!selectedTechId && isNewSelection) {
+        // Se deseleccionó el técnico -> encuadrar flota
+        userDraggedRef.current = false;
+        lastTechCoordsRef.current = null;
+        fitFleetBounds();
+        return;
+      }
+    }
+
+    // 4. Si el técnico ya está seleccionado y llega un ping de GPS (movimiento en vivo)
+    if (selectedTechId && selectedTech?.techCoords) {
+      const currentCoords = selectedTech.techCoords;
+      const last = lastTechCoordsRef.current;
+      const hasMoved = !last || last[0] !== currentCoords[0] || last[1] !== currentCoords[1];
+
+      if (hasMoved) {
+        lastTechCoordsRef.current = [...currentCoords];
+
+        // Solo centrar con panTo manteniendo el nivel de zoom actual si el usuario no arrastró manualmente
+        if (!userDraggedRef.current) {
+          map.panTo(currentCoords, { animate: true, duration: 0.5 });
+        }
+      }
+    }
+  }, [selectedTechId, selectedTech, forceCenterTrigger, fitFleetBounds, map]);
 
   return null;
 }
@@ -196,6 +301,8 @@ export default function FleetRadarMap() {
   const [filterMode, setFilterMode] = useState('active'); // 'active' | 'all'
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTechId, setSelectedTechId] = useState(null);
+  const [fitFleetTrigger, setFitFleetTrigger] = useState(0);
+  const [forceCenterTrigger, setForceCenterTrigger] = useState(0);
 
   // Cargar datos de técnicos, órdenes activas y turnos de jornada
   const loadFleetData = useCallback(async () => {
@@ -414,12 +521,29 @@ export default function FleetRadarMap() {
           : null;
 
       // Ubicación del técnico:
-      // Telemetría GPS real emitida desde el dispositivo móvil (Realtime broadcast o persistencia en BD)
+      // Si la jornada del día está finalizada ('completed'), se prioriza la última ubicación
+      // registrada en el fichaje de salida (check_out_lat / check_out_lng).
+      // Si el turno está activo, se utiliza la telemetría en vivo o el fichaje de entrada.
       const live = liveLocations[tech.id];
-      let techCoords = live ? [Number(live.lat), Number(live.lng)] : null;
       const shift = shifts[tech.id] || null;
-      if (!techCoords && shift?.status === 'active' && shift.check_in_lat && shift.check_in_lng) {
-        techCoords = [Number(shift.check_in_lat), Number(shift.check_in_lng)];
+      let techCoords = null;
+
+      if (shift?.status === 'completed') {
+        if (shift.check_out_lat && shift.check_out_lng) {
+          techCoords = [Number(shift.check_out_lat), Number(shift.check_out_lng)];
+        } else if (live) {
+          techCoords = [Number(live.lat), Number(live.lng)];
+        } else if (shift.check_in_lat && shift.check_in_lng) {
+          techCoords = [Number(shift.check_in_lat), Number(shift.check_in_lng)];
+        }
+      } else if (shift?.status === 'active') {
+        if (live) {
+          techCoords = [Number(live.lat), Number(live.lng)];
+        } else if (shift.check_in_lat && shift.check_in_lng) {
+          techCoords = [Number(shift.check_in_lat), Number(shift.check_in_lng)];
+        }
+      } else if (live) {
+        techCoords = [Number(live.lat), Number(live.lng)];
       }
 
       // Distancia restante real (solo si tenemos ambos puntos verdaderos)
@@ -450,12 +574,10 @@ export default function FleetRadarMap() {
             })
           : null;
 
-      const hasActiveWork =
-        (activeOrder !== null &&
-          (activeOrder.status === WORK_ORDER_STATUS.TRAVELING ||
-            activeOrder.status === WORK_ORDER_STATUS.IN_PROGRESS ||
-            activeOrder.status === WORK_ORDER_STATUS.PENDING)) ||
-        (shift !== null && shift.status === 'active');
+      // Prioridad absoluta del estado de la jornada sobre el estado de las órdenes:
+      // Si el turno está completado ('completed') o no hay turno activo, queda Fuera de Actividad.
+      // Solo aparece en "En Actividad" si tiene un turno activo hoy (shift.status === 'active').
+      const hasActiveWork = shift !== null && shift.status === 'active';
 
       return {
         ...tech,
@@ -529,10 +651,29 @@ export default function FleetRadarMap() {
 
   const isFocusMode = selectedTech !== null;
 
-  // Técnicos con al menos un punto geográfico válido
+  // 1. Auto-limpiar selectedTechId al quedar fuera de turno mientras se visualiza la solapa "En Actividad"
+  useEffect(() => {
+    if (filterMode === 'active' && selectedTechId) {
+      if (!selectedTech || !selectedTech.hasActiveWork) {
+        setSelectedTechId(null);
+      }
+    }
+  }, [filterMode, selectedTechId, selectedTech]);
+
+  // 2. Filtrado de técnicos a renderizar en el mapa según la pestaña activa:
+  // En 'active' (En Actividad), solo se renderizan técnicos con hasActiveWork === true.
+  // En 'all' (Todos), se muestra toda la flota consolidada.
+  const mapTechs = useMemo(() => {
+    if (filterMode === 'active') {
+      return consolidatedFleet.filter((t) => t.hasActiveWork);
+    }
+    return consolidatedFleet;
+  }, [consolidatedFleet, filterMode]);
+
+  // Técnicos con al menos un punto geográfico válido para encuadre de cámara
   const activeTechsWithCoords = useMemo(
-    () => consolidatedFleet.filter((t) => t.techCoords || t.destCoords),
-    [consolidatedFleet]
+    () => mapTechs.filter((t) => t.techCoords || (t.hasActiveWork && t.destCoords)),
+    [mapTechs]
   );
 
   return (
@@ -845,12 +986,15 @@ export default function FleetRadarMap() {
 
             <MapCameraHandler
               selectedTech={selectedTech}
-              activeTechsWithCoords={activeTechsWithCoords}
-              isFocusMode={isFocusMode}
+              selectedTechId={selectedTechId}
+              mapTechs={mapTechs}
+              filterMode={filterMode}
+              fitFleetTrigger={fitFleetTrigger}
+              forceCenterTrigger={forceCenterTrigger}
             />
 
             {/* Marcadores de Todos los Técnicos o del Foco */}
-            {consolidatedFleet.map((tech) => {
+            {mapTechs.map((tech) => {
               const isSelected = selectedTechId === tech.id;
               const isDimmed = isFocusMode && !isSelected;
 
@@ -863,12 +1007,18 @@ export default function FleetRadarMap() {
                       icon={createTechIcon({
                         name: tech.name,
                         isSelected,
-                        status: tech.activeOrder?.status,
+                        status: tech.shift?.status === 'active' ? tech.activeOrder?.status : null,
                         isDimmed,
                         isShiftActive: tech.shift?.status === 'active',
                       })}
                       eventHandlers={{
-                        click: () => setSelectedTechId(tech.id),
+                        click: () => {
+                        if (selectedTechId === tech.id) {
+                          setForceCenterTrigger((prev) => prev + 1);
+                        } else {
+                          setSelectedTechId(tech.id);
+                        }
+                      },
                       }}
                     >
                       <Popup className="custom-popup">
@@ -900,13 +1050,19 @@ export default function FleetRadarMap() {
                     </Marker>
                   )}
 
-                  {/* Renderizar marcador de Destino si tiene orden y coordenadas */}
-                  {tech.destCoords && (
+                  {/* Renderizar marcador de Destino SOLO si la jornada está activa */}
+                  {tech.hasActiveWork && tech.destCoords && (
                     <Marker
                       position={tech.destCoords}
                       icon={createDestIcon({ isSelected, isDimmed })}
                       eventHandlers={{
-                        click: () => setSelectedTechId(tech.id),
+                        click: () => {
+                        if (selectedTechId === tech.id) {
+                          setForceCenterTrigger((prev) => prev + 1);
+                        } else {
+                          setSelectedTechId(tech.id);
+                        }
+                      },
                       }}
                     >
                       <Popup className="custom-popup">
@@ -925,8 +1081,8 @@ export default function FleetRadarMap() {
                     </Marker>
                   )}
 
-                  {/* Polyline punteada que une Técnico con su Destino en Modo Foco */}
-                  {isSelected && tech.techCoords && tech.destCoords && (
+                  {/* Polyline punteada que une Técnico con su Destino en Modo Foco (SOLO si la jornada está activa) */}
+                  {tech.hasActiveWork && isSelected && tech.techCoords && tech.destCoords && (
                     <Polyline
                       positions={[tech.techCoords, tech.destCoords]}
                       pathOptions={{
@@ -1080,9 +1236,12 @@ export default function FleetRadarMap() {
 
                   <button
                     type="button"
-                    onClick={() => setSelectedTechId(null)}
-                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-slate-700 transition-colors"
-                  >
+                    onClick={() => {
+                    setSelectedTechId(null);
+                    setFitFleetTrigger((prev) => prev + 1);
+                  }}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-slate-700 transition-colors"
+                >
                     Ver toda la flota activa
                   </button>
                 </div>

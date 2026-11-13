@@ -78,34 +78,154 @@ export default function WorkOrderDetailPage() {
   }
 
   const handleSaveEdit = async () => {
-    const isReassigned = editData.assigned_to && editData.assigned_to !== order.assigned_to;
+    const previousTechId = order.assigned_to;
+    const newTechId = editData.assigned_to;
+    const isTechChanged = previousTechId && previousTechId !== newTechId;
+
+    const updatePayload = {
+      scheduled_date: editData.scheduled_date || null,
+      scheduled_time: editData.scheduled_time || null,
+      assigned_to: newTechId || null,
+      observations: editData.observations || null,
+      updated_at: new Date().toISOString(),
+    };
+
+    // Si la orden estaba en estado traveling (En Camino) y se reasigna a otro técnico,
+    // se resetea su estado a pending para que el nuevo técnico no herede un viaje en curso que no inició.
+    if (isTechChanged && order.status === WORK_ORDER_STATUS.TRAVELING) {
+      updatePayload.status = WORK_ORDER_STATUS.PENDING;
+      updatePayload.travel_started_at = null;
+    }
+
     const { error } = await supabase
       .from('work_orders')
-      .update({
-        scheduled_date: editData.scheduled_date || null,
-        scheduled_time: editData.scheduled_time || null,
-        assigned_to: editData.assigned_to || null,
-        observations: editData.observations || null,
-        updated_at: new Date().toISOString(),
-      })
+      .update(updatePayload)
       .eq('id', id);
 
     if (error) {
       alert('Error al guardar: ' + error.message);
-    } else {
-      if (isReassigned) {
-        supabase.functions.invoke('notify-assignment', {
-          body: { record: { ...order, assigned_to: editData.assigned_to } }
-        }).catch(() => {});
-      }
-      setIsEditing(false);
-      loadOrder();
+      return;
     }
+
+    const clientName = order.client?.name || order.plant?.name || 'Cliente';
+    const orderNumber = order.order_number || order.id?.slice(0, 8);
+
+    // 1. Notificar al nuevo técnico si se asignó uno nuevo
+    if (newTechId && newTechId !== previousTechId) {
+      supabase.functions.invoke('notify-assignment', {
+        body: {
+          type: 'assigned',
+          technicianId: newTechId,
+          record: {
+            ...order,
+            ...updatePayload,
+            assigned_to: newTechId,
+            clientName,
+          }
+        }
+      }).catch((err) => console.warn('Error notify new tech:', err));
+    }
+
+    // 2. Notificar y desasignar al técnico anterior si fue reemplazado o desasignado
+    if (isTechChanged) {
+      const unassignMsg = `Actualización Operativa: La orden #${orderNumber} (${clientName}) fue reasignada por administración. Ya no debes asistir a este destino.`;
+
+      // Invocación a Edge Function para Web Push
+      supabase.functions.invoke('notify-assignment', {
+        body: {
+          type: 'unassigned',
+          technicianId: previousTechId,
+          customMessage: unassignMsg,
+          clientName,
+          record: {
+            id: order.id,
+            order_number: orderNumber,
+            assigned_to: previousTechId,
+            clientName,
+          }
+        }
+      }).catch((err) => console.warn('Error notify unassign:', err));
+
+      // Broadcast en tiempo real al canal del técnico desasignado
+      try {
+        const alertChannel = supabase.channel(`tech_alerts_${previousTechId}`);
+        alertChannel.subscribe((status) => {
+          if (status === 'SUBSCRIBED') {
+            alertChannel.send({
+              type: 'broadcast',
+              event: 'order_status_changed',
+              payload: {
+                type: 'unassigned',
+                orderId: order.id,
+                orderNumber,
+                clientName,
+                message: unassignMsg,
+              }
+            }).then(() => {
+              supabase.removeChannel(alertChannel);
+            }).catch(() => {});
+          }
+        });
+      } catch (bcErr) {
+        console.warn('Error broadcast unassign:', bcErr);
+      }
+    }
+
+    setIsEditing(false);
+    loadOrder();
   };
 
   const handleDelete = async () => {
     if (!window.confirm('¿Estás seguro de que querés eliminar esta orden? Esta acción no se puede deshacer.')) return;
     setIsDeleting(true);
+
+    // Si la orden estaba asignada a un técnico, notificarle de inmediato antes de borrar
+    const previousTechId = order.assigned_to;
+    if (previousTechId) {
+      const clientName = order.client?.name || order.plant?.name || 'Cliente';
+      const orderNumber = order.order_number || order.id?.slice(0, 8);
+      const cancelMsg = `Orden Cancelada: La orden #${orderNumber} (${clientName}) fue dada de baja por administración.`;
+
+      // 1. Invocar Edge Function para Web Push
+      supabase.functions.invoke('notify-assignment', {
+        body: {
+          type: 'cancelled',
+          technicianId: previousTechId,
+          customMessage: cancelMsg,
+          clientName,
+          record: {
+            id: order.id,
+            order_number: orderNumber,
+            assigned_to: previousTechId,
+            clientName,
+          }
+        }
+      }).catch((err) => console.warn('Error notify cancel:', err));
+
+      // 2. Broadcast en tiempo real al canal del técnico
+      try {
+        const alertChannel = supabase.channel(`tech_alerts_${previousTechId}`);
+        alertChannel.subscribe((status) => {
+          if (status === 'SUBSCRIBED') {
+            alertChannel.send({
+              type: 'broadcast',
+              event: 'order_status_changed',
+              payload: {
+                type: 'cancelled',
+                orderId: order.id,
+                orderNumber,
+                clientName,
+                message: cancelMsg,
+              }
+            }).then(() => {
+              supabase.removeChannel(alertChannel);
+            }).catch(() => {});
+          }
+        });
+      } catch (bcErr) {
+        console.warn('Error broadcast cancel:', bcErr);
+      }
+    }
 
     // Borrar dependencias primero
     await supabase.from('checklist_items').delete().eq('work_order_id', id);

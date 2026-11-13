@@ -132,9 +132,11 @@ serve(async (req) => {
       );
     }
 
-    const workOrder = payload.record || payload.workOrder;
+    const notificationType: 'assigned' | 'unassigned' | 'cancelled' = payload.type || 'assigned';
+    const workOrder = payload.record || payload.workOrder || {};
+    const technicianId = payload.technicianId || workOrder.assigned_to;
 
-    if (!workOrder || !workOrder.assigned_to) {
+    if (!technicianId) {
       console.log("2. Orden sin técnico asignado o payload inválido. Cancelando.");
       return new Response(
         JSON.stringify({ message: "No asignado a nadie o payload inválido" }),
@@ -142,8 +144,7 @@ serve(async (req) => {
       );
     }
 
-    const technicianId = workOrder.assigned_to;
-    console.log("3. Buscando suscripciones para el técnico:", technicianId);
+    console.log(`3. Procesando notificación tipo "${notificationType}" para el técnico:`, technicianId);
 
     const { data: subscriptions, error } = await supabaseClient
       .from("push_subscriptions")
@@ -168,8 +169,8 @@ serve(async (req) => {
 
     console.log(`6. Se encontraron ${subscriptions.length} suscripciones para este técnico. Armando payload...`);
 
-    let clientName = "";
-    if (workOrder.client_id) {
+    let clientName = payload.clientName || workOrder.clientName || "";
+    if (!clientName && workOrder.client_id) {
       try {
         const { data: clientData } = await supabaseClient
           .from("clients")
@@ -184,15 +185,55 @@ serve(async (req) => {
       }
     }
 
-    const orderNumber = workOrder.order_number || "Pendiente";
-    const bodyText = clientName
-      ? `Se te asignó un trabajo para ${clientName} (Orden: ${orderNumber}). Toca aquí para ver los detalles.`
-      : `Se te asignó el trabajo ${orderNumber}. Toca aquí para revisarlo.`;
+    const orderNumber = workOrder.order_number || (workOrder.id ? workOrder.id.slice(0, 8) : "Pendiente");
+    let title = "Nueva Asignación";
+    let bodyText = "";
+    let url = `/orden/${workOrder.id || ''}`;
+
+    if (notificationType === 'unassigned') {
+      title = "Actualización Operativa";
+      bodyText = payload.customMessage || `Actualización Operativa: La orden #${orderNumber} (${clientName || 'Cliente'}) fue reasignada por administración. Ya no debes asistir a este destino.`;
+      url = "/";
+    } else if (notificationType === 'cancelled') {
+      title = "Orden Cancelada";
+      bodyText = payload.customMessage || `Orden Cancelada: La orden #${orderNumber} (${clientName || 'Cliente'}) fue dada de baja por administración.`;
+      url = "/";
+    } else {
+      title = "Nueva Asignación";
+      bodyText = payload.customMessage || (clientName
+        ? `Se te asignó un trabajo para ${clientName} (Orden: ${orderNumber}). Toca aquí para ver los detalles.`
+        : `Se te asignó el trabajo ${orderNumber}. Toca aquí para revisarlo.`);
+      url = `/orden/${workOrder.id || ''}`;
+    }
+
+    // Emitir broadcast en Realtime por si el técnico tiene la app en primer plano
+    try {
+      const alertChannel = supabaseClient.channel(`tech_alerts_${technicianId}`);
+      await alertChannel.subscribe();
+      await alertChannel.send({
+        type: 'broadcast',
+        event: 'order_status_changed',
+        payload: {
+          type: notificationType,
+          orderId: workOrder.id,
+          orderNumber,
+          clientName,
+          message: bodyText,
+        }
+      });
+      supabaseClient.removeChannel(alertChannel);
+    } catch (bErr) {
+      console.warn("No se pudo emitir broadcast realtime desde Edge Function:", bErr);
+    }
 
     const notificationPayload = JSON.stringify({
-      title: "Nueva Asignación",
+      title,
       body: bodyText,
-      url: `/orden/${workOrder.id || ''}`
+      url,
+      data: {
+        orderId: workOrder.id,
+        type: notificationType
+      }
     });
 
     // Helper: Envío individual a cada endpoint protegido con Promise.race y timeout de 5 segundos

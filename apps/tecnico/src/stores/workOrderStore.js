@@ -61,7 +61,23 @@ export const useWorkOrderStore = create((set, get) => ({
 
         if (error) throw error;
 
-        // Guardar en IndexedDB para offline
+        // Sincronizar Dexie: eliminar órdenes locales que ya no pertenezcan al técnico o hayan sido canceladas/desasignadas
+        try {
+          const currentIds = new Set(data.map((o) => o.id));
+          const cachedOrders = await db.workOrders
+            .where('assigned_to')
+            .equals(technicianId)
+            .toArray();
+
+          for (const cached of cachedOrders) {
+            if (!currentIds.has(cached.id)) {
+              await db.workOrders.delete(cached.id);
+            }
+          }
+        } catch (syncErr) {
+          console.warn('Error sincronizando eliminación en Dexie:', syncErr);
+        }
+
         await db.workOrders.bulkPut(data);
         set({ workOrders: data, isLoading: false });
       } else {
@@ -331,6 +347,34 @@ export const useWorkOrderStore = create((set, get) => ({
   /**
    * Refresca la lista desde el store actual.
    */
+  /**
+   * Elimina de inmediato una orden desasignada o cancelada de IndexedDB y del estado de Zustand.
+   * Si la orden era la activa (currentOrder), limpia el estado y desvincula el rastreo GPS.
+   */
+  removeWorkOrder: async (orderId) => {
+    try {
+      await db.workOrders.delete(orderId);
+    } catch (e) {
+      console.warn('Error eliminando orden de Dexie:', e);
+    }
+
+    const current = get().currentOrder;
+    const isCurrent = current?.id === orderId;
+
+    if (isCurrent) {
+      try {
+        nativeLocationTracker.setActiveOrderId(null);
+      } catch (e) {}
+    }
+
+    set((state) => ({
+      workOrders: state.workOrders.filter((o) => o.id !== orderId),
+      currentOrder: isCurrent ? null : current,
+    }));
+
+    return isCurrent;
+  },
+
   refreshWorkOrders: () => {
     const workOrders = get().workOrders.map((wo) => {
       // Actualizar con datos de IndexedDB si existen

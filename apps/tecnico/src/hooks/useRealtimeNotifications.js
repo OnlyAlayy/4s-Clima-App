@@ -1,7 +1,9 @@
 import { useEffect } from 'react';
 import { supabase } from '@4s-clima/shared/supabase';
 import { Capacitor } from '@capacitor/core';
+import toast from 'react-hot-toast';
 import hybridNotifications from '../services/hybridNotifications';
+import { useWorkOrderStore } from '../stores/workOrderStore';
 
 export function urlBase64ToUint8Array(base64String) {
   const padding = '='.repeat((4 - base64String.length % 4) % 4);
@@ -101,7 +103,7 @@ export function useRealtimeNotifications(profile) {
       });
     }
 
-    // Canal de Realtime exclusivo para este técnico en la tabla work_orders
+    // 1. Canal de Realtime exclusivo para este técnico en la tabla work_orders
     const channel = supabase
       .channel(`work_orders_${userId}`)
       .on(
@@ -131,7 +133,7 @@ export function useRealtimeNotifications(profile) {
           table: 'work_orders',
           filter: `assigned_to=eq.${userId}`
         },
-        (payload) => {
+        async (payload) => {
           console.log('[Realtime] Orden actualizada:', payload);
           const newOrder = payload.new;
           const oldOrder = payload.old;
@@ -147,7 +149,8 @@ export function useRealtimeNotifications(profile) {
           // Detectar cancelación
           else if (newOrder.status === 'cancelled' && (!oldOrder || oldOrder.status !== 'cancelled')) {
             title = 'Orden Cancelada';
-            body = `La orden ${newOrder.order_number || 'N/D'} fue cancelada.`;
+            body = `La orden ${newOrder.order_number || 'N/D'} fue cancelada por administración.`;
+            await useWorkOrderStore.getState().removeWorkOrder(newOrder.id);
           }
           // Detectar cambio de fecha/hora
           else if (
@@ -172,8 +175,69 @@ export function useRealtimeNotifications(profile) {
       )
       .subscribe();
 
+    // 2. Canal de Alertas Operativas Broadcast directas (Desasignación / Cancelación instantánea)
+    const alertsChannel = supabase
+      .channel(`tech_alerts_${userId}`)
+      .on(
+        'broadcast',
+        { event: 'order_status_changed' },
+        async (payload) => {
+          console.log('[tech_alerts] Alerta operativa recibida:', payload);
+          const data = payload.payload || payload;
+          const { type, orderId, orderNumber, clientName, message } = data;
+
+          if (type === 'unassigned' || type === 'cancelled') {
+            // Eliminar de inmediato la orden de Dexie y de Zustand
+            const wasCurrent = await useWorkOrderStore.getState().removeWorkOrder(orderId);
+
+            const title = type === 'cancelled' ? 'Orden Cancelada' : 'Actualización Operativa';
+            const body = message || (type === 'cancelled'
+              ? `La orden #${orderNumber || ''} fue dada de baja por administración.`
+              : `La orden #${orderNumber || ''} fue reasignada por administración. Ya no debes asistir a este destino.`);
+
+            // Notificación con sonido y vibración
+            hybridNotifications.scheduleNotification({
+              title,
+              body,
+              data: { orderId, type }
+            });
+
+            // Verificar si el técnico tenía la orden abierta en pantalla
+            const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
+            const isOnOrderPage = currentPath.includes(`/orden/${orderId}`);
+
+            if (wasCurrent || isOnOrderPage) {
+              toast.error(body, {
+                duration: 9000,
+                id: `order-revoked-${orderId}`,
+                style: {
+                  background: '#1e293b',
+                  color: '#ffffff',
+                  border: '1px solid #ef4444',
+                  padding: '16px',
+                  borderRadius: '16px',
+                  fontWeight: '600',
+                  boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.5)'
+                }
+              });
+
+              // Redirigir a la bandeja principal si estaba navegando dentro de la orden
+              if (isOnOrderPage) {
+                setTimeout(() => {
+                  window.location.replace('/');
+                }, 1800);
+              }
+            }
+
+            window.dispatchEvent(new CustomEvent('work_orders_updated'));
+          }
+        }
+      )
+      .subscribe();
+
     return () => {
       supabase.removeChannel(channel);
+      supabase.removeChannel(alertsChannel);
     };
   }, [profile]);
 }

@@ -374,14 +374,16 @@ export default function AttendancePage() {
         }
       });
 
-      const hoursSubtotal = (regHs * hourlyRateRegular) + (overHs * hourlyRateOvertime);
+      const roundedRegHs = Number(regHs.toFixed(2));
+      const roundedOverHs = Number(overHs.toFixed(2));
+      const hoursSubtotal = Math.round(((roundedRegHs * hourlyRateRegular) + (roundedOverHs * hourlyRateOvertime)) * 100) / 100;
       setPreviewHours({
-        regular: Math.round(regHs * 100) / 100,
-        overtime: Math.round(overHs * 100) / 100,
-        subtotal: Math.round(hoursSubtotal),
+        regular: roundedRegHs,
+        overtime: roundedOverHs,
+        subtotal: hoursSubtotal,
       });
 
-      // 2. Órdenes por obra / módulos completados pendientes de pago
+      // 2. Órdenes por obra / módulos completados pendientes de pago (solo con pago pactado > 0)
       const { data: ordersData } = await supabase
         .from('work_orders')
         .select(`
@@ -398,7 +400,10 @@ export default function AttendancePage() {
         .eq('status', 'completed')
         .eq('payout_status', 'pending');
 
-      setPreviewOrders(ordersData || []);
+      const validOrders = (ordersData || []).filter(
+        (o) => Number(o.technician_payout || 0) > 0
+      );
+      setPreviewOrders(validOrders);
 
       // 3. Adelantos pendientes de descuento para este técnico
       const { data: advancesData } = await supabase
@@ -433,10 +438,10 @@ export default function AttendancePage() {
   // Totales de la liquidación en preparación
   const previewTotals = useMemo(() => {
     const hoursSub = previewHours.subtotal || 0;
-    const pieceworkSub = previewOrders.reduce((acc, o) => acc + (Number(o.technician_payout) || 0), 0);
-    const advancesSub = previewAdvances.reduce((acc, a) => acc + (Number(a.amount) || 0), 0);
-    const gross = hoursSub + pieceworkSub;
-    const net = gross - advancesSub;
+    const pieceworkSub = Math.round(previewOrders.reduce((acc, o) => acc + (Number(o.technician_payout) || 0), 0) * 100) / 100;
+    const advancesSub = Math.round(previewAdvances.reduce((acc, a) => acc + (Number(a.amount) || 0), 0) * 100) / 100;
+    const gross = Math.round((hoursSub + pieceworkSub) * 100) / 100;
+    const net = Math.round((gross - advancesSub) * 100) / 100;
 
     return {
       hoursSubtotal: hoursSub,

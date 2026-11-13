@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { supabase } from '@4s-clima/shared/supabase';
-import { nativeLocationTracker } from '../services/nativeLocationTracker';
+import { nativeLocationTracker, stopLiveLocationTracking } from '../services/nativeLocationTracker';
 
 let shiftRealtimeChannel = null;
 
@@ -215,6 +215,7 @@ export const useShiftStore = create((set, get) => ({
 
       // 3. Detener tracker GPS por completo
       await nativeLocationTracker.stopTracking(true);
+      await stopLiveLocationTracking(true);
       nativeLocationTracker.setShiftActive(false);
 
       set({ activeShift: null, todayShift: data, isActionLoading: false });
