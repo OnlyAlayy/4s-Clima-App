@@ -101,11 +101,14 @@ export default function ChecklistPage() {
   // ¿El checklist ya fue sellado y enviado?
   const isSubmitted = currentOrder?.checklist_status === 'submitted';
 
-  // Forzar captura obligatoria de fotos del antes previa al formulario
+  // Forzar captura obligatoria de fotos del antes previa al formulario si nunca se registraron
   useEffect(() => {
     if (currentOrder && currentOrder.id === id && currentOrder.checklist_status !== 'submitted') {
       const hasBefore = currentOrder.photos?.some((p) => p.type === 'before');
-      if (!hasBefore) {
+      const hasVisits = (currentOrder.visits || []).some((v) => v.ended_at || v.outcome !== 'in_progress');
+      const hasProgress = currentOrder.photos?.some((p) => p.type === 'progress');
+      const isBeforeSatisfied = hasBefore || hasVisits || hasProgress;
+      if (!isBeforeSatisfied) {
         navigate(`/orden/${id}/fotos-antes`, { replace: true });
       }
     }

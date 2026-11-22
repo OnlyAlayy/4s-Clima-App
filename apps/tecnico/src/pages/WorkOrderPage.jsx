@@ -451,8 +451,14 @@ export default function WorkOrderPage() {
   );
 
   const hasBeforePhoto = wo.photos?.some((p) => p.type === 'before');
+  const hasPreviousVisits = (wo.visits || []).some((v) => v.ended_at || v.outcome !== 'in_progress');
+  const hasProgressPhotos = wo.photos?.some((p) => p.type === 'progress');
   const hasAfterPhoto = wo.photos?.some((p) => p.type === 'after');
   const isChecklistSubmitted = wo.checklist_status === 'submitted';
+
+  // Si ya tiene fotos del antes, o si tiene visitas previas/avances registrados,
+  // se considera cumplido el paso inicial del antes y no bloquea al técnico.
+  const isBeforeSatisfied = hasBeforePhoto || hasPreviousVisits || hasProgressPhotos;
 
   const handleBack = () => {
     if (window.history.state && window.history.state.idx > 0) {
@@ -979,8 +985,8 @@ export default function WorkOrderPage() {
           {/* PASO 3: En progreso (Flujo ordenado: Fotos Antes -> Checklist -> Fotos Después -> Firma) */}
           {isInProgress && (
             <div className="space-y-2.5">
-              {!hasBeforePhoto ? (
-                /* 1. Obligatorio tomar fotos de inicio o relevamiento */
+              {!isBeforeSatisfied ? (
+                /* 1. Obligatorio tomar fotos de inicio o relevamiento (solo primera visita sin fotos) */
                 <button
                   onClick={() => navigate(`/orden/${id}/fotos-antes`)}
                   className="btn-primary w-full shadow-lg shadow-brand-500/25 flex items-center justify-center gap-2 py-3.5 text-sm font-bold"
@@ -1042,6 +1048,27 @@ export default function WorkOrderPage() {
                 </div>
               )}
 
+              {/* Botón de acceso directo a Galería / Avances si el Antes ya está satisfecho */}
+              {isBeforeSatisfied && (
+                <button
+                  onClick={() => navigate(`/orden/${id}/fotos`)}
+                  className="btn-secondary w-full py-2.5 text-xs flex items-center justify-between"
+                >
+                  <div className="flex items-center gap-2 text-gray-600 dark:text-gray-300">
+                    <Camera size={16} className="text-brand-500" />
+                    <span>
+                      Fotos y Avances de la Orden
+                      {hasBeforePhoto && (
+                        <span className="ml-1.5 text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 rounded border border-emerald-200 dark:border-emerald-800">
+                          Antes ya registrado
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                  <ChevronRight size={16} className="text-gray-400" />
+                </button>
+              )}
+
               {/* Botón secundario para materiales y repuestos */}
               <button
                 onClick={() => navigate(`/orden/${id}/extras`)}
@@ -1054,23 +1081,33 @@ export default function WorkOrderPage() {
                 <ChevronRight size={16} className="text-gray-400" />
               </button>
 
-              {/* Botones de gestión operativa de jornada: Avance Parcial y Pausar Orden */}
+              {/* Botones de gestión operativa de jornada: Avance Parcial y Pausar por Impedimento */}
               <div className="grid grid-cols-2 gap-2 pt-1">
                 <button
                   type="button"
                   onClick={() => setIsPartialModalOpen(true)}
-                  className="py-2.5 px-3 rounded-xl border border-blue-200 dark:border-blue-900/60 bg-blue-50/80 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 text-xs font-semibold hover:bg-blue-100 dark:hover:bg-blue-900/50 flex items-center justify-center gap-1.5 transition-colors shadow-xs active:scale-95"
+                  className="py-2.5 px-3 rounded-xl border border-blue-200 dark:border-blue-900/60 bg-blue-50/90 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 text-xs hover:bg-blue-100 dark:hover:bg-blue-900/50 flex flex-col items-center justify-center gap-0.5 transition-all shadow-xs active:scale-95 text-center"
                 >
-                  <Clock size={14} className="shrink-0" />
-                  <span>Avance Parcial</span>
+                  <div className="flex items-center gap-1.5 font-bold">
+                    <Clock size={14} className="text-blue-600 dark:text-blue-400" />
+                    <span>Registrar Avance</span>
+                  </div>
+                  <span className="text-[10px] text-blue-600/80 dark:text-blue-400/80 font-normal">
+                    Seguir mañana / otro día
+                  </span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setIsHoldModalOpen(true)}
-                  className="py-2.5 px-3 rounded-xl border border-orange-200 dark:border-orange-900/60 bg-orange-50/80 dark:bg-orange-950/40 text-orange-700 dark:text-orange-300 text-xs font-semibold hover:bg-orange-100 dark:hover:bg-orange-900/50 flex items-center justify-center gap-1.5 transition-colors shadow-xs active:scale-95"
+                  className="py-2.5 px-3 rounded-xl border border-orange-200 dark:border-orange-900/60 bg-orange-50/90 dark:bg-orange-950/40 text-orange-700 dark:text-orange-300 text-xs hover:bg-orange-100 dark:hover:bg-orange-900/50 flex flex-col items-center justify-center gap-0.5 transition-all shadow-xs active:scale-95 text-center"
                 >
-                  <PauseCircle size={14} className="shrink-0" />
-                  <span>Pausar Orden</span>
+                  <div className="flex items-center gap-1.5 font-bold">
+                    <PauseCircle size={14} className="text-orange-600 dark:text-orange-400" />
+                    <span>Pausar Orden</span>
+                  </div>
+                  <span className="text-[10px] text-orange-600/80 dark:text-orange-400/80 font-normal">
+                    Por impedimento o falta
+                  </span>
                 </button>
               </div>
             </div>
@@ -1138,7 +1175,7 @@ export default function WorkOrderPage() {
         </div>
       </div>
 
-      {/* MODAL: Registrar Avance Parcial (Fin de Jornada en Obras Largas) */}
+      {/* MODAL: Registrar Avance (Seguir otro día / Fin de Jornada) */}
       {isPartialModalOpen && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
           <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl p-5 shadow-2xl border border-gray-100 dark:border-slate-800 space-y-4 max-h-[92vh] overflow-y-auto">
@@ -1147,9 +1184,14 @@ export default function WorkOrderPage() {
                 <div className="w-8 h-8 rounded-xl bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 flex items-center justify-center">
                   <Clock size={18} />
                 </div>
-                <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                  Registrar Avance Parcial
-                </h3>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                    Registrar Avance / Seguir Mañana
+                  </h3>
+                  <p className="text-[11px] text-blue-600 dark:text-blue-400 font-medium">
+                    Cierre normal de jornada sin impedimentos
+                  </p>
+                </div>
               </div>
               <button
                 onClick={() => setIsPartialModalOpen(false)}
@@ -1170,18 +1212,18 @@ export default function WorkOrderPage() {
             )}
 
             <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">
-              Utilizá esta opción al finalizar tu jornada o cuando debas retirarte de la obra sin cerrarla definitivamente. Tu avance quedará registrado en la bitácora para que vos u otro técnico continúen mañana.
+              Utilizá esta opción al finalizar tu jornada o cuando debas retirarte de la obra sin cerrarla definitivamente. Tu avance quedará registrado en la bitácora para que continúes mañana o continúe otro técnico.
             </p>
 
             <form onSubmit={handleRegisterPartialAdvance} className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5 uppercase tracking-wide">
-                  Detalle del Avance Realizado *
+                  Resumen del Avance Realizado Hoy *
                 </label>
                 <textarea
                   value={partialNotes}
                   onChange={(e) => setPartialNotes(e.target.value)}
-                  placeholder="Ej: Se instalaron 15 mts de cañería en piso 2, presurizado con nitrógeno en 250 PSI. Queda pendiente conexionado eléctrico..."
+                  placeholder="Ej: Se instalaron 15 mts de cañería en piso 2, presurizado con nitrógeno en 250 PSI. Mañana se continúa con conexionado eléctrico..."
                   rows={3}
                   required
                   className="w-full rounded-2xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/60 p-3 text-xs text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-brand-500"
@@ -1193,7 +1235,7 @@ export default function WorkOrderPage() {
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-bold text-gray-800 dark:text-gray-200 uppercase tracking-wide flex items-center gap-1.5">
                     <Camera size={14} className="text-blue-500" />
-                    Fotos del Avance ({partialPhotos.length})
+                    Fotos del Avance de Hoy ({partialPhotos.length})
                   </label>
                   <button
                     type="button"
@@ -1268,7 +1310,7 @@ export default function WorkOrderPage() {
                   disabled={isSubmittingPartial || !partialNotes.trim()}
                   className="flex-1 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-colors disabled:opacity-50 shadow-md shadow-blue-500/20"
                 >
-                  {isSubmittingPartial ? 'Guardando...' : 'Cerrar Jornada (Parcial)'}
+                  {isSubmittingPartial ? 'Guardando...' : 'Guardar Avance / Seguir Mañana'}
                 </button>
               </div>
             </form>
@@ -1276,7 +1318,7 @@ export default function WorkOrderPage() {
         </div>
       )}
 
-      {/* MODAL: Reportar Impedimento / Pausar Orden */}
+      {/* MODAL: Pausar por Impedimento Operativo */}
       {isHoldModalOpen && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
           <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl p-5 shadow-2xl border border-gray-100 dark:border-slate-800 space-y-4 max-h-[92vh] overflow-y-auto">
@@ -1285,9 +1327,14 @@ export default function WorkOrderPage() {
                 <div className="w-8 h-8 rounded-xl bg-orange-100 dark:bg-orange-900/40 text-orange-600 dark:text-orange-400 flex items-center justify-center">
                   <PauseCircle size={18} />
                 </div>
-                <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                  Reportar Impedimento / Pausa
-                </h3>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                    Pausar por Impedimento
+                  </h3>
+                  <p className="text-[11px] text-orange-600 dark:text-orange-400 font-medium">
+                    Bloqueo operativo o motivo de fuerza mayor
+                  </p>
+                </div>
               </div>
               <button
                 onClick={() => setIsHoldModalOpen(false)}
@@ -1302,19 +1349,19 @@ export default function WorkOrderPage() {
               <div className="p-3 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 flex items-start gap-2.5 text-xs text-amber-950 dark:text-amber-200">
                 <Camera size={16} className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
                 <p>
-                  <strong>Atención Obra:</strong> Se recomienda registrar fotos de la situación o motivo de la pausa para que administración y el cliente vean el estado actual.
+                  <strong>Atención Obra:</strong> Se recomienda registrar fotos de la traba o motivo del impedimento para respaldar el informe.
                 </p>
               </div>
             )}
 
             <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">
-              Si no podés continuar por falta de repuestos, cliente ausente, fallo técnico u otro imprevisto, pausá la orden. Esto alertará de inmediato a Administración para gestionar una solución o relevo.
+              Utilizá esta opción <strong>únicamente</strong> si el trabajo se frena por una traba real (falta de repuestos, cliente ausente, fallo técnico imprevisto, corte eléctrico, etc.). Esto alertará de inmediato a Administración para gestionar una solución o relevo.
             </p>
 
             <form onSubmit={handlePauseWorkOrder} className="space-y-3.5">
               <div>
                 <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5 uppercase tracking-wide">
-                  Motivo Principal *
+                  Motivo Principal del Bloqueo *
                 </label>
                 <select
                   value={selectedHoldReason}
@@ -1331,12 +1378,12 @@ export default function WorkOrderPage() {
 
               <div>
                 <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5 uppercase tracking-wide">
-                  Explicación Técnica / Motivo Detallado *
+                  Explicación Detallada del Bloqueo *
                 </label>
                 <textarea
                   value={holdNotesInput}
                   onChange={(e) => setHoldNotesInput(e.target.value)}
-                  placeholder="Detallá claramente qué ocurrió (ej: Se requiere contactor de 24V y relay térmico que no estaban en inventario...)"
+                  placeholder="Detallá claramente qué ocurrió (ej: Se requiere contactor trifásico de 24V y relay térmico que no están disponibles en la obra...)"
                   rows={3}
                   required
                   className="w-full rounded-2xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/60 p-3 text-xs text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-brand-500"
@@ -1348,7 +1395,7 @@ export default function WorkOrderPage() {
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-bold text-gray-800 dark:text-gray-200 uppercase tracking-wide flex items-center gap-1.5">
                     <Camera size={14} className="text-orange-500" />
-                    Fotos del Impedimento / Avance ({holdPhotos.length})
+                    Fotos de Evidencia del Impedimento ({holdPhotos.length})
                   </label>
                   <button
                     type="button"
@@ -1423,7 +1470,7 @@ export default function WorkOrderPage() {
                   disabled={isSubmittingHold || !holdNotesInput.trim()}
                   className="flex-1 py-3 rounded-xl bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold transition-colors disabled:opacity-50 shadow-md shadow-orange-500/20"
                 >
-                  {isSubmittingHold ? 'Pausando...' : 'Pausar Orden'}
+                  {isSubmittingHold ? 'Pausando...' : 'Pausar por Impedimento'}
                 </button>
               </div>
             </form>

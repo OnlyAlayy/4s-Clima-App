@@ -6,6 +6,7 @@ import { Camera as CapCamera, CameraResultType, CameraSource } from '@capacitor/
 import imageCompression from 'browser-image-compression';
 import { supabase } from '@4s-clima/shared/supabase';
 import { useWorkOrderStore } from '../stores/workOrderStore';
+import { useAuthStore } from '../stores/authStore';
 import { db } from '../services/offlineDb';
 import toast from 'react-hot-toast';
 
@@ -22,7 +23,8 @@ const QUICK_TAGS = [
 
 /**
  * Página de Evidencia Fotográfica con soporte Multi-Foto,
- * etiquetas por equipo/sector y flujo inteligente para Relevamiento/Diagnóstico.
+ * etiquetas por equipo/sector, progresión por pestañas (Antes, Avance, Después)
+ * y flujo inteligente para Obras y Relevamiento/Diagnóstico.
  */
 export default function PhotosPage({ step: propStep }) {
   const { id } = useParams();
@@ -30,14 +32,19 @@ export default function PhotosPage({ step: propStep }) {
   const location = useLocation();
   const { currentOrder, fetchWorkOrder } = useWorkOrderStore();
 
-  const step = propStep || (location.pathname.includes('fotos-antes') ? 'before' : 'after');
+  const step = propStep || (location.pathname.includes('fotos-antes') ? 'before' : location.pathname.includes('fotos-despues') ? 'after' : null);
   const isBefore = step === 'before';
 
   // Colecciones de fotos dinámicas (1 a N fotos por tipo)
   const [beforePhotos, setBeforePhotos] = useState([]);
+  const [progressPhotos, setProgressPhotos] = useState([]);
   const [afterPhotos, setAfterPhotos] = useState([]);
   const [issuePhotos, setIssuePhotos] = useState([]);
   const [deletedPhotoIds, setDeletedPhotoIds] = useState([]);
+
+  // Pestaña activa ('progress' | 'before' | 'after')
+  const [activeTab, setActiveTab] = useState(isBefore ? 'before' : step === 'after' ? 'after' : 'progress');
+  const [hasInitializedTab, setHasInitializedTab] = useState(false);
 
   // Modo Solo Relevamiento / Diagnóstico
   const [isSurveyOnly, setIsSurveyOnly] = useState(false);
@@ -66,6 +73,7 @@ export default function PhotosPage({ step: propStep }) {
 
     if (currentOrder.photos && currentOrder.photos.length > 0) {
       const bList = [];
+      const pList = [];
       const aList = [];
       const iList = [];
 
@@ -77,22 +85,47 @@ export default function PhotosPage({ step: propStep }) {
           originalCaption: p.caption || p.notes || '',
           type: p.type,
           isExisting: true,
+          created_at: p.created_at,
         };
         if (p.type === 'before') bList.push(item);
+        else if (p.type === 'progress') pList.push(item);
         else if (p.type === 'after') aList.push(item);
         else if (p.type === 'issue') iList.push(item);
       });
 
       setBeforePhotos(bList);
+      setProgressPhotos(pList);
       setAfterPhotos(aList);
       setIssuePhotos(iList);
+
+      // Si aún no se inicializó la pestaña activa:
+      if (!hasInitializedTab) {
+        if (step === 'after') {
+          setActiveTab('after');
+        } else if (bList.length > 0) {
+          // Si ya existen fotos de before, seleccionar por defecto 'progress' (Avance)
+          setActiveTab('progress');
+        } else {
+          setActiveTab('before');
+        }
+        setHasInitializedTab(true);
+      }
+    } else if (!hasInitializedTab) {
+      if (step === 'after') {
+        setActiveTab('after');
+      } else {
+        setActiveTab('before');
+      }
+      setHasInitializedTab(true);
     }
-  }, [currentOrder]);
+  }, [currentOrder, hasInitializedTab, step]);
 
   // Agregar una o más fotos capturadas
   const handleAddPhotos = (type, newItems) => {
     if (type === 'before') {
       setBeforePhotos((prev) => [...prev, ...newItems]);
+    } else if (type === 'progress') {
+      setProgressPhotos((prev) => [...prev, ...newItems]);
     } else if (type === 'after') {
       setAfterPhotos((prev) => [...prev, ...newItems]);
     } else if (type === 'issue') {
@@ -106,6 +139,7 @@ export default function PhotosPage({ step: propStep }) {
       prev.map((item) => (item.id === photoId ? { ...item, caption: newCaption } : item));
 
     if (type === 'before') setBeforePhotos(updateList);
+    else if (type === 'progress') setProgressPhotos(updateList);
     else if (type === 'after') setAfterPhotos(updateList);
     else if (type === 'issue') setIssuePhotos(updateList);
   };
@@ -120,6 +154,7 @@ export default function PhotosPage({ step: propStep }) {
       );
 
     if (type === 'before') setBeforePhotos(updateList);
+    else if (type === 'progress') setProgressPhotos(updateList);
     else if (type === 'after') setAfterPhotos(updateList);
     else if (type === 'issue') setIssuePhotos(updateList);
   };
@@ -138,23 +173,28 @@ export default function PhotosPage({ step: propStep }) {
     };
 
     if (type === 'before') setBeforePhotos(removeAndClean);
+    else if (type === 'progress') setProgressPhotos(removeAndClean);
     else if (type === 'after') setAfterPhotos(removeAndClean);
     else if (type === 'issue') setIssuePhotos(removeAndClean);
   };
 
   // Validación:
-  // - En 'before': Mínimo 1 foto obligatoria.
-  // - En 'after': Si es solo relevamiento/diagnóstico, foto del después es OPCIONAL (canContinue = true).
-  //               Si es mantenimiento o instalación, al menos 1 foto del después es obligatoria.
+  // - Si ya existen fotos del antes (de esta u otra jornada), el Antes está cumplido.
+  // - En 'before': Si ya hay fotos previas o cargó al menos 1 de Antes o Avance, puede continuar.
+  // - En 'after': Si es solo relevamiento/diagnóstico, foto del después es opcional.
+  const hasExistingBefore = beforePhotos.some((p) => p.isExisting) || (currentOrder?.photos?.some((p) => p.type === 'before') ?? false);
   const hasBefore = beforePhotos.length > 0;
+  const hasProgress = progressPhotos.length > 0;
   const hasAfter = afterPhotos.length > 0;
-  const canContinue = isBefore ? hasBefore : isSurveyOnly || hasAfter;
+  const canContinue = isBefore
+    ? (hasExistingBefore || hasBefore || hasProgress)
+    : (isSurveyOnly || hasAfter || hasProgress || hasExistingBefore);
 
   const handleSaveAndContinue = async () => {
     if (!canContinue) {
       toast.error(
         isBefore
-          ? 'Es obligatorio cargar al menos 1 foto del estado inicial / relevamiento.'
+          ? 'Es obligatorio cargar al menos 1 foto del estado inicial o avance.'
           : 'Es obligatorio cargar al menos 1 foto del resultado final del trabajo.'
       );
       return;
@@ -172,13 +212,21 @@ export default function PhotosPage({ step: propStep }) {
         }
       }
 
-      // 2. Determinar fotos nuevas a subir en este paso
-      const photosToUpload = isBefore
-        ? beforePhotos.filter((p) => !p.isExisting && p.file)
-        : [
-            ...afterPhotos.filter((p) => !p.isExisting && p.file),
-            ...issuePhotos.filter((p) => !p.isExisting && p.file),
-          ];
+      // 2. Determinar fotos nuevas a subir en todas las categorías
+      const photosToUpload = [
+        ...beforePhotos.filter((p) => !p.isExisting && p.file),
+        ...progressPhotos.filter((p) => !p.isExisting && p.file),
+        ...afterPhotos.filter((p) => !p.isExisting && p.file),
+        ...issuePhotos.filter((p) => !p.isExisting && p.file),
+      ];
+
+      let activeVisitId = null;
+      if (currentOrder?.visits && currentOrder.visits.length > 0) {
+        const activeV = currentOrder.visits.find((v) => v.outcome === 'in_progress');
+        activeVisitId = activeV?.id || null;
+      }
+      const user = useAuthStore.getState().user;
+      const currentUserId = user?.id || null;
 
       const recordsToInsert = [];
 
@@ -210,6 +258,8 @@ export default function PhotosPage({ step: propStep }) {
             photo_url: publicUrl,
             caption: item.caption?.trim() || null,
             notes: item.caption?.trim() || null,
+            created_by: currentUserId,
+            visit_id: activeVisitId,
           });
         } else {
           // Guardado local en IndexedDB para modo offline
@@ -238,6 +288,8 @@ export default function PhotosPage({ step: propStep }) {
             recordId: tempId,
             data: {
               work_order_id: id,
+              visit_id: activeVisitId,
+              created_by: currentUserId,
               type: item.type,
               photo_blob: base64.split(',')[1],
               content_type: item.file.type || 'image/jpeg',
@@ -254,30 +306,26 @@ export default function PhotosPage({ step: propStep }) {
         const { error: insertError } = await supabase.from('photos').insert(recordsToInsert);
 
         if (insertError) {
-          // Si falló por columna desconocida (ej. caption o notes aún no migradas), reintentar con esquema base
-          if (
-            insertError.code === '42703' ||
-            insertError.message?.includes('column') ||
-            insertError.message?.includes('caption')
-          ) {
-            console.warn('Reintentando inserción sin columna caption/notes...');
-            const fallbackList = recordsToInsert.map((r) => ({
-              work_order_id: r.work_order_id,
-              type: r.type,
-              url: r.url,
-            }));
-            const { error: retryError } = await supabase.from('photos').insert(fallbackList);
-            if (retryError) throw retryError;
-          } else {
-            throw insertError;
-          }
+          console.warn('Reintentando inserción con campos base:', insertError.message);
+          const fallbackList = recordsToInsert.map((r) => ({
+            work_order_id: r.work_order_id,
+            type: r.type,
+            url: r.url,
+            photo_url: r.url,
+            caption: r.caption,
+          }));
+          const { error: retryError } = await supabase.from('photos').insert(fallbackList);
+          if (retryError) throw retryError;
         }
       }
 
       // 4. Actualizar caption de fotos existentes que hayan cambiado de texto
-      const existingToUpdate = (
-        isBefore ? beforePhotos : [...afterPhotos, ...issuePhotos]
-      ).filter((p) => p.isExisting && p.caption !== p.originalCaption);
+      const existingToUpdate = [
+        ...beforePhotos,
+        ...progressPhotos,
+        ...afterPhotos,
+        ...issuePhotos,
+      ].filter((p) => p.isExisting && p.caption !== p.originalCaption);
 
       if (navigator.onLine && existingToUpdate.length > 0) {
         for (const p of existingToUpdate) {
@@ -296,7 +344,7 @@ export default function PhotosPage({ step: propStep }) {
       }
 
       // 5. Si estamos en el paso posterior y se activó "Solo relevamiento", actualizar la orden
-      if (!isBefore) {
+      if (activeTab === 'after' || step === 'after') {
         if (navigator.onLine) {
           try {
             await supabase
@@ -329,27 +377,30 @@ export default function PhotosPage({ step: propStep }) {
         });
       }
 
-      toast.success(
-        isBefore
-          ? 'Fotos del estado inicial guardadas'
-          : isSurveyOnly && afterPhotos.length === 0
-          ? 'Relevamiento registrado'
-          : 'Fotos del trabajo guardadas'
-      );
+      const totalNew = recordsToInsert.length;
+      if (totalNew > 0) {
+        toast.success(`${totalNew} ${totalNew === 1 ? 'foto guardada' : 'fotos guardadas'}`);
+      } else {
+        toast.success('Cambios guardados');
+      }
 
       // 7. Navegar al siguiente paso
       if (isBefore) {
         navigate(`/orden/${id}/checklist`);
-      } else {
+      } else if (step === 'after') {
         navigate(`/orden/${id}/firma`);
+      } else {
+        navigate(`/orden/${id}`);
       }
     } catch (err) {
       console.error('Error guardando evidencia fotográfica:', err);
       toast.error('Error al subir las fotos. Se continuará con copia local.');
       if (isBefore) {
         navigate(`/orden/${id}/checklist`);
-      } else {
+      } else if (step === 'after') {
         navigate(`/orden/${id}/firma`);
+      } else {
+        navigate(`/orden/${id}`);
       }
     } finally {
       setIsSaving(false);
@@ -363,6 +414,13 @@ export default function PhotosPage({ step: propStep }) {
       navigate(`/orden/${id}`, { replace: true });
     }
   };
+
+  const hasNewPhotos = [
+    ...beforePhotos,
+    ...progressPhotos,
+    ...afterPhotos,
+    ...issuePhotos,
+  ].some((p) => !p.isExisting && p.file);
 
   return (
     <div className="page-container pb-32">
@@ -378,25 +436,120 @@ export default function PhotosPage({ step: propStep }) {
           </button>
           <div className="flex-1 min-w-0">
             <h1 className="text-lg font-bold text-slate-900 dark:text-white truncate">
-              {isBefore ? 'Fotos del Antes / Relevamiento' : 'Fotos del Después'}
+              Evidencia Fotográfica
             </h1>
             <p className="text-xs text-gray-500 dark:text-gray-400">
               {isBefore
-                ? 'Paso 1: Registrá el estado inicial del lugar o de los equipos'
-                : 'Paso 3: Registrá el resultado del servicio realizado'}
+                ? 'Paso 1: Estado inicial y avances de la jornada'
+                : step === 'after'
+                ? 'Paso 3: Cierre final del trabajo realizado'
+                : 'Registro y bitácora fotográfica de la orden'}
             </p>
           </div>
         </div>
       </div>
 
-      <div className="space-y-5 animate-slide-up">
-        {isBefore ? (
-          /* PASO 1 (ANTES): Múltiples fotos del estado inicial o relevamiento */
+      <div className="space-y-4 animate-slide-up">
+        {/* Selector de Categorías / Pestañas */}
+        <div className="flex bg-gray-100 dark:bg-slate-800/90 p-1 rounded-2xl gap-1 shadow-inner">
+          {/* Pestaña Avance (Seleccionada por defecto si Antes ya existe) */}
+          <button
+            type="button"
+            onClick={() => setActiveTab('progress')}
+            className={`flex-1 py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+              activeTab === 'progress'
+                ? 'bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-sm'
+                : 'text-gray-600 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            <span>Avance</span>
+            {progressPhotos.length > 0 && (
+              <span className="text-[10px] px-1.5 py-0.2 bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 rounded-full font-mono font-bold">
+                {progressPhotos.length}
+              </span>
+            )}
+          </button>
+
+          {/* Pestaña Antes (Con indicador visual sutil si ya está registrado) */}
+          <button
+            type="button"
+            onClick={() => setActiveTab('before')}
+            className={`flex-1 py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+              activeTab === 'before'
+                ? 'bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-sm'
+                : 'text-gray-600 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            <span>Antes</span>
+            {hasExistingBefore ? (
+              <span className="text-[10px] px-1.5 py-0.2 bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 rounded-full font-bold flex items-center gap-0.5">
+                <Check size={10} /> {beforePhotos.length}
+              </span>
+            ) : beforePhotos.length > 0 ? (
+              <span className="text-[10px] px-1.5 py-0.2 bg-gray-200 dark:bg-slate-700 text-gray-700 dark:text-gray-300 rounded-full font-mono font-bold">
+                {beforePhotos.length}
+              </span>
+            ) : null}
+          </button>
+
+          {/* Pestaña Después (Para cierre final) */}
+          <button
+            type="button"
+            onClick={() => setActiveTab('after')}
+            className={`flex-1 py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+              activeTab === 'after'
+                ? 'bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-sm'
+                : 'text-gray-600 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            <span>Después</span>
+            {afterPhotos.length > 0 && (
+              <span className="text-[10px] px-1.5 py-0.2 bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 rounded-full font-mono font-bold">
+                {afterPhotos.length}
+              </span>
+            )}
+          </button>
+        </div>
+
+        {/* Indicador visual sutil si "Antes" ya está registrado */}
+        {hasExistingBefore && activeTab !== 'after' && (
+          <div className="flex items-center gap-2 p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 text-xs text-emerald-900 dark:text-emerald-200">
+            <Check size={14} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <span className="font-bold">Antes ya registrado:</span>{' '}
+              <span className="text-emerald-800 dark:text-emerald-300">
+                Hay {beforePhotos.length} {beforePhotos.length === 1 ? 'foto del estado inicial' : 'fotos del estado inicial'} de visitas anteriores. Podés registrar el avance del día directamente.
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* CONTENIDO DE PESTAÑAS */}
+        {activeTab === 'progress' && (
+          <PhotoSection
+            title="Fotos del Avance de la Jornada"
+            badgeText={progressPhotos.length > 0 ? `${progressPhotos.length} fotos` : 'Bitácora'}
+            badgeType="optional"
+            description="Registrá los progresos realizados hoy en la obra (cañerías, cableados, fijaciones, etc.) para la bitácora."
+            type="progress"
+            photos={progressPhotos}
+            onAddPhotos={handleAddPhotos}
+            onUpdateCaption={handleUpdateCaption}
+            onReplacePhoto={handleReplacePhoto}
+            onRemovePhoto={handleRemovePhoto}
+          />
+        )}
+
+        {activeTab === 'before' && (
           <PhotoSection
             title="Fotos del Estado Inicial / Relevamiento"
-            badgeText="Mínimo 1 foto requerida"
-            badgeType="required"
-            description="Fotografiá el lugar, ubicación general, equipos a intervenir, placas, estado de filtros y conexiones."
+            badgeText={hasExistingBefore ? 'Antes ya registrado' : 'Mínimo 1 foto requerida'}
+            badgeType={hasExistingBefore ? 'optional' : 'required'}
+            description={
+              hasExistingBefore
+                ? 'El estado inicial ya fue registrado en jornadas previas. Podés consultar las fotos existentes o agregar tomas adicionales.'
+                : 'Fotografiá el lugar, ubicación general, equipos a intervenir, placas, estado de filtros y conexiones.'
+            }
             type="before"
             photos={beforePhotos}
             onAddPhotos={handleAddPhotos}
@@ -404,8 +557,9 @@ export default function PhotosPage({ step: propStep }) {
             onReplacePhoto={handleReplacePhoto}
             onRemovePhoto={handleRemovePhoto}
           />
-        ) : (
-          /* PASO 3 (DESPUÉS): Modo Relevamiento opcional + Múltiples fotos del después + fotos extra */
+        )}
+
+        {activeTab === 'after' && (
           <>
             {/* Toggle de Solo Relevamiento / Diagnóstico */}
             <div className="card p-4 border border-brand-200 dark:border-brand-900/40 bg-gradient-to-br from-brand-50/50 via-white to-white dark:from-slate-900 dark:via-slate-900 dark:to-slate-850 shadow-sm">
@@ -483,10 +637,18 @@ export default function PhotosPage({ step: propStep }) {
               <>
                 <span>
                   {isBefore
-                    ? 'Guardar y Continuar al Checklist'
-                    : isSurveyOnly && afterPhotos.length === 0
-                    ? 'Continuar a Firma (Relevamiento)'
-                    : 'Guardar y Continuar a Firma'}
+                    ? hasNewPhotos
+                      ? 'Guardar Fotos y Continuar al Checklist'
+                      : 'Continuar al Checklist'
+                    : step === 'after'
+                    ? isSurveyOnly && afterPhotos.length === 0
+                      ? 'Continuar a Firma (Relevamiento)'
+                      : hasNewPhotos
+                      ? 'Guardar Fotos y Continuar a Firma'
+                      : 'Continuar a Firma'
+                    : hasNewPhotos
+                    ? 'Guardar Fotos'
+                    : 'Volver a la Orden'}
                 </span>
                 <ChevronRight size={18} />
               </>
