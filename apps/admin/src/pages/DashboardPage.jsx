@@ -8,8 +8,8 @@ import {
   ArrowUpRight, ArrowDownRight, Activity, Wrench
 } from 'lucide-react';
 import {
-  ResponsiveContainer, BarChart, Bar, Line, XAxis, YAxis,
-  CartesianGrid, Tooltip, Legend, ComposedChart
+  ResponsiveContainer, BarChart, Bar, XAxis, YAxis,
+  CartesianGrid, Tooltip, Legend
 } from 'recharts';
 import { supabase } from '@4s-clima/shared/supabase';
 import {
@@ -351,7 +351,7 @@ export default function DashboardPage() {
             Dashboard Ejecutivo
           </h1>
           <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-            Operaciones y Finanzas en Vivo — {formatDate(new Date())} (UTC-3)
+            Operaciones y Finanzas en Vivo
           </p>
         </div>
 
@@ -359,13 +359,13 @@ export default function DashboardPage() {
         <div className="flex items-center gap-2">
           <Link
             to="/asistencia"
-            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gray-50 dark:bg-slate-850 hover:bg-gray-100 dark:hover:bg-slate-800 border border-gray-200 dark:border-slate-800 transition-all text-xs font-semibold text-gray-700 dark:text-gray-300 shadow-2xs"
+            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 border border-gray-200 dark:border-slate-700 transition-all text-xs font-semibold text-gray-700 dark:text-gray-200 shadow-2xs"
           >
             <span className="relative flex h-2 w-2">
               {alerts.activeShiftsCount > 0 && (
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
               )}
-              <span className={`relative inline-flex rounded-full h-2 w-2 ${alerts.activeShiftsCount > 0 ? 'bg-emerald-500' : 'bg-gray-400'}`} />
+              <span className={`relative inline-flex rounded-full h-2 w-2 ${alerts.activeShiftsCount > 0 ? 'bg-emerald-500' : 'bg-gray-400 dark:bg-gray-500'}`} />
             </span>
             <span>
               {alerts.activeShiftsCount === 1
@@ -603,7 +603,7 @@ export default function DashboardPage() {
 
           <div className="flex-1 overflow-x-auto">
             {todayOrders.length === 0 ? (
-              <div className="h-full min-h-[220px] flex flex-col items-center justify-center p-6 text-center bg-gray-50/50 dark:bg-slate-850/50 rounded-xl border border-dashed border-gray-200 dark:border-slate-800">
+              <div className="h-full min-h-[220px] flex flex-col items-center justify-center p-6 text-center bg-gray-50/50 dark:bg-slate-800/40 rounded-xl border border-dashed border-gray-200 dark:border-slate-700">
                 <Clock size={32} className="text-gray-400 mb-2" />
                 <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">
                   No hay órdenes programadas para la fecha de hoy
@@ -712,7 +712,7 @@ export default function DashboardPage() {
 
           <div className="flex-1 min-h-[240px] pt-2">
             <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={financialChartData} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
+              <BarChart data={financialChartData} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
                 <CartesianGrid
                   strokeDasharray="3 3"
                   vertical={false}
@@ -779,15 +779,7 @@ export default function DashboardPage() {
                   radius={[4, 4, 0, 0]}
                   maxBarSize={28}
                 />
-                <Line
-                  type="monotone"
-                  dataKey="margen"
-                  name="Margen Neto"
-                  stroke="#10b981"
-                  strokeWidth={2.5}
-                  dot={{ r: 3, fill: '#10b981' }}
-                />
-              </ComposedChart>
+              </BarChart>
             </ResponsiveContainer>
           </div>
         </div>
