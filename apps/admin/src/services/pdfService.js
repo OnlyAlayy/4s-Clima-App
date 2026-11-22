@@ -1243,33 +1243,34 @@ export const generateQuotePDF = async (quote) => {
   doc.setTextColor(30, 41, 59);
   doc.setFontSize(8.5);
 
-  // Helper de impresión segura de campos (evita solapamiento de coordenadas)
-  const printSafeField = (label, value, labelX, defaultValX, y, maxValW) => {
+  // Helper de impresión continua (etiqueta bold + valor normal con espaciado natural)
+  const printInlineField = (label, value, x, y, maxW) => {
     doc.setFont('helvetica', 'bold');
-    doc.text(label, labelX, y);
+    doc.text(label, x, y);
     const labelW = doc.getTextWidth(label);
-    const valX = Math.max(defaultValX, labelX + labelW + 3);
+    const valX = x + labelW + 1.8; // Espaciado natural estándar tras los dos puntos
     doc.setFont('helvetica', 'normal');
     const safeVal = String(value || '-');
-    const availW = Math.max(20, maxValW - (valX - defaultValX));
+    const availW = Math.max(15, maxW - labelW - 2);
     const lines = doc.splitTextToSize(safeVal, availW);
     doc.text(lines[0] || '-', valX, y);
   };
 
   // Columna Izquierda: Cliente
-  printSafeField('CLIENTE / EMPRESA:', quote.client_name || 'Cliente Particular', 18, 54, 47, 46);
-  printSafeField('TELÉFONO:', quote.client_phone || '-', 18, 54, 54, 46);
-  printSafeField('CORREO:', quote.client_email || '-', 18, 54, 61, 46);
+  const leftX = 18;
+  const leftMaxW = (pageWidth / 2) - leftX - 4;
+  printInlineField('CLIENTE / EMPRESA:', quote.client_name || 'Cliente Particular', leftX, 47, leftMaxW);
+  printInlineField('TELÉFONO:', quote.client_phone || '-', leftX, 54, leftMaxW);
+  printInlineField('CORREO:', quote.client_email || '-', leftX, 61, leftMaxW);
 
   // Columna Derecha: Obra / Servicio
-  const rightLabelX = pageWidth / 2 + 10;
-  const rightValX = pageWidth / 2 + 45;
-  const rightMaxW = (pageWidth / 2) - 48;
+  const rightX = pageWidth / 2 + 5;
+  const rightMaxW = pageWidth - 14 - rightX - 4;
 
   const typeLabel = WORK_ORDER_TYPE_LABELS[quote.work_order_type] || quote.work_order_type || 'Mantenimiento';
-  printSafeField('TIPO DE TRABAJO:', typeLabel, rightLabelX, rightValX, 47, rightMaxW);
-  printSafeField('VALIDEZ COMERCIAL:', quote.valid_until ? formatDate(quote.valid_until) : '15 días corridos', rightLabelX, rightValX, 54, rightMaxW);
-  printSafeField('TÍTULO / ASUNTO:', quote.title || 'Servicio de Climatización', rightLabelX, rightValX, 61, rightMaxW);
+  printInlineField('TIPO DE TRABAJO:', typeLabel, rightX, 47, rightMaxW);
+  printInlineField('VALIDEZ COMERCIAL:', quote.valid_until ? formatDate(quote.valid_until) : '15 días corridos', rightX, 54, rightMaxW);
+  printInlineField('TÍTULO / ASUNTO:', quote.title || 'Servicio de Climatización', rightX, 61, rightMaxW);
 
   let currentY = 74;
 
