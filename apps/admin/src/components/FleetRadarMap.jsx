@@ -16,6 +16,7 @@ import {
   evaluateSchedulePunctuality,
   isNearDestination,
   generateWhatsAppTrackingUrl,
+  getArgentinaDate,
 } from '@4s-clima/shared';
 import { WORK_ORDER_STATUS } from '@4s-clima/shared/constants';
 import { useDarkMode } from '../hooks/useDarkMode';
@@ -345,7 +346,7 @@ export default function FleetRadarMap() {
       if (ordersError) throw ordersError;
 
       // 3. Obtener turnos de jornada de hoy
-      const todayStr = new Date().toISOString().split('T')[0];
+      const todayStr = getArgentinaDate();
       const { data: shiftRows, error: shiftsError } = await supabase
         .from('technician_shifts')
         .select('*')

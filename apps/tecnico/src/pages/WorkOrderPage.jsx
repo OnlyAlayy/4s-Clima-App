@@ -3,12 +3,21 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, MapPin, Phone, Clock, Wrench, Building2,
   ClipboardCheck, Play, ChevronRight, Thermometer, Hash, Package, Check, Navigation, Camera,
-  User, QrCode
+  User, QrCode, Wind, Box, PauseCircle, AlertTriangle, RotateCcw, History, X
 } from 'lucide-react';
 import { supabase } from '@4s-clima/shared/supabase';
 import { useWorkOrderStore } from '../stores/workOrderStore';
-import { formatDate, getStatusLabel, getStatusColor, resolveOrderLocation } from '@4s-clima/shared';
-import { WORK_ORDER_STATUS, WORK_ORDER_TYPE_LABELS, EQUIPMENT_TYPE_LABELS } from '@4s-clima/shared/constants';
+import { formatDate, formatTime, formatDateTime, getStatusLabel, getStatusColor, resolveOrderLocation } from '@4s-clima/shared';
+import {
+  WORK_ORDER_STATUS,
+  WORK_ORDER_TYPE_LABELS,
+  EQUIPMENT_TYPE_LABELS,
+  TARGET_UNIT_LABELS,
+  HOLD_REASONS,
+  HOLD_REASON_LABELS,
+  VISIT_OUTCOMES,
+  VISIT_OUTCOME_LABELS
+} from '@4s-clima/shared/constants';
 import LocationViewerMap from '../components/geo/LocationViewerMap';
 import LiveTrackingSender from '../components/geo/LiveTrackingSender';
 import nativeLocationTracker from '../services/nativeLocationTracker';
@@ -21,15 +30,78 @@ import nativeLocationTracker from '../services/nativeLocationTracker';
 export default function WorkOrderPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { currentOrder, isLoading, fetchWorkOrder, startTravel, arriveAtPlant } = useWorkOrderStore();
+  const {
+    currentOrder,
+    isLoading,
+    fetchWorkOrder,
+    startTravel,
+    arriveAtPlant,
+    registerPartialAdvance,
+    pauseWorkOrder,
+  } = useWorkOrderStore();
   const [isStarting, setIsStarting] = useState(false);
   const [techLocation, setTechLocation] = useState(null);
   const [equipmentHistory, setEquipmentHistory] = useState([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
+  // Estados para modal de Avance Parcial
+  const [isPartialModalOpen, setIsPartialModalOpen] = useState(false);
+  const [partialNotes, setPartialNotes] = useState('');
+  const [isSubmittingPartial, setIsSubmittingPartial] = useState(false);
+
+  // Estados para modal de Pausa / Impedimento
+  const [isHoldModalOpen, setIsHoldModalOpen] = useState(false);
+  const [selectedHoldReason, setSelectedHoldReason] = useState(HOLD_REASONS.MISSING_PARTS);
+  const [holdNotesInput, setHoldNotesInput] = useState('');
+  const [isSubmittingHold, setIsSubmittingHold] = useState(false);
+
+  // Acordeón de tramos/visitas
+  const [isVisitsExpanded, setIsVisitsExpanded] = useState(true);
+
   useEffect(() => {
     fetchWorkOrder(id);
   }, [id, fetchWorkOrder]);
+
+  const handleRegisterPartialAdvance = async (e) => {
+    e.preventDefault();
+    if (!partialNotes.trim()) {
+      alert('Por favor ingresá un breve resumen del avance realizado en la jornada.');
+      return;
+    }
+    setIsSubmittingPartial(true);
+    try {
+      await registerPartialAdvance(id, partialNotes.trim());
+      setIsPartialModalOpen(false);
+      setPartialNotes('');
+      await fetchWorkOrder(id);
+    } catch (err) {
+      alert('Error registrando avance: ' + (err.message || 'Error desconocido'));
+    } finally {
+      setIsSubmittingPartial(false);
+    }
+  };
+
+  const handlePauseWorkOrder = async (e) => {
+    e.preventDefault();
+    if (!holdNotesInput.trim()) {
+      alert('Por favor ingresá una explicación detallada del impedimento o motivo de la pausa.');
+      return;
+    }
+    setIsSubmittingHold(true);
+    try {
+      await pauseWorkOrder(id, {
+        holdReason: selectedHoldReason,
+        holdNotes: holdNotesInput.trim(),
+      });
+      setIsHoldModalOpen(false);
+      setHoldNotesInput('');
+      await fetchWorkOrder(id);
+    } catch (err) {
+      alert('Error al pausar la orden: ' + (err.message || 'Error desconocido'));
+    } finally {
+      setIsSubmittingHold(false);
+    }
+  };
 
   // Cargar historial de las últimas 3 intervenciones del equipo
   useEffect(() => {
@@ -44,12 +116,15 @@ export default function WorkOrderPage() {
               order_number,
               type,
               status,
+              target_unit,
               scheduled_date,
               completed_at,
               observations,
+              indoor_work_notes,
+              outdoor_work_notes,
               assigned:users(name),
               extras(description, quantity, unit),
-              checklist_items(item_name, status, notes)
+              checklist_items(item_name, status, notes, unit_scope)
             `)
             .eq('equipment_id', currentOrder.equipment.id)
             .neq('id', currentOrder.id)
@@ -108,6 +183,7 @@ export default function WorkOrderPage() {
   const isPending = !wo.status || wo.status === WORK_ORDER_STATUS.PENDING || wo.status === 'unassigned';
   const isTraveling = wo.status === WORK_ORDER_STATUS.TRAVELING;
   const isInProgress = wo.status === WORK_ORDER_STATUS.IN_PROGRESS;
+  const isOnHold = wo.status === WORK_ORDER_STATUS.ON_HOLD;
   const isCompleted = wo.status === WORK_ORDER_STATUS.COMPLETED;
   const loc = resolveOrderLocation(wo);
 
@@ -154,14 +230,16 @@ export default function WorkOrderPage() {
                   ? 'bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400 dark:border-indigo-800 animate-pulse'
                   : isInProgress
                     ? 'bg-brand-50 text-brand-700 border-brand-200 dark:bg-brand-900/30 dark:text-brand-400 dark:border-brand-800'
-                    : isCompleted
-                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:border-emerald-800'
-                      : 'bg-white text-gray-600 border-gray-200 dark:bg-slate-800 dark:text-gray-300 dark:border-slate-700'
+                    : isOnHold
+                      ? 'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-900/30 dark:text-orange-400 dark:border-orange-800'
+                      : isCompleted
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:border-emerald-800'
+                        : 'bg-white text-gray-600 border-gray-200 dark:bg-slate-800 dark:text-gray-300 dark:border-slate-700'
                 }`}>
                 {getStatusLabel(wo.status)}
               </span>
               <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">
-                {WORK_ORDER_TYPE_LABELS[wo.type]}
+                {WORK_ORDER_TYPE_LABELS[wo.type?.toLowerCase()] || WORK_ORDER_TYPE_LABELS[wo.type] || (wo.type ? wo.type.charAt(0).toUpperCase() + wo.type.slice(1) : '')}
               </span>
             </div>
           </div>
@@ -169,6 +247,37 @@ export default function WorkOrderPage() {
       </div>
 
       <div className="space-y-4 animate-slide-up">
+        {/* Banner prominente si la orden está en pausa / impedimento */}
+        {isOnHold && (
+          <div className="p-4 rounded-2xl bg-orange-50 dark:bg-orange-950/40 border border-orange-200 dark:border-orange-800/60 space-y-2.5 shadow-xs">
+            <div className="flex items-start gap-3">
+              <div className="w-9 h-9 rounded-xl bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-400 flex items-center justify-center shrink-0 mt-0.5">
+                <AlertTriangle size={18} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold uppercase tracking-wider text-orange-800 dark:text-orange-300">
+                    Orden en Pausa Operativa
+                  </span>
+                  {wo.paused_at && (
+                    <span className="text-[10px] text-orange-600/80 dark:text-orange-400/80">
+                      · {formatDateTime(wo.paused_at)}
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs font-bold text-orange-950 dark:text-orange-100 mt-0.5">
+                  Motivo: {HOLD_REASON_LABELS[wo.hold_reason] || wo.hold_reason || 'Impedimento técnico'}
+                </p>
+                {wo.hold_notes && (
+                  <p className="text-xs text-orange-900/90 dark:text-orange-200/90 mt-1.5 bg-white/70 dark:bg-slate-900/50 p-2.5 rounded-xl border border-orange-200/60 dark:border-orange-800/40 italic">
+                    "{wo.hold_notes}"
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Programación */}
         <div className="card">
           <div className="flex items-center gap-2 mb-4 pb-3 border-b border-gray-100 dark:border-slate-800">
@@ -288,45 +397,64 @@ export default function WorkOrderPage() {
               </span>
             </div>
 
-            <div className="space-y-3 text-sm">
-              <div className="flex items-center justify-between">
-                <span className="text-gray-500 dark:text-gray-400 font-medium">Tipo</span>
-                <span className="text-slate-900 dark:text-white font-bold">
-                  {EQUIPMENT_TYPE_LABELS[wo.equipment.type] || wo.equipment.type}
+            {/* Datos Técnicos Duales (UI + UE) */}
+            <div className="space-y-3 text-xs">
+              <div className="flex items-center justify-between pb-1 border-b border-gray-100 dark:border-slate-800">
+                <span className="text-gray-500 dark:text-gray-400 font-medium">Alcance de esta Orden:</span>
+                <span className="font-bold text-brand-700 dark:text-brand-300 bg-brand-50 dark:bg-brand-950/40 px-2 py-0.5 rounded border border-brand-200 dark:border-brand-800">
+                  {TARGET_UNIT_LABELS[wo.target_unit] || 'Ambas Unidades (UI + UE)'}
                 </span>
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-gray-500 dark:text-gray-400 font-medium">Marca / Modelo</span>
-                <span className="text-slate-900 dark:text-white font-bold">
-                  {wo.equipment.brand} {wo.equipment.model}
-                </span>
+
+              {/* Fichas Hermanadas UI + UE */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {/* Unidad Interior */}
+                <div className="bg-sky-50/70 dark:bg-sky-950/20 p-2.5 rounded-xl border border-sky-200/80 dark:border-sky-800/50 space-y-1">
+                  <div className="flex items-center gap-1.5 font-bold text-sky-900 dark:text-sky-300">
+                    <Wind size={13} className="text-sky-600 dark:text-sky-400" />
+                    <span>Unidad Interior (UI - Evaporadora)</span>
+                  </div>
+                  <div className="flex justify-between text-gray-700 dark:text-gray-300">
+                    <span className="text-gray-500">Modelo:</span>
+                    <span className="font-semibold">{wo.equipment.indoor_model || wo.equipment.model || 'S/D'}</span>
+                  </div>
+                  <div className="flex justify-between text-gray-700 dark:text-gray-300">
+                    <span className="text-gray-500">N° Serie:</span>
+                    <span className="font-mono font-bold">{wo.equipment.indoor_serial || wo.equipment.serial_number || 'S/D'}</span>
+                  </div>
+                  <div className="text-[11px] text-gray-600 dark:text-gray-400 pt-0.5 border-t border-sky-200/40 dark:border-sky-800/30 flex items-start gap-1">
+                    <MapPin size={12} className="text-sky-500 shrink-0 mt-0.5" />
+                    <span>{wo.equipment.indoor_location || wo.equipment.location_description || 'En sector asignado'}</span>
+                  </div>
+                </div>
+
+                {/* Unidad Exterior */}
+                <div className="bg-amber-50/70 dark:bg-amber-950/20 p-2.5 rounded-xl border border-amber-200/80 dark:border-amber-800/50 space-y-1">
+                  <div className="flex items-center gap-1.5 font-bold text-amber-900 dark:text-amber-300">
+                    <Box size={13} className="text-amber-600 dark:text-amber-400" />
+                    <span>Unidad Exterior (UE - Condensadora)</span>
+                  </div>
+                  <div className="flex justify-between text-gray-700 dark:text-gray-300">
+                    <span className="text-gray-500">Modelo:</span>
+                    <span className="font-semibold">{wo.equipment.outdoor_model || 'S/D'}</span>
+                  </div>
+                  <div className="flex justify-between text-gray-700 dark:text-gray-300">
+                    <span className="text-gray-500">N° Serie:</span>
+                    <span className="font-mono font-bold">{wo.equipment.outdoor_serial || 'S/D'}</span>
+                  </div>
+                  <div className="text-[11px] text-gray-600 dark:text-gray-400 pt-0.5 border-t border-amber-200/40 dark:border-amber-800/30 flex items-start gap-1">
+                    <MapPin size={12} className="text-amber-500 shrink-0 mt-0.5" />
+                    <span>{wo.equipment.outdoor_location || 'Terraza / Balcón / Exterior'}</span>
+                  </div>
+                </div>
               </div>
-              {wo.equipment.serial_number && (
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-500 dark:text-gray-400 font-medium flex items-center gap-1.5">
-                    <Hash size={14} className="text-gray-500 dark:text-gray-400" /> Serie
+
+              {(wo.equipment.capacity_tr_fg || wo.equipment.capacity_btu || wo.equipment.refrigerant_type) && (
+                <div className="flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400 pt-1">
+                  <span>Capacidad / Gas:</span>
+                  <span className="font-mono font-medium text-slate-800 dark:text-slate-200">
+                    {[wo.equipment.capacity_tr_fg, wo.equipment.capacity_btu ? `${wo.equipment.capacity_btu.toLocaleString()} BTU` : '', wo.equipment.refrigerant_type].filter(Boolean).join(' · ')}
                   </span>
-                  <span className="text-slate-900 dark:text-white font-mono font-bold bg-gray-100 dark:bg-slate-800 px-2 py-0.5 rounded-md text-xs border border-gray-200 dark:border-slate-700">
-                    {wo.equipment.serial_number}
-                  </span>
-                </div>
-              )}
-              {wo.equipment.capacity_btu && (
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-500 dark:text-gray-400 font-medium flex items-center gap-1.5">
-                    <Thermometer size={14} className="text-gray-500 dark:text-gray-400" /> Capacidad
-                  </span>
-                  <span className="text-slate-900 dark:text-white font-bold">
-                    {wo.equipment.capacity_btu.toLocaleString()} BTU
-                  </span>
-                </div>
-              )}
-              {wo.equipment.location_description && (
-                <div className="mt-2 bg-blue-50/50 dark:bg-blue-900/20 p-2.5 rounded-xl border border-blue-100 dark:border-blue-800/50 flex items-start gap-2">
-                  <MapPin size={16} className="text-blue-500 dark:text-blue-400 flex-shrink-0 mt-0.5" />
-                  <p className="text-blue-800 dark:text-blue-300 text-xs font-semibold leading-relaxed">
-                    {wo.equipment.location_description}
-                  </p>
                 </div>
               )}
             </div>
@@ -379,7 +507,7 @@ export default function WorkOrderPage() {
                             </span>
                           </div>
                           <span className="text-[10px] font-semibold text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-950/40 px-1.5 py-0.5 rounded border border-brand-200 dark:border-brand-800">
-                            {WORK_ORDER_TYPE_LABELS[prevWo.type] || prevWo.type}
+                            {WORK_ORDER_TYPE_LABELS[prevWo.type?.toLowerCase()] || WORK_ORDER_TYPE_LABELS[prevWo.type] || (prevWo.type ? prevWo.type.charAt(0).toUpperCase() + prevWo.type.slice(1) : '')}
                           </span>
                         </div>
 
@@ -464,6 +592,88 @@ export default function WorkOrderPage() {
           <div className="card">
             <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider mb-2 pb-2 border-b border-gray-100 dark:border-slate-800">Observaciones</h3>
             <p className="text-gray-600 dark:text-gray-300 text-sm leading-relaxed font-medium">{wo.observations}</p>
+          </div>
+        )}
+
+        {/* Bitácora de Tramos y Visitas Previas (work_order_visits) */}
+        {wo.visits && wo.visits.length > 0 && (
+          <div className="card space-y-3">
+            <div
+              onClick={() => setIsVisitsExpanded(!isVisitsExpanded)}
+              className="flex items-center justify-between cursor-pointer pb-2 border-b border-gray-100 dark:border-slate-800 select-none"
+            >
+              <div className="flex items-center gap-2">
+                <History size={16} className="text-brand-500" />
+                <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
+                  Bitácora de Tramos y Visitas ({wo.visits.length})
+                </h3>
+              </div>
+              <span className="text-xs text-brand-600 dark:text-brand-400 font-semibold">
+                {isVisitsExpanded ? 'Ocultar' : 'Ver detalle'}
+              </span>
+            </div>
+
+            {isVisitsExpanded && (
+              <div className="space-y-2.5 pt-1">
+                {wo.visits.map((v) => {
+                  const isCurrentActive = v.outcome === 'in_progress';
+                  return (
+                    <div
+                      key={v.id}
+                      className={`p-3 rounded-xl text-xs space-y-1.5 border transition-all ${
+                        isCurrentActive
+                          ? 'bg-blue-50/70 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800'
+                          : v.outcome === 'blocked'
+                          ? 'bg-orange-50/70 dark:bg-orange-950/30 border-orange-200 dark:border-orange-800'
+                          : 'bg-gray-50/80 dark:bg-slate-850 border-gray-200/70 dark:border-slate-800'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 font-bold text-slate-900 dark:text-white">
+                          <User size={13} className="text-gray-400" />
+                          <span>{v.technician?.name || 'Técnico'}</span>
+                        </div>
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                            isCurrentActive
+                              ? 'bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-900/50 dark:text-blue-300'
+                              : v.outcome === 'blocked'
+                              ? 'bg-orange-100 text-orange-800 border-orange-300 dark:bg-orange-900/50 dark:text-orange-300'
+                              : v.outcome === 'completed'
+                              ? 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-900/50 dark:text-emerald-300'
+                              : 'bg-gray-100 text-gray-700 border-gray-300 dark:bg-slate-700 dark:text-gray-200'
+                          }`}
+                        >
+                          {VISIT_OUTCOME_LABELS[v.outcome] || v.outcome}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-3 text-[11px] text-gray-500 dark:text-gray-400">
+                        <span className="flex items-center gap-1">
+                          <Clock size={11} />
+                          <span>Inicio: {formatDateTime(v.started_at)}</span>
+                        </span>
+                        {v.ended_at && (
+                          <span>Fin: {formatTime(v.ended_at)}</span>
+                        )}
+                      </div>
+
+                      {v.reason_code && (
+                        <div className="text-[11px] font-semibold text-orange-700 dark:text-orange-400">
+                          Motivo: {HOLD_REASON_LABELS[v.reason_code] || v.reason_code}
+                        </div>
+                      )}
+
+                      {v.summary_notes && (
+                        <p className="text-[11px] text-gray-700 dark:text-gray-300 bg-white/60 dark:bg-slate-900/40 p-2 rounded-lg border border-gray-100 dark:border-slate-800 italic">
+                          "{v.summary_notes}"
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -590,10 +800,61 @@ export default function WorkOrderPage() {
                 </div>
                 <ChevronRight size={16} className="text-gray-400" />
               </button>
+
+              {/* Botones de gestión operativa de jornada: Avance Parcial y Pausar Orden */}
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setIsPartialModalOpen(true)}
+                  className="py-2.5 px-3 rounded-xl border border-blue-200 dark:border-blue-900/60 bg-blue-50/80 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 text-xs font-semibold hover:bg-blue-100 dark:hover:bg-blue-900/50 flex items-center justify-center gap-1.5 transition-colors shadow-xs active:scale-95"
+                >
+                  <Clock size={14} className="shrink-0" />
+                  <span>Avance Parcial</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsHoldModalOpen(true)}
+                  className="py-2.5 px-3 rounded-xl border border-orange-200 dark:border-orange-900/60 bg-orange-50/80 dark:bg-orange-950/40 text-orange-700 dark:text-orange-300 text-xs font-semibold hover:bg-orange-100 dark:hover:bg-orange-900/50 flex items-center justify-center gap-1.5 transition-colors shadow-xs active:scale-95"
+                >
+                  <PauseCircle size={14} className="shrink-0" />
+                  <span>Pausar Orden</span>
+                </button>
+              </div>
             </div>
           )}
 
-          {/* PASO 4: Orden completada */}
+          {/* PASO 4: Orden pausada / impedimento */}
+          {isOnHold && (
+            <div className="space-y-2">
+              <button
+                onClick={handleArriveAtPlant}
+                disabled={isStarting}
+                className="btn-primary w-full shadow-lg shadow-brand-500/25 bg-brand-600 hover:bg-brand-700 active:bg-brand-800 text-white flex items-center justify-center gap-2 py-3.5 text-sm font-bold"
+              >
+                {isStarting ? (
+                  <>
+                    <div className="w-5 h-5 border-2 border-white/80 border-t-transparent rounded-full animate-spin" />
+                    <span>Reanudando...</span>
+                  </>
+                ) : (
+                  <>
+                    <Play size={18} />
+                    <span>Reanudar Trabajo en Sitio</span>
+                  </>
+                )}
+              </button>
+              <button
+                onClick={handleStartTravel}
+                disabled={isStarting}
+                className="w-full py-2.5 px-3 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 text-xs font-bold hover:bg-indigo-100 dark:hover:bg-indigo-900/60 flex items-center justify-center gap-1.5 transition-colors shadow-xs"
+              >
+                <Navigation size={14} />
+                <span>Iniciar Viaje a Planta (En Camino)</span>
+              </button>
+            </div>
+          )}
+
+          {/* PASO 5: Orden completada */}
           {isCompleted && (
             <div className="bg-emerald-50 border border-emerald-200 rounded-2xl px-4 py-4 text-center shadow-sm">
               <p className="text-emerald-700 font-bold flex items-center justify-center gap-2">
@@ -609,7 +870,7 @@ export default function WorkOrderPage() {
           )}
 
           {/* Fallback si el estado es desconocido */}
-          {!isPending && !isTraveling && !isInProgress && !isCompleted && (
+          {!isPending && !isTraveling && !isInProgress && !isCompleted && !isOnHold && (
             <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-4 text-center shadow-sm">
               <p className="text-amber-700 font-bold mb-2">Estado detectado: "{wo.status || 'ninguno'}"</p>
               <button
@@ -623,6 +884,147 @@ export default function WorkOrderPage() {
           )}
         </div>
       </div>
+
+      {/* MODAL: Registrar Avance Parcial (Fin de Jornada en Obras Largas) */}
+      {isPartialModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
+          <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl p-5 shadow-2xl border border-gray-100 dark:border-slate-800 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-slate-800">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+                  <Clock size={18} />
+                </div>
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                  Registrar Avance Parcial
+                </h3>
+              </div>
+              <button
+                onClick={() => setIsPartialModalOpen(false)}
+                className="p-1 rounded-xl text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">
+              Utilizá esta opción al finalizar tu jornada o cuando debas retirarte de la obra sin cerrarla definitivamente. Tu avance quedará registrado en la bitácora para que vos u otro técnico continúen mañana.
+            </p>
+
+            <form onSubmit={handleRegisterPartialAdvance} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5 uppercase tracking-wide">
+                  Detalle del Avance Realizado *
+                </label>
+                <textarea
+                  value={partialNotes}
+                  onChange={(e) => setPartialNotes(e.target.value)}
+                  placeholder="Ej: Se instalaron 15 mts de cañería en piso 2, presurizado con nitrógeno en 250 PSI. Queda pendiente conexionado eléctrico..."
+                  rows={4}
+                  required
+                  className="w-full rounded-2xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/60 p-3 text-xs text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-brand-500"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setIsPartialModalOpen(false)}
+                  disabled={isSubmittingPartial}
+                  className="flex-1 py-3 rounded-xl border border-gray-200 dark:border-slate-700 text-xs font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingPartial || !partialNotes.trim()}
+                  className="flex-1 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-colors disabled:opacity-50 shadow-md shadow-blue-500/20"
+                >
+                  {isSubmittingPartial ? 'Guardando...' : 'Cerrar Jornada (Parcial)'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Reportar Impedimento / Pausar Orden */}
+      {isHoldModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
+          <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl p-5 shadow-2xl border border-gray-100 dark:border-slate-800 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-slate-800">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-orange-100 dark:bg-orange-900/40 text-orange-600 dark:text-orange-400 flex items-center justify-center">
+                  <PauseCircle size={18} />
+                </div>
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                  Reportar Impedimento / Pausa
+                </h3>
+              </div>
+              <button
+                onClick={() => setIsHoldModalOpen(false)}
+                className="p-1 rounded-xl text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">
+              Si no podés continuar por falta de repuestos, cliente ausente, fallo técnico u otro imprevisto, pausá la orden. Esto alertará de inmediato a Administración para gestionar una solución o relevo.
+            </p>
+
+            <form onSubmit={handlePauseWorkOrder} className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5 uppercase tracking-wide">
+                  Motivo Principal *
+                </label>
+                <select
+                  value={selectedHoldReason}
+                  onChange={(e) => setSelectedHoldReason(e.target.value)}
+                  className="w-full rounded-2xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/60 p-3 text-xs text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-brand-500 font-medium"
+                >
+                  {Object.entries(HOLD_REASONS).map(([key, value]) => (
+                    <option key={value} value={value}>
+                      {HOLD_REASON_LABELS[value] || value}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5 uppercase tracking-wide">
+                  Explicación Técnica / Motivo Detallado *
+                </label>
+                <textarea
+                  value={holdNotesInput}
+                  onChange={(e) => setHoldNotesInput(e.target.value)}
+                  placeholder="Detallá claramente qué ocurrió (ej: Se requiere contactor de 24V y relay térmico que no estaban en inventario...)"
+                  rows={4}
+                  required
+                  className="w-full rounded-2xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/60 p-3 text-xs text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-brand-500"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setIsHoldModalOpen(false)}
+                  disabled={isSubmittingHold}
+                  className="flex-1 py-3 rounded-xl border border-gray-200 dark:border-slate-700 text-xs font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingHold || !holdNotesInput.trim()}
+                  className="flex-1 py-3 rounded-xl bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold transition-colors disabled:opacity-50 shadow-md shadow-orange-500/20"
+                >
+                  {isSubmittingHold ? 'Pausando...' : 'Pausar Orden'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

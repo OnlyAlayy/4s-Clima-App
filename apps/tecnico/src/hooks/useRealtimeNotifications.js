@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { supabase } from '@4s-clima/shared/supabase';
+import { formatDate } from '@4s-clima/shared/utils';
 import { Capacitor } from '@capacitor/core';
 import toast from 'react-hot-toast';
 import hybridNotifications from '../services/hybridNotifications';
@@ -160,7 +161,7 @@ export function useRealtimeNotifications(profile) {
             )
           ) {
             title = 'Reprogramación de Orden';
-            body = `La orden ${newOrder.order_number || 'N/D'} fue reprogramada para el ${newOrder.scheduled_date || ''}.`;
+            body = `La orden ${newOrder.order_number || 'N/D'} fue reprogramada para el ${formatDate(newOrder.scheduled_date)}.`;
           }
 
           if (title) {

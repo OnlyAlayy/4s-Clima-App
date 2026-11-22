@@ -14,6 +14,7 @@
     "@afipsdk/afip.js": "^0.8.1",
     "@hello-pangea/dnd": "^18.0.1",
     "date-fns": "^4.4.0",
+    "dotenv": "^16.4.5",
     "html2canvas": "^1.4.1",
     "jspdf": "^2.5.2",
     "jspdf-autotable": "^5.0.8",

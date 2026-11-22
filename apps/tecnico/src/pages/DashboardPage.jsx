@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ClipboardList, Clock, ChevronRight, MapPin, Wrench, AlertCircle, ChevronDown } from 'lucide-react';
+import { ClipboardList, Clock, ChevronRight, MapPin, Wrench, AlertCircle, ChevronDown, Power } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import { useShiftStore } from '../stores/shiftStore';
 import { useWorkOrderStore } from '../stores/workOrderStore';
@@ -14,11 +14,30 @@ import { WORK_ORDER_STATUS, WORK_ORDER_TYPE_LABELS } from '@4s-clima/shared/cons
 export default function DashboardPage() {
   const navigate = useNavigate();
   const { profile } = useAuthStore();
-  const { activeShift, todayShift, isLoading: shiftLoading } = useShiftStore();
+  const { activeShift, todayShift, isLoading: shiftLoading, isActionLoading, checkIn, checkOut } = useShiftStore();
   const { workOrders, isLoading, fetchWorkOrders } = useWorkOrderStore();
 
   const [page, setPage] = useState(1);
   const itemsPerPage = 10;
+
+  const handleStartShift = async () => {
+    if (!profile?.id) return;
+    try {
+      await checkIn(profile.id);
+    } catch (err) {
+      alert('Error iniciando jornada: ' + err.message);
+    }
+  };
+
+  const handleEndShift = async () => {
+    if (window.confirm('¿Deseas finalizar tu jornada laboral ahora? Si tienes órdenes o visitas en curso, se registrarán automáticamente como avances parciales.')) {
+      try {
+        await checkOut();
+      } catch (err) {
+        alert('Error finalizando jornada: ' + err.message);
+      }
+    }
+  };
 
   useEffect(() => {
     if (profile?.id) {
@@ -39,6 +58,9 @@ export default function DashboardPage() {
   );
   const inProgress = workOrders.filter(
     (wo) => wo.status === WORK_ORDER_STATUS.IN_PROGRESS
+  );
+  const onHold = workOrders.filter(
+    (wo) => wo.status === WORK_ORDER_STATUS.ON_HOLD
   );
   const pending = workOrders.filter(
     (wo) => wo.status === WORK_ORDER_STATUS.PENDING || wo.status === 'unassigned' || !wo.status
@@ -72,29 +94,86 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Aviso compacto de Jornada Laboral */}
-      {!activeShift && !todayShift && !shiftLoading && (
-        <div className="mb-6 p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-800/40 flex items-center justify-between gap-3 shadow-xs">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-9 h-9 rounded-xl bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center shrink-0 text-amber-700 dark:text-amber-400">
-              <Clock size={18} />
+      {/* Banner de Control de Jornada Laboral (1-Clic) */}
+      {!shiftLoading && (
+        <div className="mb-6">
+          {activeShift ? (
+            <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200/80 dark:border-emerald-800/40 flex items-center justify-between gap-3 shadow-xs">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center shrink-0 text-emerald-700 dark:text-emerald-400">
+                  <Clock size={20} />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    <p className="text-xs font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-300">
+                      Jornada Activa
+                    </p>
+                  </div>
+                  <p className="text-xs text-emerald-700 dark:text-emerald-400/90 truncate mt-0.5">
+                    Desde {formatTime(activeShift.check_in_at)} hs • GPS operativo en segundo plano
+                  </p>
+                </div>
+              </div>
+              <button
+                disabled={isActionLoading}
+                onClick={handleEndShift}
+                className="shrink-0 px-3.5 py-2 rounded-xl bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
+                title="Finalizar jornada laboral y tramos abiertos"
+              >
+                <Power size={13} />
+                <span>{isActionLoading ? 'Cerrando...' : 'Finalizar'}</span>
+              </button>
             </div>
-            <div className="min-w-0">
-              <p className="text-xs font-bold uppercase tracking-wider text-amber-800 dark:text-amber-300">
-                Jornada no iniciada
-              </p>
-              <p className="text-xs text-amber-700 dark:text-amber-400/80 truncate">
-                Ficha tu ingreso para activar el registro de horario y GPS de servicio.
-              </p>
+          ) : todayShift && todayShift.status === 'completed' ? (
+            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-gray-200/80 dark:border-slate-700/80 flex items-center justify-between gap-3 shadow-xs">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-xl bg-slate-200/70 dark:bg-slate-700/50 flex items-center justify-center shrink-0 text-slate-600 dark:text-slate-300">
+                  <Clock size={20} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                    Jornada Finalizada
+                  </p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                    {formatTime(todayShift.check_in_at)} hs a {formatTime(todayShift.check_out_at)} hs
+                  </p>
+                </div>
+              </div>
+              <button
+                disabled={isActionLoading}
+                onClick={handleStartShift}
+                className="shrink-0 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
+                title="Iniciar nuevo turno laboral"
+              >
+                <span>{isActionLoading ? 'Iniciando...' : 'Nuevo Turno'}</span>
+              </button>
             </div>
-          </div>
-          <button
-            onClick={() => navigate('/perfil')}
-            className="shrink-0 px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold transition-colors flex items-center gap-1 shadow-sm active:scale-95"
-          >
-            <span>Fichar</span>
-            <ChevronRight size={14} />
-          </button>
+          ) : (
+            <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-800/40 flex items-center justify-between gap-3 shadow-xs">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center shrink-0 text-amber-700 dark:text-amber-400">
+                  <Clock size={20} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs font-bold uppercase tracking-wider text-amber-800 dark:text-amber-300">
+                    Jornada No Iniciada
+                  </p>
+                  <p className="text-xs text-amber-700 dark:text-amber-400/80 truncate mt-0.5">
+                    Ficha tu ingreso para registrar horario y activar el GPS de servicio.
+                  </p>
+                </div>
+              </div>
+              <button
+                disabled={isActionLoading}
+                onClick={handleStartShift}
+                className="shrink-0 px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
+                title="Iniciar jornada laboral ahora con 1 clic"
+              >
+                <span>{isActionLoading ? 'Iniciando...' : 'Iniciar Jornada Ahora'}</span>
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -111,7 +190,7 @@ export default function DashboardPage() {
           <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center mb-3">
             <Clock size={24} className="text-indigo-600 dark:text-indigo-400" />
           </div>
-          <span className="text-3xl font-extrabold text-slate-900 dark:text-white">{traveling.length + inProgress.length}</span>
+          <span className="text-3xl font-extrabold text-slate-900 dark:text-white">{traveling.length + inProgress.length + onHold.length}</span>
           <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mt-1">En Curso</span>
         </div>
       </div>
@@ -168,6 +247,21 @@ export default function DashboardPage() {
         </section>
       )}
 
+      {/* Órdenes en pausa / impedimento */}
+      {onHold.length > 0 && (
+        <section className="mb-8">
+          <h2 className="text-sm font-bold text-orange-600 dark:text-orange-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-orange-500"></div>
+            En Pausa / Impedimento ({onHold.length})
+          </h2>
+          <div className="space-y-4">
+            {onHold.map((wo) => (
+              <WorkOrderCard key={wo.id} order={wo} onClick={() => navigate(`/orden/${wo.id}`)} />
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* Órdenes pendientes */}
       {pending.length > 0 && (
         <section>
@@ -202,6 +296,7 @@ export default function DashboardPage() {
 function WorkOrderCard({ order, onClick }) {
   const isTraveling = order.status === WORK_ORDER_STATUS.TRAVELING;
   const isProgress = order.status === WORK_ORDER_STATUS.IN_PROGRESS;
+  const isOnHold = order.status === WORK_ORDER_STATUS.ON_HOLD;
   return (
     <button
       onClick={onClick}
@@ -214,13 +309,15 @@ function WorkOrderCard({ order, onClick }) {
               isTraveling
                 ? 'bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400 dark:border-indigo-800'
                 : isProgress 
-                ? 'bg-brand-50 text-brand-700 border border-brand-200 dark:bg-brand-900/30 dark:text-brand-400 dark:border-brand-800' 
+                ? 'bg-brand-50 text-brand-700 border border-brand-200 dark:bg-brand-900/30 dark:text-brand-400 dark:border-brand-800'
+                : isOnHold
+                ? 'bg-orange-50 text-orange-700 border border-orange-200 dark:bg-orange-900/30 dark:text-orange-400 dark:border-orange-800'
                 : 'bg-gray-100 text-gray-600 border border-gray-200 dark:bg-slate-800 dark:text-gray-300 dark:border-slate-700'
             }`}>
               {getStatusLabel(order.status)}
             </span>
             <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">
-              {WORK_ORDER_TYPE_LABELS[order.type] || order.type}
+              {WORK_ORDER_TYPE_LABELS[order.type?.toLowerCase()] || WORK_ORDER_TYPE_LABELS[order.type] || (order.type ? order.type.charAt(0).toUpperCase() + order.type.slice(1) : '')}
             </span>
           </div>
           <h3 className="font-bold text-lg text-slate-900 dark:text-white truncate">
@@ -229,6 +326,11 @@ function WorkOrderCard({ order, onClick }) {
           <span className="text-xs font-mono font-medium text-gray-500 dark:text-gray-400 mt-0.5 block">
             {order.order_number}
           </span>
+          {isOnHold && order.hold_notes && (
+            <p className="text-xs text-orange-800 dark:text-orange-300 mt-1 italic line-clamp-1">
+              Impedimento: {order.hold_notes}
+            </p>
+          )}
         </div>
       </div>
 

@@ -1,23 +1,27 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { 
-  ShieldCheck, 
-  Clock, 
-  CheckCircle2, 
-  AlertTriangle, 
-  AlertOctagon, 
-  Wrench, 
-  Building2, 
-  User, 
-  Send, 
-  FileText, 
+import {
+  ShieldCheck,
+  Clock,
+  CheckCircle2,
+  AlertTriangle,
+  AlertOctagon,
+  Wrench,
+  Building2,
+  User,
+  Send,
+  FileText,
   Calendar,
   Lock,
   ArrowRight,
-  Info
+  Info,
+  Wind,
+  Box,
+  MapPin,
+  Tag
 } from 'lucide-react';
 import { supabase } from '@4s-clima/shared/supabase';
-import { EQUIPMENT_TYPE_LABELS, WORK_ORDER_TYPE_LABELS } from '@4s-clima/shared/constants';
+import { EQUIPMENT_TYPE_LABELS, WORK_ORDER_TYPE_LABELS, TARGET_UNIT_LABELS } from '@4s-clima/shared/constants';
 
 const STATUS_CONFIG = {
   operativo: {
@@ -255,19 +259,76 @@ export default function PublicEquipmentPortalPage() {
                 </div>
               </div>
 
+              {/* Desglose Arquitectura Dual: UI y UE */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                {/* Unidad Interior */}
+                <div className="p-3.5 bg-slate-900/80 rounded-xl border border-sky-800/40 space-y-2">
+                  <div className="flex items-center gap-1.5 text-sky-400 font-bold text-xs border-b border-sky-800/50 pb-1.5">
+                    <Wind size={15} className="text-sky-400" />
+                    <span>Unidad Interior (UI - Evaporadora)</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block text-[10px] font-semibold uppercase">Modelo UI:</span>
+                    <span className="font-bold text-slate-100">
+                      {summary.indoor_model || summary.model || 'N/D'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block text-[10px] font-semibold uppercase">N° Serie UI:</span>
+                    <span className="font-mono font-bold text-white">
+                      {summary.indoor_serial || summary.serial_number || 'N/D'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block text-[10px] font-semibold uppercase">Ubicación UI:</span>
+                    <span className="text-slate-300 flex items-center gap-1">
+                      <MapPin size={11} className="text-sky-400 shrink-0" />
+                      {summary.indoor_location || summary.location_description || summary.location_in_plant || 'Sin especificar'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Unidad Exterior */}
+                <div className="p-3.5 bg-slate-900/80 rounded-xl border border-amber-800/40 space-y-2">
+                  <div className="flex items-center gap-1.5 text-amber-400 font-bold text-xs border-b border-amber-800/50 pb-1.5">
+                    <Box size={15} className="text-amber-400" />
+                    <span>Unidad Exterior (UE - Condensadora)</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block text-[10px] font-semibold uppercase">Modelo UE:</span>
+                    <span className="font-bold text-slate-100">
+                      {summary.outdoor_model || 'No especificado'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block text-[10px] font-semibold uppercase">N° Serie UE:</span>
+                    <span className="font-mono font-bold text-white">
+                      {summary.outdoor_serial || 'No especificado'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block text-[10px] font-semibold uppercase">Ubicación UE:</span>
+                    <span className="text-slate-300 flex items-center gap-1">
+                      <MapPin size={11} className="text-amber-400 shrink-0" />
+                      {summary.outdoor_location || 'No especificada'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
               {/* Grilla de Metadatos del Equipo */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs pt-1">
                 <div className="space-y-1">
-                  <span className="text-slate-400 block font-medium">N° de Serie</span>
-                  <span className="font-mono text-slate-100 font-semibold block truncate tabular-nums">
-                    {summary.serial_number || 'SIN NÚMERO'}
+                  <span className="text-slate-400 block font-medium">Refrigerante</span>
+                  <span className="text-slate-100 font-semibold block">
+                    {summary.refrigerant_type || 'N/D'}
                   </span>
                 </div>
 
                 <div className="space-y-1">
                   <span className="text-slate-400 block font-medium">Capacidad</span>
                   <span className="text-slate-100 font-semibold block tabular-nums">
-                    {summary.capacity_btu ? `${summary.capacity_btu.toLocaleString('es-AR')} BTU` : 'Estándar'}
+                    {summary.capacity_tr_fg || (summary.capacity_btu ? `${summary.capacity_btu.toLocaleString('es-AR')} BTU` : 'Estándar')}
                   </span>
                 </div>
 
@@ -286,12 +347,10 @@ export default function PublicEquipmentPortalPage() {
                 </div>
               </div>
 
-              {summary.location_in_plant && (
-                <div className="pt-3 border-t border-slate-700/60 text-xs text-slate-300">
-                  <span className="text-slate-400 font-medium">Ubicación en planta: </span>
-                  <span className="font-medium text-white">{summary.location_in_plant}</span>
-                </div>
-              )}
+              <div className="text-[11px] text-slate-400 flex items-center gap-1.5 pt-2 border-t border-slate-700/60">
+                <Tag size={13} className="text-blue-400 shrink-0" />
+                <span>QR de Sistema (Pegar en Unidad Interior) — Ficha compartida UI + UE.</span>
+              </div>
             </div>
 
             {/* Bloque de Acceso / Desbloqueo Corporativo */}
@@ -500,21 +559,44 @@ export default function PublicEquipmentPortalPage() {
                               {item.order_number}
                             </span>
                             <div className="flex items-center gap-2 text-[11px]">
+                              {item.target_unit && (
+                                <span className="px-2 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-800 font-bold text-[10px]">
+                                  {TARGET_UNIT_LABELS[item.target_unit] || item.target_unit}
+                                </span>
+                              )}
                               <span className="text-slate-400 font-mono tabular-nums">
                                 {item.completed_at ? new Date(item.completed_at).toLocaleDateString('es-AR') : item.scheduled_date}
                               </span>
                               <span className="px-2 py-0.5 rounded bg-slate-700 text-slate-300 font-medium uppercase text-[10px]">
                                 {WORK_ORDER_TYPE_LABELS[item.type] || item.type}
                               </span>
-                              <span className={`px-2 py-0.5 rounded font-semibold text-[10px] ${
-                                item.status === 'completed'
-                                  ? 'bg-emerald-950 text-emerald-400 border border-emerald-800'
-                                  : 'bg-amber-950 text-amber-400 border border-amber-800'
-                              }`}>
+                              <span className={`px-2 py-0.5 rounded font-semibold text-[10px] ${item.status === 'completed'
+                                ? 'bg-emerald-950 text-emerald-400 border border-emerald-800'
+                                : 'bg-amber-950 text-amber-400 border border-amber-800'
+                                }`}>
                                 {item.status === 'completed' ? 'Completado' : item.status}
                               </span>
                             </div>
                           </div>
+
+                          {/* Notas técnicas por unidad */}
+                          {item.indoor_work_notes && (
+                            <div className="text-xs p-2.5 rounded-lg bg-slate-900/80 border border-sky-800/40 text-slate-200 space-y-0.5">
+                              <span className="text-sky-400 font-bold block text-[10px] uppercase flex items-center gap-1">
+                                <Wind size={12} /> [UI - Evaporadora]:
+                              </span>
+                              <p className="text-slate-300 leading-relaxed">{item.indoor_work_notes}</p>
+                            </div>
+                          )}
+
+                          {item.outdoor_work_notes && (
+                            <div className="text-xs p-2.5 rounded-lg bg-slate-900/80 border border-amber-800/40 text-slate-200 space-y-0.5">
+                              <span className="text-amber-400 font-bold block text-[10px] uppercase flex items-center gap-1">
+                                <Box size={12} /> [UE - Condensadora]:
+                              </span>
+                              <p className="text-slate-300 leading-relaxed">{item.outdoor_work_notes}</p>
+                            </div>
+                          )}
 
                           {item.technical_diagnostic && (
                             <p className="text-xs text-slate-200 bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
@@ -523,7 +605,7 @@ export default function PublicEquipmentPortalPage() {
                             </p>
                           )}
 
-                          {item.notes && !item.technical_diagnostic && (
+                          {item.notes && !item.technical_diagnostic && !item.indoor_work_notes && !item.outdoor_work_notes && (
                             <p className="text-xs text-slate-300 bg-slate-900/40 p-2.5 rounded-lg border border-slate-800">
                               {item.notes}
                             </p>

@@ -16,6 +16,7 @@ export default function CreateTechnicianModal({ isOpen, onClose, onCreated }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [phone, setPhone] = useState('');
+  const [defaultEntryTime, setDefaultEntryTime] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [role, setRole] = useState('tecnico');
 
@@ -30,6 +31,7 @@ export default function CreateTechnicianModal({ isOpen, onClose, onCreated }) {
     setEmail('');
     setPassword(generateRandomPassword());
     setPhone('');
+    setDefaultEntryTime('');
     setShowPassword(false);
     setRole('tecnico');
     setError(null);
@@ -82,6 +84,14 @@ export default function CreateTechnicianModal({ isOpen, onClose, onCreated }) {
 
       if (res.data?.error) {
         throw new Error(res.data.error);
+      }
+
+      // Si se definió un horario habitual de entrada, actualizarlo en el perfil
+      if (res.data?.userId && defaultEntryTime) {
+        await supabase
+          .from('users')
+          .update({ default_entry_time: `${defaultEntryTime}:00` })
+          .eq('id', res.data.userId);
       }
 
       // Todo salió bien
@@ -183,6 +193,17 @@ export default function CreateTechnicianModal({ isOpen, onClose, onCreated }) {
                 value={phone} 
                 onChange={(e) => setPhone(e.target.value)}
               />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Horario Habitual de Entrada (Opcional)</label>
+              <input 
+                type="time" 
+                className="input w-full font-mono font-medium" 
+                value={defaultEntryTime} 
+                onChange={(e) => setDefaultEntryTime(e.target.value)}
+              />
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Horario esperado en base/taller. Dejalo vacío si tiene ingreso variable según las obras del día.</p>
             </div>
 
             <div>

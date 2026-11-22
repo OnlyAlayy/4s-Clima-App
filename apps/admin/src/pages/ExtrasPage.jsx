@@ -45,12 +45,12 @@ export default function ExtrasPage() {
   // --- Estado para Pestaña 1: Cotizador por Frigorías ---
   const [selectedCapacity, setSelectedCapacity] = useState('3000');
   const [quantities, setQuantities] = useState({
-    pipeMeters: 3,
-    brackets: 1,
-    bracketLegs: 1,
+    pipeMeters: 0,
+    brackets: 0,
+    bracketLegs: 0,
     floorLegs: 0,
-    fixingKits: 1,
-    installationLabor: 1,
+    fixingKits: 0,
+    installationLabor: 0,
     uninstallation: 0,
   });
   const [copiedQuote, setCopiedQuote] = useState(false);
@@ -194,6 +194,30 @@ export default function ExtrasPage() {
   const handleQuantityChange = (key, val) => {
     const num = Math.max(0, parseFloat(val) || 0);
     setQuantities((prev) => ({ ...prev, [key]: num }));
+  };
+
+  const handleResetQuantitiesToZero = () => {
+    setQuantities({
+      pipeMeters: 0,
+      brackets: 0,
+      bracketLegs: 0,
+      floorLegs: 0,
+      fixingKits: 0,
+      installationLabor: 0,
+      uninstallation: 0,
+    });
+  };
+
+  const handleResetQuantitiesToStandard = () => {
+    setQuantities({
+      pipeMeters: 3,
+      brackets: 1,
+      bracketLegs: 1,
+      floorLegs: 0,
+      fixingKits: 1,
+      installationLabor: 1,
+      uninstallation: 0,
+    });
   };
 
   const handleCopyBudget = () => {
@@ -480,9 +504,29 @@ export default function ExtrasPage() {
                   Ajustá las cantidades necesarias para recalcular en tiempo real
                 </p>
               </div>
-              <span className="text-xs font-mono px-2.5 py-1 rounded-md bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 font-semibold self-start sm:self-auto">
-                Cañería sugerida: {budget.pipeSpecs}
-              </span>
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={handleResetQuantitiesToZero}
+                  className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-gray-100 hover:bg-gray-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-gray-700 dark:text-gray-300 transition-colors flex items-center gap-1.5"
+                  title="Poner todas las cantidades en 0 para cotizar desde cero"
+                >
+                  <RotateCcw size={13} />
+                  <span>Poner todo en 0</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleResetQuantitiesToStandard}
+                  className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-brand-50 hover:bg-brand-100 dark:bg-brand-950/40 dark:hover:bg-brand-900/40 text-brand-700 dark:text-brand-300 border border-brand-200 dark:border-brand-800 transition-colors flex items-center gap-1.5"
+                  title="Cargar combo estándar sugerido (3m caño + ménsula + patas + fijaciones + mano de obra)"
+                >
+                  <Package size={13} />
+                  <span>Combo Estándar (3m)</span>
+                </button>
+                <span className="text-xs font-mono px-2.5 py-1 rounded-md bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 font-semibold self-start sm:self-auto">
+                  Cañería: {budget.pipeSpecs}
+                </span>
+              </div>
             </div>
 
             <div className="table-container">

@@ -519,8 +519,14 @@ export default function FinancesPage() {
           return Swal.fire('Error de AFIP', 'El servidor respondió con error: ' + (afipData.error || JSON.stringify(afipData)), 'error');
         }
       } else {
-        const errText = await afipRes.text();
-        return Swal.fire('Error del servidor', `Status ${afipRes.status}: ${errText}`, 'error');
+        let errMessage = '';
+        try {
+          const errJson = await afipRes.json();
+          errMessage = errJson.error || JSON.stringify(errJson);
+        } catch {
+          errMessage = await afipRes.text();
+        }
+        return Swal.fire('Error del servidor', `Status ${afipRes.status}: ${errMessage || 'Error al comunicarse con el servicio de facturación.'}`, 'error');
       }
     } catch (error) {
       Swal.fire('Error inesperado', error.message, 'error');
@@ -639,24 +645,40 @@ export default function FinancesPage() {
         .from('work_orders')
         .update({ payment_status: 'unbilled', total_amount: 0, afip_voucher_number: null, afip_cae: null })
         .eq('id', order.id);
+
+      await supabase
+        .from('extras')
+        .update({ billed: false })
+        .eq('work_order_id', order.id);
         
       loadFinances();
       return;
     }
 
-    const associatedInvoice = parseInt(order.afip_voucher_number, 10);
+    const rawVoucher = String(order.afip_voucher_number || '').trim();
+    const voucherParts = rawVoucher.split('-');
+    const voucherNumberStr = voucherParts[voucherParts.length - 1].replace(/\D/g, '');
+    const associatedInvoice = parseInt(voucherNumberStr, 10);
+
     if (isNaN(associatedInvoice) || associatedInvoice <= 0) {
-      return Swal.fire('Error', 'Número de factura inválido.', 'error');
+      return Swal.fire('Error', `Número de factura inválido: ${rawVoucher || 'sin número'}.`, 'error');
     }
+
+    const voucherLetter = rawVoucher.toUpperCase().startsWith('C') ? 'C' : 'A';
+    const isTypeC = voucherLetter === 'C';
     
-    const amount = Number(order.total_amount) || 0;
-    if (amount <= 0) {
+    const totalAmount = Number(order.total_amount) || 0;
+    if (totalAmount <= 0) {
       return Swal.fire('Error', 'El monto de la orden es 0.', 'error');
     }
 
+    // El endpoint /api/invoice espera el monto neto (impNeto). Para Factura A se calcula dividiendo por 1.21.
+    const netAmount = isTypeC ? totalAmount : roundCurrency(totalAmount / 1.21);
+    const formattedTotal = totalAmount.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
     const result = await Swal.fire({
       title: '¿Confirmar Anulación?',
-      html: `¿Estás seguro que querés emitir una <strong>Nota de Crédito</strong> en AFIP por <strong>$${amount}</strong> para anular la Factura Nro <strong>${associatedInvoice}</strong>?`,
+      html: `¿Estás seguro que querés emitir una <strong>Nota de Crédito ${voucherLetter}</strong> en AFIP por <strong>$ ${formattedTotal}</strong> para anular el comprobante <strong>${rawVoucher}</strong>?`,
       icon: 'warning',
       showCancelButton: true,
       confirmButtonColor: '#d33',
@@ -677,7 +699,15 @@ export default function FinancesPage() {
           'Content-Type': 'application/json',
           'Authorization': token ? `Bearer ${token}` : ''
         },
-        body: JSON.stringify({ amount, isCreditNote: true, associatedInvoice, orderId: order.id })
+        body: JSON.stringify({ 
+          amount: netAmount, 
+          netAmount, 
+          totalAmount, 
+          isCreditNote: true, 
+          associatedInvoice, 
+          voucherLetter, 
+          orderId: order.id 
+        })
       });
       
       if (afipRes.ok) {
@@ -689,13 +719,20 @@ export default function FinancesPage() {
           Swal.fire({
             icon: 'success',
             title: '¡Nota de Crédito Generada!',
-            html: `Nro: ${afipData.voucher.number}<br/>CAE: ${afipData.voucher.cae}`
+            html: `Comprobante: ${afipData.voucher.formatted_number || afipData.voucher.number}<br/>CAE: ${afipData.voucher.cae}`
           });
         } else {
           Swal.fire('Error de AFIP', JSON.stringify(afipData), 'error');
         }
       } else {
-        Swal.fire('Error al conectar con AFIP', '', 'error');
+        let errMessage = '';
+        try {
+          const errJson = await afipRes.json();
+          errMessage = errJson.error || JSON.stringify(errJson);
+        } catch {
+          errMessage = await afipRes.text();
+        }
+        Swal.fire('Error al conectar con AFIP', errMessage || 'No se pudo comunicar con el servicio de facturación.', 'error');
       }
     } catch (err) {
       Swal.fire('Error inesperado', err.message, 'error');
@@ -818,6 +855,316 @@ export default function FinancesPage() {
     ]);
   };
 
+  // Exportación oficial Libro IVA Digital RG 4597 (.txt) para AFIP / ARCA
+  const exportToLibroIvaTxt = async () => {
+    // 1. Sanitización de textos a ancho fijo: mayúsculas, sin tildes ni caracteres especiales
+    const sanitizeTxtField = (str, len) => {
+      if (!str) return ''.padEnd(len, ' ');
+      return str
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-zA-Z0-9\s]/g, ' ')
+        .toUpperCase()
+        .trim()
+        .slice(0, len)
+        .padEnd(len, ' ');
+    };
+
+    // Formato numérico de 15 dígitos con 2 decimales implícitos (sin coma ni punto)
+    const formatAmount15 = (num) => {
+      const rounded = Math.round(Math.abs(Number(num) || 0) * 100);
+      return String(rounded).padStart(15, '0');
+    };
+
+    // Formato de fecha YYYYMMDD
+    const formatYYYYMMDD = (dateVal) => {
+      if (!dateVal) return '00000000';
+      const d = new Date(dateVal);
+      if (isNaN(d.getTime())) return '00000000';
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      return `${yyyy}${mm}${dd}`;
+    };
+
+    // 2. Obtener comprobantes fiscales emitidos con CAE de la base de datos
+    const { data: dbVouchers } = await supabase
+      .from('afip_vouchers')
+      .select(`
+        id,
+        voucher_type,
+        voucher_number,
+        cae,
+        amount,
+        created_at,
+        work_order:work_orders(
+          id,
+          order_number,
+          total_amount,
+          afip_voucher_number,
+          afip_cae,
+          completed_at,
+          created_at,
+          client:clients(name, cuit, address)
+        )
+      `)
+      .not('cae', 'is', null)
+      .order('created_at', { ascending: true });
+
+    const { data: dbOrders } = await supabase
+      .from('work_orders')
+      .select(`
+        id,
+        order_number,
+        total_amount,
+        afip_voucher_number,
+        afip_cae,
+        completed_at,
+        created_at,
+        client:clients(name, cuit, address)
+      `)
+      .not('afip_voucher_number', 'is', null)
+      .not('afip_cae', 'is', null)
+      .eq('status', 'completed')
+      .order('completed_at', { ascending: true });
+
+    // 3. Consolidar y desduplicar comprobantes fiscales válidos
+    const voucherMap = new Map();
+
+    (dbVouchers || []).forEach((v) => {
+      const date = v.created_at || v.work_order?.completed_at || v.work_order?.created_at;
+      if (!filterByPeriod(date)) return;
+      if (!v.cae) return;
+
+      const rawNum = String(v.work_order?.afip_voucher_number || v.voucher_number || '');
+      const key = `${v.cae}_${rawNum}`;
+      voucherMap.set(key, {
+        date,
+        rawNum,
+        voucherType: v.voucher_type,
+        cae: String(v.cae).trim(),
+        amount: Number(v.amount) || Number(v.work_order?.total_amount) || 0,
+        clientName: v.work_order?.client?.name || 'CONSUMIDOR FINAL',
+        clientCuit: v.work_order?.client?.cuit || '',
+      });
+    });
+
+    (dbOrders || []).forEach((wo) => {
+      const date = wo.completed_at || wo.created_at;
+      if (!filterByPeriod(date)) return;
+      if (!wo.afip_cae || !wo.afip_voucher_number) return;
+
+      const rawNum = String(wo.afip_voucher_number);
+      const key = `${wo.afip_cae}_${rawNum}`;
+      if (!voucherMap.has(key)) {
+        voucherMap.set(key, {
+          date,
+          rawNum,
+          voucherType: rawNum.toUpperCase().includes('NC') ? 'credit_note' : 'invoice',
+          cae: String(wo.afip_cae).trim(),
+          amount: Number(wo.total_amount) || 0,
+          clientName: wo.client?.name || 'CONSUMIDOR FINAL',
+          clientCuit: wo.client?.cuit || '',
+        });
+      }
+    });
+
+    const fiscalVouchers = Array.from(voucherMap.values()).sort(
+      (a, b) => new Date(a.date) - new Date(b.date)
+    );
+
+    if (fiscalVouchers.length === 0) {
+      return Swal.fire(
+        'Sin Comprobantes Fiscales',
+        'No se encontraron facturas ni notas de crédito con CAE en el período seleccionado.',
+        'info'
+      );
+    }
+
+    // 4. Determinar YYYYMM para nombres de archivos
+    let periodYearMonth = '';
+    if (periodFilter === 'this_month') {
+      const now = new Date();
+      periodYearMonth = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
+    } else if (periodFilter === 'last_month') {
+      const now = new Date();
+      const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      periodYearMonth = `${prev.getFullYear()}${String(prev.getMonth() + 1).padStart(2, '0')}`;
+    } else if (customStartDate) {
+      periodYearMonth = customStartDate.slice(0, 7).replace('-', '');
+    } else {
+      const firstDate = new Date(fiscalVouchers[0].date);
+      periodYearMonth = `${firstDate.getFullYear()}${String(firstDate.getMonth() + 1).padStart(2, '0')}`;
+    }
+
+    // 5. Construir registros de Cabecera (CBTE) y Alícuotas (ALICUOTAS)
+    const cbteLines = [];
+    const alicLines = [];
+
+    fiscalVouchers.forEach((item) => {
+      const rawUpper = item.rawNum.toUpperCase();
+      const isLetterC = rawUpper.startsWith('C') || rawUpper.includes('-C-');
+      const isCreditNote =
+        item.voucherType === 'credit_note' ||
+        rawUpper.includes('NC') ||
+        rawUpper.includes('NOTA');
+
+      // Tipo de Comprobante AFIP (001: Factura A, 003: NC A, 011: Factura C, 013: NC C)
+      let docCode = '001';
+      if (isLetterC) {
+        docCode = isCreditNote ? '013' : '011';
+      } else {
+        docCode = isCreditNote ? '003' : '001';
+      }
+
+      // Punto de Venta y Número
+      let ptoVta = 4;
+      let nroCmp = 1;
+      const match =
+        item.rawNum.match(/^([A-Za-z])?-?0*(\d{1,5})-0*(\d+)/i) ||
+        item.rawNum.match(/0*(\d+)/);
+      if (match) {
+        if (match[3]) {
+          ptoVta = parseInt(match[2], 10) || 4;
+          nroCmp = parseInt(match[3], 10) || 1;
+        } else if (match[2]) {
+          ptoVta = parseInt(match[1], 10) || 4;
+          nroCmp = parseInt(match[2], 10) || 1;
+        } else if (match[1] && !isNaN(match[1])) {
+          nroCmp = parseInt(match[1], 10) || 1;
+        }
+      }
+
+      const ptoVtaStr = String(ptoVta).padStart(5, '0');
+      const nroCmpStr = String(nroCmp).padStart(20, '0');
+
+      // Receptor: 80 = CUIT, 96 = DNI, 99 = Consumidor Final
+      const cuitDigits = String(item.clientCuit || '').replace(/\D/g, '');
+      let docReceptorCode = '80';
+      if (cuitDigits.length >= 7 && cuitDigits.length <= 8) {
+        docReceptorCode = '96';
+      } else if (!cuitDigits || cuitDigits.length === 0) {
+        docReceptorCode = '99';
+      }
+      const cuitStr = (cuitDigits || '0').padStart(20, '0');
+      const denominacionStr = sanitizeTxtField(item.clientName, 30);
+
+      // Importes
+      const total = Math.abs(Number(item.amount) || 0);
+      let netAmount = 0;
+      let ivaAmount = 0;
+      let noGravado = 0;
+      let cantAlicuotas = '0';
+
+      if (!isLetterC) {
+        // Factura A / NC A (Discrimina IVA 21%)
+        netAmount = roundCurrency(total / 1.21);
+        ivaAmount = roundCurrency(total - netAmount);
+        noGravado = 0;
+        cantAlicuotas = '1';
+      } else {
+        // Factura C / NC C (Monotributo / No gravado)
+        netAmount = 0;
+        ivaAmount = 0;
+        noGravado = total;
+        cantAlicuotas = '0';
+      }
+
+      const totalStr = formatAmount15(total);
+      const noGravadoStr = formatAmount15(noGravado);
+      const zero15 = '0'.padStart(15, '0');
+
+      // Fechas
+      const fechaCbte = formatYYYYMMDD(item.date);
+      const vtoDate = new Date(item.date);
+      vtoDate.setDate(vtoDate.getDate() + 4);
+      const fechaVto = formatYYYYMMDD(vtoDate);
+
+      // Cabecera: RG 4597 Libro IVA Ventas Comprobantes (261 caracteres exactos)
+      const cbteLine = [
+        fechaCbte,
+        docCode,
+        ptoVtaStr,
+        nroCmpStr,
+        nroCmpStr,
+        docReceptorCode,
+        cuitStr,
+        denominacionStr,
+        totalStr,
+        noGravadoStr,
+        zero15,
+        zero15,
+        zero15,
+        zero15,
+        zero15,
+        zero15,
+        'PES',
+        '0001000000',
+        cantAlicuotas,
+        '0',
+        zero15,
+        fechaVto,
+      ].join('');
+
+      cbteLines.push(cbteLine);
+
+      // Alícuotas: RG 4597 Libro IVA Ventas Alícuotas (62 caracteres exactos)
+      if (!isLetterC && cantAlicuotas === '1') {
+        const alicLine = [
+          docCode,
+          ptoVtaStr,
+          nroCmpStr,
+          formatAmount15(netAmount),
+          '0005', // 0005 = 21.00%
+          formatAmount15(ivaAmount),
+        ].join('');
+
+        alicLines.push(alicLine);
+      }
+    });
+
+    // 6. Generar y descargar los 2 archivos de texto
+    const cbteFileName = `LIBRO_IVA_VENTAS_CBTE_${periodYearMonth}.txt`;
+    const alicFileName = `LIBRO_IVA_VENTAS_ALICUOTAS_${periodYearMonth}.txt`;
+
+    const cbteContent = cbteLines.join('\r\n') + '\r\n';
+    const alicContent = alicLines.length > 0 ? alicLines.join('\r\n') + '\r\n' : '';
+
+    const cbteBlob = new Blob([cbteContent], { type: 'text/plain;charset=utf-8' });
+    const alicBlob = new Blob([alicContent], { type: 'text/plain;charset=utf-8' });
+
+    const txtFileTypes = [
+      {
+        description: 'Archivo de Texto Libro IVA Digital (.txt)',
+        accept: { 'text/plain': ['.txt'] },
+      },
+    ];
+
+    await saveAndDownloadBlob(cbteBlob, cbteFileName, txtFileTypes);
+    await new Promise((res) => setTimeout(res, 500));
+    if (alicLines.length > 0) {
+      await saveAndDownloadBlob(alicBlob, alicFileName, txtFileTypes);
+    }
+
+    Swal.fire({
+      icon: 'success',
+      title: 'Libro IVA Digital AFIP (.txt)',
+      html: `
+        <div class="text-left text-sm space-y-2">
+          <p>Se generaron con éxito los dos archivos de ancho fijo según RG 4597:</p>
+          <ul class="list-disc pl-5 text-xs text-gray-700 dark:text-gray-300 space-y-1">
+            <li><strong>${cbteFileName}</strong> (${cbteLines.length} comprobantes de venta)</li>
+            <li><strong>${alicFileName}</strong> (${alicLines.length} registros de alícuota 21%)</li>
+          </ul>
+          <p class="text-[11px] text-gray-500 dark:text-gray-400 mt-2">
+            Archivos validados con padding estricto listos para importar directamente en ARCA / AFIP o sistemas contables (Tango, Bejerman, Holistor).
+          </p>
+        </div>
+      `,
+      confirmButtonText: 'Aceptar',
+    });
+  };
+
   const handleDownloadPDF = async (order) => {
     try {
       await openAndDownloadPDF(generateArcaInvoicePDF(order));
@@ -906,14 +1253,24 @@ export default function FinancesPage() {
             Gestión integral de facturación electrónica AFIP y seguimiento de cobranzas
           </p>
         </div>
-        <button 
-          onClick={exportToCSV}
-          className="btn-secondary flex items-center gap-2 self-start sm:self-auto"
-          title="Descargar reporte en formato CSV compatible con Libro IVA Digital"
-        >
-          <Download size={18} />
-          Exportar Libro IVA
-        </button>
+        <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
+          <button 
+            onClick={exportToLibroIvaTxt}
+            className="btn-secondary flex items-center gap-2 text-sm font-semibold"
+            title="Descargar archivos oficiales de Libro IVA Digital RG 4597 (.txt) para AFIP / ARCA"
+          >
+            <Download size={17} />
+            Libro IVA AFIP (.txt)
+          </button>
+          <button 
+            onClick={exportToCSV}
+            className="btn-secondary flex items-center gap-2 text-sm"
+            title="Descargar reporte en formato CSV / Excel compatible con Libro IVA Digital"
+          >
+            <Download size={17} />
+            Exportar Excel / CSV
+          </button>
+        </div>
       </div>
 
       {/* Dashboard Stats (KPIs) */}

@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, ClipboardList, Building2, Users, DollarSign,
-  LogOut, CalendarDays, Sun, Moon, Wallet, ChevronLeft, ChevronRight, Clock
+  LogOut, CalendarDays, Sun, Moon, Wallet, ChevronLeft, ChevronRight, Clock,
+  MessageSquare, FileCheck
 } from 'lucide-react';
+import { supabase } from '@4s-clima/shared/supabase';
 import { useAdminAuth } from '../../App';
 import { useDarkMode } from '../../hooks/useDarkMode';
 
@@ -15,6 +17,40 @@ export default function Sidebar({ isCollapsed = false, toggleSidebar }) {
   const { user, profile, logout } = useAdminAuth();
   const { isDark, toggleDarkMode } = useDarkMode();
   const [logoError, setLogoError] = useState(false);
+  const [unreadLeadsCount, setUnreadLeadsCount] = useState(0);
+
+  useEffect(() => {
+    async function loadUnreadCount() {
+      try {
+        const { count, error } = await supabase
+          .from('leads')
+          .select('*', { count: 'exact', head: true })
+          .in('estado', ['pendiente', 'nuevo', 'new']);
+        if (!error && count !== null) {
+          setUnreadLeadsCount(count);
+        }
+      } catch (e) {
+        console.warn('[Sidebar] Error al cargar contador de leads:', e);
+      }
+    }
+
+    loadUnreadCount();
+
+    const channel = supabase
+      .channel('sidebar_unread_leads')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'leads' },
+        () => {
+          loadUnreadCount();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   const isOwner = profile?.role === 'owner';
   const displayName = profile?.name || profile?.full_name || user?.email || 'Usuario';
@@ -26,14 +62,16 @@ export default function Sidebar({ isCollapsed = false, toggleSidebar }) {
       label: 'OPERACIÓN',
       items: [
         { to: '/', icon: LayoutDashboard, label: 'Dashboard', end: true },
+        { to: '/leads', icon: MessageSquare, label: 'Consultas Web', badge: unreadLeadsCount },
+        { to: '/quotes', icon: FileCheck, label: 'Presupuestos' },
         { to: '/ordenes', icon: ClipboardList, label: 'Órdenes de Trabajo' },
         { to: '/calendario', icon: CalendarDays, label: 'Calendario' },
-        { to: '/finanzas', icon: Wallet, label: 'Cobranzas' },
       ]
     },
     {
       label: 'ADMINISTRACIÓN',
       items: [
+        { to: '/finanzas', icon: Wallet, label: 'Cobranzas' },
         { to: '/clientes', icon: Building2, label: 'Clientes' },
         { to: '/tecnicos', icon: Users, label: 'Técnicos' },
         { to: '/asistencia', icon: Clock, label: 'Control Asistencia' },
@@ -50,15 +88,19 @@ export default function Sidebar({ isCollapsed = false, toggleSidebar }) {
     >
       {/* Header con Logo y botón de colapso integrado con el estilo corporativo */}
       <div
-        className={`py-5 border-b border-white/10 transition-all duration-300 ${
+        className={`border-b border-white/10 transition-all duration-300 ${
           isCollapsed
-            ? 'px-3 flex flex-col items-center gap-3'
-            : 'px-5 flex items-center justify-between'
+            ? 'py-3.5 px-2 flex flex-col items-center gap-2'
+            : 'py-5 px-5 flex items-center justify-between'
         }`}
       >
         {isCollapsed ? (
           <>
-            <div className="h-9 w-9 flex items-center justify-center flex-shrink-0" title="4S Clima - Panel Admin">
+            <button
+              onClick={toggleSidebar}
+              className="h-9 w-9 flex items-center justify-center flex-shrink-0 hover:opacity-80 transition-opacity focus:outline-none"
+              title="Expandir menú lateral"
+            >
               {logoError ? (
                 <span className="font-black text-white text-base tracking-wider">4S</span>
               ) : (
@@ -69,14 +111,14 @@ export default function Sidebar({ isCollapsed = false, toggleSidebar }) {
                   className="h-full w-auto object-contain brightness-0 invert"
                 />
               )}
-            </div>
+            </button>
             {toggleSidebar && (
               <button
                 onClick={toggleSidebar}
-                className="p-1.5 rounded-lg text-blue-200/70 hover:text-white hover:bg-white/10 active:bg-white/20 transition-all duration-150 flex items-center justify-center focus:outline-none"
-                title="Agrandar menú (Expandir)"
+                className="p-1 rounded-lg text-blue-200/70 hover:text-white hover:bg-white/10 active:bg-white/20 transition-all duration-150 flex items-center justify-center focus:outline-none"
+                title="Expandir menú lateral"
               >
-                <ChevronRight size={18} />
+                <ChevronRight size={16} />
               </button>
             )}
           </>
@@ -118,31 +160,45 @@ export default function Sidebar({ isCollapsed = false, toggleSidebar }) {
       </div>
 
       {/* Navigation */}
-      <nav className={`flex-1 ${isCollapsed ? 'px-2' : 'px-3'} py-4 space-y-6 overflow-y-auto`}>
+      <nav className={`flex-1 ${isCollapsed ? 'px-2 py-2 space-y-2' : 'px-3 py-4 space-y-5'} overflow-y-auto no-scrollbar`}>
         {navGroups.map((group, i) => (
-          <div key={i} className="space-y-1">
+          <div key={i} className={isCollapsed ? 'space-y-0.5' : 'space-y-1'}>
             {isCollapsed ? (
-              <div className="my-2 border-t border-white/10 mx-2" title={group.label} />
+              <div className="my-1 border-t border-white/10 mx-2" title={group.label} />
             ) : (
               <p className="px-3 text-[10px] font-bold tracking-widest text-blue-200/50 uppercase mb-2">
                 {group.label}
               </p>
             )}
 
-            {group.items.map(({ to, icon: Icon, label, end }) => (
+            {group.items.map(({ to, icon: Icon, label, end, badge }) => (
               <NavLink
                 key={to}
                 to={to}
                 end={end}
-                title={isCollapsed ? label : undefined}
+                title={isCollapsed ? (badge > 0 ? `${label} (${badge} sin atender)` : label) : undefined}
                 className={({ isActive }) =>
-                  `sidebar-link ${isCollapsed ? 'justify-center px-0 py-3' : ''} ${
+                  `sidebar-link ${isCollapsed ? 'justify-center px-0 py-2.5' : ''} ${
                     isActive ? 'active' : ''
                   }`
                 }
               >
-                <Icon size={isCollapsed ? 20 : 18} />
-                {!isCollapsed && <span>{label}</span>}
+                <div className="relative flex items-center justify-center">
+                  <Icon size={isCollapsed ? 18 : 18} />
+                  {isCollapsed && badge > 0 && (
+                    <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-amber-500 rounded-full ring-2 ring-blue-950 animate-pulse" />
+                  )}
+                </div>
+                {!isCollapsed && (
+                  <div className="flex items-center justify-between flex-1 min-w-0">
+                    <span className="truncate">{label}</span>
+                    {badge > 0 && (
+                      <span className="ml-2 px-1.5 py-0.5 text-[10px] font-extrabold rounded-full bg-amber-500 text-white shadow-xs">
+                        {badge}
+                      </span>
+                    )}
+                  </div>
+                )}
               </NavLink>
             ))}
           </div>
@@ -150,14 +206,14 @@ export default function Sidebar({ isCollapsed = false, toggleSidebar }) {
       </nav>
 
       {/* User info + logout */}
-      <div className={`${isCollapsed ? 'px-2' : 'px-3'} py-4 border-t border-white/10`}>
+      <div className={`${isCollapsed ? 'px-2 py-2.5' : 'px-3 py-4'} border-t border-white/10`}>
 
         {isCollapsed ? (
           <div
-            className="flex justify-center mb-2 py-1"
+            className="flex justify-center mb-1.5 py-0.5"
             title={`${displayName} (${displayRole})`}
           >
-            <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 shadow-sm transition-all ${
+            <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 shadow-sm transition-all ${
               isOwner
                 ? 'bg-brand-600 text-white font-bold border border-brand-400/40 shadow-sm'
                 : 'bg-white/10 text-white font-bold border border-white/15'
@@ -192,11 +248,9 @@ export default function Sidebar({ isCollapsed = false, toggleSidebar }) {
         <button
           onClick={toggleDarkMode}
           title={isCollapsed ? (isDark ? 'Modo Claro' : 'Modo Oscuro') : undefined}
-          className={`sidebar-link w-full text-blue-100 mb-1 ${
-            isCollapsed ? 'justify-center px-0 py-3' : ''
-          }`}
+          className={`sidebar-link w-full text-blue-100 ${isCollapsed ? 'justify-center px-0 py-2 mb-0.5' : 'mb-1'}`}
         >
-          {isDark ? <Sun size={isCollapsed ? 20 : 18} /> : <Moon size={isCollapsed ? 20 : 18} />}
+          {isDark ? <Sun size={isCollapsed ? 18 : 18} /> : <Moon size={isCollapsed ? 18 : 18} />}
           {!isCollapsed && <span>{isDark ? 'Modo Claro' : 'Modo Oscuro'}</span>}
         </button>
 
@@ -204,10 +258,10 @@ export default function Sidebar({ isCollapsed = false, toggleSidebar }) {
           onClick={logout}
           title={isCollapsed ? 'Cerrar Sesión' : undefined}
           className={`sidebar-link w-full text-blue-100 hover:text-white hover:bg-red-500 ${
-            isCollapsed ? 'justify-center px-0 py-3' : ''
+            isCollapsed ? 'justify-center px-0 py-2' : ''
           }`}
         >
-          <LogOut size={isCollapsed ? 20 : 18} />
+          <LogOut size={isCollapsed ? 18 : 18} />
           {!isCollapsed && <span>Cerrar Sesión</span>}
         </button>
       </div>

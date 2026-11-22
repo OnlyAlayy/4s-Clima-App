@@ -22,6 +22,14 @@ export {
   WORK_ORDER_TYPE_LABELS,
   EQUIPMENT_TYPE_LABELS,
   CHECKLIST_STATUS_LABELS,
+  TARGET_UNITS,
+  TARGET_UNIT_LABELS,
+  UNIT_SCOPES,
+  UNIT_SCOPE_LABELS,
+  HOLD_REASONS,
+  HOLD_REASON_LABELS,
+  VISIT_OUTCOMES,
+  VISIT_OUTCOME_LABELS,
 } from './constants/index.js';
 
 // Checklists predefinidos
@@ -58,6 +66,8 @@ export {
 // Utilidades
 export {
   formatDate,
+  formatLocalDate,
+  getArgentinaDate,
   formatTime,
   formatDateTime,
   formatCurrency,

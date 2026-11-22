@@ -322,9 +322,9 @@ export default function ClientDetailsPage() {
                         </th>
                         <th>Token QR</th>
                         <th>Planta</th>
-                        <th>Tipo</th>
-                        <th>Marca / Modelo</th>
-                        <th>Serie</th>
+                        <th>Tipo / Marca</th>
+                        <th>Unidad Interior (UI)</th>
+                        <th>Unidad Exterior (UE)</th>
                         <th>Estado</th>
                         <th className="w-20 text-right">Acciones</th>
                       </tr>
@@ -332,6 +332,14 @@ export default function ClientDetailsPage() {
                     <tbody>
                       {equipment.map(eq => {
                         const isSelected = selectedEquipIds.includes(eq.id);
+                        const uiModel = eq.indoor_model || eq.model || '-';
+                        const uiSerial = eq.indoor_serial || eq.serial_number || '-';
+                        const uiLoc = eq.indoor_location || eq.location_description || '';
+
+                        const ueModel = eq.outdoor_model || '-';
+                        const ueSerial = eq.outdoor_serial || '-';
+                        const ueLoc = eq.outdoor_location || '';
+
                         return (
                           <tr key={eq.id} className={isSelected ? 'bg-blue-50/40 dark:bg-blue-950/20' : ''}>
                             <td>
@@ -349,14 +357,43 @@ export default function ClientDetailsPage() {
                               />
                             </td>
                             <td>
-                              <span className="font-mono tabular-nums text-xs font-bold px-2 py-0.5 bg-gray-100 dark:bg-slate-700 text-slate-800 dark:text-slate-200 rounded border border-gray-200 dark:border-slate-600">
-                                {eq.qr_token || 'S/TOKEN'}
-                              </span>
+                              <div className="flex flex-col gap-0.5">
+                                <span className="font-mono tabular-nums text-xs font-bold px-2 py-0.5 bg-gray-100 dark:bg-slate-700 text-slate-800 dark:text-slate-200 rounded border border-gray-200 dark:border-slate-600 w-fit">
+                                  {eq.qr_token || 'S/TOKEN'}
+                                </span>
+                                <span className="text-[10px] text-gray-400 font-medium">1 QR (UI+UE)</span>
+                              </div>
                             </td>
                             <td className="text-xs font-medium text-gray-700 dark:text-gray-300">{eq.plant?.name}</td>
-                            <td className="text-xs text-gray-500 dark:text-gray-400">{EQUIPMENT_TYPE_LABELS[eq.type] || eq.type}</td>
-                            <td className="text-xs text-gray-900 dark:text-white font-medium">{eq.brand} {eq.model}</td>
-                            <td className="text-xs text-gray-500 dark:text-gray-400 font-mono tabular-nums">{eq.serial_number || '-'}</td>
+                            <td>
+                              <div className="text-xs font-bold text-gray-900 dark:text-white">{eq.brand}</div>
+                              <div className="text-[11px] text-gray-500 dark:text-gray-400">
+                                {EQUIPMENT_TYPE_LABELS[eq.type] || eq.type}
+                                {eq.capacity_tr_fg ? ` · ${eq.capacity_tr_fg}` : eq.capacity_btu ? ` · ${eq.capacity_btu} BTU` : ''}
+                              </div>
+                            </td>
+                            {/* Unidad Interior (UI) */}
+                            <td>
+                              <div className="space-y-0.5 min-w-[140px]">
+                                <div className="text-xs font-semibold text-sky-800 dark:text-sky-300 flex items-center gap-1">
+                                  <span className="text-[10px] px-1 py-0.2 bg-sky-100 dark:bg-sky-900/60 rounded font-bold">UI</span>
+                                  <span>{uiModel}</span>
+                                </div>
+                                <div className="text-[11px] font-mono text-gray-500 dark:text-gray-400">S/N: {uiSerial}</div>
+                                {uiLoc && <div className="text-[10px] text-gray-400 truncate max-w-[160px]" title={uiLoc}>{uiLoc}</div>}
+                              </div>
+                            </td>
+                            {/* Unidad Exterior (UE) */}
+                            <td>
+                              <div className="space-y-0.5 min-w-[140px]">
+                                <div className="text-xs font-semibold text-amber-800 dark:text-amber-300 flex items-center gap-1">
+                                  <span className="text-[10px] px-1 py-0.2 bg-amber-100 dark:bg-amber-900/60 rounded font-bold">UE</span>
+                                  <span>{ueModel}</span>
+                                </div>
+                                <div className="text-[11px] font-mono text-gray-500 dark:text-gray-400">S/N: {ueSerial}</div>
+                                {ueLoc && <div className="text-[10px] text-gray-400 truncate max-w-[160px]" title={ueLoc}>{ueLoc}</div>}
+                              </div>
+                            </td>
                             <td>
                               {eq.operational_status === 'fuera_de_servicio' ? (
                                 <span className="px-2 py-0.5 rounded text-[10px] font-bold tracking-wide uppercase bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-400 border border-red-200 dark:border-red-800">

@@ -17,9 +17,14 @@ import {
   ExternalLink,
   User,
   Wrench,
+  Wind,
+  Box,
+  MapPin,
+  Tag,
+  Layers,
 } from 'lucide-react';
 import { supabase } from '@4s-clima/shared/supabase';
-import { EQUIPMENT_TYPE_LABELS, WORK_ORDER_TYPE_LABELS, getStatusColor, getStatusLabel } from '@4s-clima/shared';
+import { EQUIPMENT_TYPE_LABELS, WORK_ORDER_TYPE_LABELS, TARGET_UNIT_LABELS, getStatusColor, getStatusLabel, formatDate } from '@4s-clima/shared';
 import { useWorkOrderStore } from '../stores/workOrderStore';
 import toast from 'react-hot-toast';
 
@@ -108,22 +113,42 @@ export default function ScannerPage() {
       // 1. Detectar si el identificador es un UUID válido para evitar el error 22P02 de PostgreSQL
       const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanCode);
 
-      let query = supabase
-        .from('equipment')
-        .select(`
-          *,
-          plant:plants(name, address, client:clients(name))
-        `);
+      let data = null;
+      try {
+        let query = supabase
+          .from('equipment')
+          .select(`
+            *,
+            plant:plants(name, address, client:clients(name))
+          `);
 
-      if (isUuid) {
-        query = query.or(`id.eq.${cleanCode},qr_token.eq.${cleanCode},serial_number.eq.${cleanCode}`);
-      } else {
-        query = query.or(`qr_token.ilike.${cleanCode},serial_number.ilike.${cleanCode}`);
+        if (isUuid) {
+          query = query.or(`id.eq.${cleanCode},qr_token.eq.${cleanCode},serial_number.eq.${cleanCode},indoor_serial.eq.${cleanCode},outdoor_serial.eq.${cleanCode}`);
+        } else {
+          query = query.or(`qr_token.ilike.${cleanCode},serial_number.ilike.${cleanCode},indoor_serial.ilike.${cleanCode},outdoor_serial.ilike.${cleanCode}`);
+        }
+
+        const res = await query.limit(1).maybeSingle();
+        if (res.error && (res.error.message?.includes('indoor_serial') || res.error.code === '42703')) {
+          let fbQuery = supabase
+            .from('equipment')
+            .select(`*, plant:plants(name, address, client:clients(name))`);
+          if (isUuid) {
+            fbQuery = fbQuery.or(`id.eq.${cleanCode},qr_token.eq.${cleanCode},serial_number.eq.${cleanCode}`);
+          } else {
+            fbQuery = fbQuery.or(`qr_token.ilike.${cleanCode},serial_number.ilike.${cleanCode}`);
+          }
+          const fbRes = await fbQuery.limit(1).maybeSingle();
+          if (fbRes.error) throw fbRes.error;
+          data = fbRes.data;
+        } else if (res.error) {
+          throw res.error;
+        } else {
+          data = res.data;
+        }
+      } catch (searchErr) {
+        throw searchErr;
       }
-
-      const { data, error: fetchError } = await query.limit(1).maybeSingle();
-
-      if (fetchError) throw fetchError;
 
       if (!data) {
         setError(`No se encontró ningún equipo asociado al código "${cleanCode}".`);
@@ -132,9 +157,10 @@ export default function ScannerPage() {
 
       setEquipment(data);
 
-      // 2. Cargar historial clínico de intervenciones de este equipo
+      // 2. Cargar historial clínico de intervenciones de este equipo (incluye desglose UI/UE)
       try {
-        const { data: historyData } = await supabase
+        let historyList = [];
+        const { data: historyData, error: histErr } = await supabase
           .from('work_orders')
           .select(`
             id,
@@ -144,15 +170,41 @@ export default function ScannerPage() {
             scheduled_date,
             completed_at,
             observations,
+            target_unit,
+            indoor_work_notes,
+            outdoor_work_notes,
             assigned:users(name),
             extras(description, quantity, unit),
-            checklist_items(item_name, status, notes)
+            checklist_items(item_name, status, notes, unit_scope)
           `)
           .eq('equipment_id', data.id)
           .order('scheduled_date', { ascending: false })
           .limit(10);
 
-        setHistory(historyData || []);
+        if (histErr && (histErr.message?.includes('target_unit') || histErr.code === '42703')) {
+          const { data: fbHist } = await supabase
+            .from('work_orders')
+            .select(`
+              id,
+              order_number,
+              type,
+              status,
+              scheduled_date,
+              completed_at,
+              observations,
+              assigned:users(name),
+              extras(description, quantity, unit),
+              checklist_items(item_name, status, notes)
+            `)
+            .eq('equipment_id', data.id)
+            .order('scheduled_date', { ascending: false })
+            .limit(10);
+          historyList = fbHist || [];
+        } else {
+          historyList = historyData || [];
+        }
+
+        setHistory(historyList);
       } catch (histErr) {
         console.warn('No se pudo cargar historial de la unidad:', histErr);
       }
@@ -358,32 +410,88 @@ export default function ScannerPage() {
                 <div>{getOperationalStatusBadge(equipment.operational_status)}</div>
               </div>
 
-              {/* Especificaciones */}
-              <div className="grid grid-cols-2 gap-2 text-xs bg-gray-50 dark:bg-slate-850 p-3 rounded-xl border border-gray-100 dark:border-slate-800">
+              {/* Ficha Técnica Dual: UI (Evaporadora) y UE (Condensadora) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                {/* Unidad Interior */}
+                <div className="p-3 bg-sky-50/60 dark:bg-sky-950/30 rounded-xl border border-sky-100 dark:border-sky-900/40 space-y-2">
+                  <div className="flex items-center gap-1.5 text-sky-800 dark:text-sky-300 font-bold text-xs border-b border-sky-200/60 dark:border-sky-800 pb-1.5">
+                    <Wind size={15} className="text-sky-600 dark:text-sky-400" />
+                    <span>Unidad Interior (UI - Evaporadora)</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-400 block text-[10px] font-semibold uppercase">Modelo UI:</span>
+                    <span className="font-bold text-slate-800 dark:text-slate-100">
+                      {equipment.indoor_model || equipment.model || 'N/D'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-gray-400 block text-[10px] font-semibold uppercase">N° Serie UI:</span>
+                    <span className="font-mono font-bold text-slate-900 dark:text-white">
+                      {equipment.indoor_serial || equipment.serial_number || 'N/D'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-gray-400 block text-[10px] font-semibold uppercase">Ubicación UI:</span>
+                    <span className="font-medium text-slate-700 dark:text-slate-200 flex items-center gap-1">
+                      <MapPin size={11} className="text-sky-500 shrink-0" />
+                      {equipment.indoor_location || equipment.location_description || 'Sin especificar'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Unidad Exterior */}
+                <div className="p-3 bg-amber-50/60 dark:bg-amber-950/30 rounded-xl border border-amber-100 dark:border-amber-900/40 space-y-2">
+                  <div className="flex items-center gap-1.5 text-amber-800 dark:text-amber-300 font-bold text-xs border-b border-amber-200/60 dark:border-amber-800 pb-1.5">
+                    <Box size={15} className="text-amber-600 dark:text-amber-400" />
+                    <span>Unidad Exterior (UE - Condensadora)</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-400 block text-[10px] font-semibold uppercase">Modelo UE:</span>
+                    <span className="font-bold text-slate-800 dark:text-slate-100">
+                      {equipment.outdoor_model || 'No especificado'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-gray-400 block text-[10px] font-semibold uppercase">N° Serie UE:</span>
+                    <span className="font-mono font-bold text-slate-900 dark:text-white">
+                      {equipment.outdoor_serial || 'No especificado'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-gray-400 block text-[10px] font-semibold uppercase">Ubicación UE:</span>
+                    <span className="font-medium text-slate-700 dark:text-slate-200 flex items-center gap-1">
+                      <MapPin size={11} className="text-amber-500 shrink-0" />
+                      {equipment.outdoor_location || 'No especificada'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Parámetros Técnicos y Planta */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs bg-gray-50 dark:bg-slate-850 p-3 rounded-xl border border-gray-100 dark:border-slate-800">
                 <div>
-                  <span className="text-gray-400 block font-medium">N° de Serie:</span>
-                  <span className="font-mono font-bold text-slate-900 dark:text-white">
-                    {equipment.serial_number || 'N/D'}
+                  <span className="text-gray-400 block font-medium">Refrigerante:</span>
+                  <span className="font-bold text-slate-900 dark:text-white">
+                    {equipment.refrigerant_type || 'N/D'}
                   </span>
                 </div>
                 <div>
                   <span className="text-gray-400 block font-medium">Capacidad:</span>
                   <span className="font-bold text-slate-900 dark:text-white">
-                    {equipment.capacity_btu ? `${equipment.capacity_btu.toLocaleString()} BTU` : 'N/D'}
+                    {equipment.capacity_tr_fg || (equipment.capacity_btu ? `${equipment.capacity_btu.toLocaleString()} BTU` : 'N/D')}
                   </span>
                 </div>
-                <div>
-                  <span className="text-gray-400 block font-medium">Ubicación / Sector:</span>
-                  <span className="font-semibold text-slate-800 dark:text-slate-200">
-                    {equipment.location_description || 'Sin especificar'}
-                  </span>
-                </div>
-                <div>
+                <div className="col-span-2 sm:col-span-1">
                   <span className="text-gray-400 block font-medium">Planta / Sucursal:</span>
                   <span className="font-semibold text-slate-800 dark:text-slate-200 truncate block">
                     {equipment.plant?.name || 'N/D'}
                   </span>
                 </div>
+              </div>
+
+              <div className="text-[11px] text-gray-500 dark:text-gray-400 flex items-center gap-1.5 px-1">
+                <Tag size={13} className="text-brand-500 shrink-0" />
+                <span>QR de Sistema (Pegar en Unidad Interior) — Registra ambas unidades.</span>
               </div>
 
               {/* Acción Rápida: Vincular a Orden Activa */}
@@ -445,17 +553,24 @@ export default function ScannerPage() {
                           <span className="text-xs font-bold text-slate-900 dark:text-white font-mono tabular-nums">
                             {wo.order_number}
                           </span>
-                          <span className={`badge text-[10px] py-0 px-1.5 ${sc.bg} ${sc.text}`}>
-                            {getStatusLabel(wo.status)}
-                          </span>
+                          <div className="flex items-center gap-1.5">
+                            {wo.target_unit && (
+                              <span className="badge text-[10px] py-0 px-1.5 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 font-bold">
+                                {TARGET_UNIT_LABELS[wo.target_unit] || wo.target_unit}
+                              </span>
+                            )}
+                            <span className={`badge text-[10px] py-0 px-1.5 ${sc.bg} ${sc.text}`}>
+                              {getStatusLabel(wo.status)}
+                            </span>
+                          </div>
                         </div>
                         <div className="flex items-center gap-3 text-[11px] text-gray-500 dark:text-gray-400">
                           <span className="flex items-center gap-1">
-                            <Calendar size={12} /> {wo.scheduled_date || 'Sin fecha'}
+                            <Calendar size={12} /> {wo.scheduled_date ? formatDate(wo.scheduled_date) : 'Sin fecha'}
                           </span>
                           <span>·</span>
                           <span className="font-semibold text-slate-700 dark:text-slate-300">
-                            {WORK_ORDER_TYPE_LABELS[wo.type] || wo.type}
+                            {WORK_ORDER_TYPE_LABELS[wo.type?.toLowerCase()] || WORK_ORDER_TYPE_LABELS[wo.type] || (wo.type ? wo.type.charAt(0).toUpperCase() + wo.type.slice(1) : '')}
                           </span>
                         </div>
 
@@ -465,6 +580,24 @@ export default function ScannerPage() {
                           <span className="text-gray-500">Técnico:</span>
                           <span className="font-semibold">{wo.assigned?.name || 'Técnico anterior'}</span>
                         </div>
+
+                        {/* Tareas realizadas por unidad (UI y UE) */}
+                        {wo.indoor_work_notes && (
+                          <div className="text-[10px] p-2 rounded-lg bg-sky-50/80 dark:bg-sky-950/30 text-sky-900 dark:text-sky-200 border border-sky-200/50 dark:border-sky-800/40 space-y-0.5">
+                            <span className="font-bold text-sky-700 dark:text-sky-300 flex items-center gap-1">
+                              <Wind size={11} /> [UI - Evaporadora]:
+                            </span>
+                            <p className="line-clamp-2">{wo.indoor_work_notes}</p>
+                          </div>
+                        )}
+                        {wo.outdoor_work_notes && (
+                          <div className="text-[10px] p-2 rounded-lg bg-amber-50/80 dark:bg-amber-950/30 text-amber-900 dark:text-amber-200 border border-amber-200/50 dark:border-amber-800/40 space-y-0.5">
+                            <span className="font-bold text-amber-700 dark:text-amber-300 flex items-center gap-1">
+                              <Box size={11} /> [UE - Condensadora]:
+                            </span>
+                            <p className="line-clamp-2">{wo.outdoor_work_notes}</p>
+                          </div>
+                        )}
 
                         {/* Repuestos / Insumos */}
                         {wo.extras && wo.extras.length > 0 && (

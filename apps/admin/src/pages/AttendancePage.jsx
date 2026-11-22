@@ -27,11 +27,68 @@ import {
   Check,
   X,
   Layers,
+  Edit2,
 } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { supabase } from '@4s-clima/shared/supabase';
-import { formatCurrency, formatDate, formatTime } from '@4s-clima/shared/utils';
+import { formatCurrency, formatDate, formatLocalDate as formatLocalDateShared, formatTime } from '@4s-clima/shared/utils';
 import { generateSettlementPDF, openAndDownloadPDF } from '../services/pdfService';
+
+/**
+ * Helper seguro para formatear fechas YYYY-MM-DD sin sufrir el desfase de -3 horas (UTC-3).
+ */
+const formatLocalDate = (dateStr) => {
+  if (!dateStr) return '—';
+  if (typeof dateStr === 'string') {
+    const cleanDate = dateStr.split('T')[0];
+    const parts = cleanDate.split('-');
+    if (parts.length === 3 && parts[0].length === 4) {
+      const [y, m, d] = parts;
+      return `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
+    }
+  }
+  const d = new Date(typeof dateStr === 'string' && dateStr.length === 10 ? `${dateStr}T12:00:00` : dateStr);
+  return isNaN(d.getTime())
+    ? '—'
+    : d.toLocaleDateString('es-AR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+      });
+};
+
+/**
+ * Formato 24 hs limpio en una sola línea (ej. 10:21 hs / 12:17 hs).
+ */
+const formatTime24 = (date) => {
+  if (!date) return '—';
+  const d = new Date(date);
+  if (isNaN(d.getTime())) return '—';
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${pad(d.getHours())}:${pad(d.getMinutes())} hs`;
+};
+
+/**
+ * Formato legible de horas y minutos Xh Ym (ej: 1.933 hs -> 1h 56m, < 1m, —).
+ */
+const formatDurationHuman = (hoursDecimal) => {
+  if (hoursDecimal == null || isNaN(hoursDecimal) || hoursDecimal <= 0) {
+    return '—';
+  }
+  const totalMinutes = Math.round(hoursDecimal * 60);
+  if (totalMinutes < 1) {
+    return '< 1m';
+  }
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  if (h === 0) {
+    return `${m}m`;
+  }
+  if (m === 0) {
+    return `${h}h`;
+  }
+  return `${h}h ${m}m`;
+};
 
 /**
  * Panel Integral de Control de Asistencia, Liquidaciones Mixtas y Adelantos a Cuenta.
@@ -55,9 +112,12 @@ export default function AttendancePage() {
 
   const [startDate, setStartDate] = useState(firstDayOfMonth);
   const [endDate, setEndDate] = useState(todayStr);
+  const [periodPreset, setPeriodPreset] = useState('this_month'); // 'this_month' | 'first_half' | 'second_half' | 'prev_month' | 'custom'
   const [selectedTechId, setSelectedTechId] = useState('all');
   const [standardHoursPerDay, setStandardHoursPerDay] = useState(8); // 8 o 9 hs estándar
+  const [expectedStartHour, setExpectedStartHour] = useState('auto'); // 'auto' | 'free' | '8' | '8.5' | '9'
   const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'active' | 'completed' | 'anomalous'
+  const [hideMicroShifts, setHideMicroShifts] = useState(true); // Ocultar pruebas < 1 min por defecto
 
   // ==========================================
   // TAB 2: LIQUIDACIÓN MIXTA Y SUELDOS
@@ -70,9 +130,10 @@ export default function AttendancePage() {
   const [settlementStandardHours, setSettlementStandardHours] = useState(8);
   const [isCalculatingPreview, setIsCalculatingPreview] = useState(false);
   const [isSubmittingSettlement, setIsSubmittingSettlement] = useState(false);
+  const [advanceDeductions, setAdvanceDeductions] = useState({});
 
   // Datos calculados para la vista previa de liquidación
-  const [previewHours, setPreviewHours] = useState({ regular: 0, overtime: 0, subtotal: 0 });
+  const [previewHours, setPreviewHours] = useState({ regular: 0, overtime: 0, subtotal: 0, shifts: [] });
   const [previewOrders, setPreviewOrders] = useState([]);
   const [previewAdvances, setPreviewAdvances] = useState([]);
   const [historicalSettlements, setHistoricalSettlements] = useState([]);
@@ -85,6 +146,24 @@ export default function AttendancePage() {
   const [settlementPaymentMethod, setSettlementPaymentMethod] = useState('Transferencia Bancaria');
   const [settlementPaymentRef, setSettlementPaymentRef] = useState('');
   const [settlementPaymentNotes, setSettlementPaymentNotes] = useState('');
+
+  // ==========================================
+  // TAB 1 (MODAL): CIERRE / EDICIÓN / REGISTRO MANUAL DE TURNO
+  // ==========================================
+  const [isShiftModalOpen, setIsShiftModalOpen] = useState(false);
+  const [shiftModalMode, setShiftModalMode] = useState('close'); // 'close' | 'edit' | 'manual'
+  const [isSavingShift, setIsSavingShift] = useState(false);
+  const [shiftModalData, setShiftModalData] = useState({
+    id: null,
+    technician_id: '',
+    technician_name: '',
+    shift_date: todayStr,
+    check_in_at: '',
+    check_out_at: '',
+    admin_notes: '',
+    overtime_approved: true,
+    custom_overtime_hours: '',
+  });
 
   // ==========================================
   // TAB 3: ADELANTOS A CUENTA
@@ -106,7 +185,7 @@ export default function AttendancePage() {
     async function loadTechs() {
       const { data } = await supabase
         .from('users')
-        .select('id, name, email')
+        .select('id, name, email, hourly_rate_regular, hourly_rate_overtime')
         .eq('role', 'tecnico')
         .order('name');
       setTechnicians(data || []);
@@ -117,33 +196,177 @@ export default function AttendancePage() {
     loadTechs();
   }, []);
 
+  // Sincronizar tarifas pactadas según el técnico seleccionado en liquidación
+  useEffect(() => {
+    if (!settlementTechId || technicians.length === 0) return;
+    const tech = technicians.find((t) => t.id === settlementTechId);
+    if (tech) {
+      const reg = tech.hourly_rate_regular ? Number(tech.hourly_rate_regular) : 12000;
+      const over = tech.hourly_rate_overtime
+        ? Number(tech.hourly_rate_overtime)
+        : Math.round(reg * 1.5);
+      setHourlyRateRegular(reg);
+      setHourlyRateOvertime(over);
+    }
+  }, [settlementTechId, technicians]);
+
+  // Actualización silenciosa de las tarifas del técnico en segundo plano
+  const updateTechnicianRatesSilently = useCallback(
+    async (techId, regRate, overRate) => {
+      if (!techId || !regRate || regRate <= 0) return;
+      try {
+        const payload = {
+          hourly_rate_regular: Number(regRate),
+          hourly_rate_overtime: overRate && overRate > 0 ? Number(overRate) : Math.round(Number(regRate) * 1.5),
+        };
+        await supabase
+          .from('users')
+          .update(payload)
+          .eq('id', techId);
+
+        // Actualizar en el estado local de técnicos para recordar la última tarifa
+        setTechnicians((prev) =>
+          prev.map((t) => (t.id === techId ? { ...t, ...payload } : t))
+        );
+
+        // Si es el técnico de la pestaña de liquidación, actualizar inputs
+        if (settlementTechId === techId) {
+          setHourlyRateRegular(payload.hourly_rate_regular);
+          setHourlyRateOvertime(payload.hourly_rate_overtime);
+        }
+
+        // Actualizar también en shifts si ya están cargados
+        setShifts((prev) =>
+          prev.map((s) =>
+            s.technician_id === techId
+              ? { ...s, technician: { ...s.technician, ...payload } }
+              : s
+          )
+        );
+      } catch (e) {
+        console.warn('No se pudo guardar la tarifa del técnico en segundo plano:', e);
+      }
+    },
+    [settlementTechId]
+  );
+
+  // ==========================================
+  // MODAL NATIVO: TARIFAS HORARIAS DE TÉCNICOS
+  // ==========================================
+  const [isRatesModalOpen, setIsRatesModalOpen] = useState(false);
+  const [ratesModalTechId, setRatesModalTechId] = useState('');
+  const [ratesModalRegular, setRatesModalRegular] = useState(12000);
+  const [ratesModalOvertime, setRatesModalOvertime] = useState(18000);
+  const [isSavingRates, setIsSavingRates] = useState(false);
+
+  const handleOpenRatesModal = useCallback((techParam = null) => {
+    if (technicians.length === 0) return;
+    let target = techParam;
+    if (!target || !target.id) {
+      target =
+        technicians.find((t) => t.id === selectedTechId) ||
+        technicians.find((t) => t.id === settlementTechId) ||
+        technicians[0];
+    }
+    const reg = target?.hourly_rate_regular ? Number(target.hourly_rate_regular) : 12000;
+    const over = target?.hourly_rate_overtime ? Number(target.hourly_rate_overtime) : Math.round(reg * 1.5);
+
+    setRatesModalTechId(target.id);
+    setRatesModalRegular(reg);
+    setRatesModalOvertime(over);
+    setIsRatesModalOpen(true);
+  }, [technicians, selectedTechId, settlementTechId]);
+
+  const handleRatesTechChange = (newTechId) => {
+    setRatesModalTechId(newTechId);
+    const chosen = technicians.find((t) => t.id === newTechId);
+    if (chosen) {
+      const reg = chosen.hourly_rate_regular ? Number(chosen.hourly_rate_regular) : 12000;
+      const over = chosen.hourly_rate_overtime ? Number(chosen.hourly_rate_overtime) : Math.round(reg * 1.5);
+      setRatesModalRegular(reg);
+      setRatesModalOvertime(over);
+    }
+  };
+
+  const handleRatesRegularChange = (val) => {
+    const num = val === '' ? '' : Number(val);
+    setRatesModalRegular(num);
+    if (num && num > 0) {
+      setRatesModalOvertime(Math.round(num * 1.5));
+    }
+  };
+
+  const handleSaveRatesModal = async (e) => {
+    if (e) e.preventDefault();
+    const regNum = Number(ratesModalRegular);
+    const overNum = Number(ratesModalOvertime);
+
+    if (!regNum || regNum <= 0) {
+      Swal.fire('Tarifa requerida', 'Por favor ingresá una tarifa ordinaria válida mayor a 0.', 'warning');
+      return;
+    }
+
+    setIsSavingRates(true);
+    try {
+      await updateTechnicianRatesSilently(
+        ratesModalTechId,
+        regNum,
+        overNum > 0 ? overNum : Math.round(regNum * 1.5)
+      );
+
+      setIsRatesModalOpen(false);
+      const chosenTech = technicians.find((t) => t.id === ratesModalTechId);
+      Swal.fire({
+        icon: 'success',
+        title: 'Tarifas Actualizadas',
+        text: `${chosenTech?.name || 'Técnico'}: Ordinaria $${regNum.toLocaleString('es-AR')} • Extra $${(overNum > 0 ? overNum : Math.round(regNum * 1.5)).toLocaleString('es-AR')}`,
+        timer: 1600,
+        showConfirmButton: false,
+      });
+    } catch (err) {
+      Swal.fire('Error', 'No se pudieron actualizar las tarifas: ' + err.message, 'error');
+    } finally {
+      setIsSavingRates(false);
+    }
+  };
+
   // Cargar turnos de asistencia
   const loadShifts = useCallback(async () => {
     setIsLoading(true);
     try {
       const { data: usersData } = await supabase
         .from('users')
-        .select('id, name, email, phone');
+        .select('id, name, email, phone, default_entry_time, hourly_rate_regular, hourly_rate_overtime');
       const usersMap = {};
       (usersData || []).forEach((u) => {
         usersMap[u.id] = u;
       });
 
+      // Obtener primera orden del día para cada técnico (para detección inteligente de horario pactado con cliente)
+      let ordersQuery = supabase
+        .from('work_orders')
+        .select('id, order_number, scheduled_date, scheduled_time, assigned_to')
+        .gte('scheduled_date', startDate)
+        .lte('scheduled_date', endDate)
+        .not('scheduled_time', 'is', null)
+        .order('scheduled_time', { ascending: true });
+
+      if (selectedTechId !== 'all') {
+        ordersQuery = ordersQuery.eq('assigned_to', selectedTechId);
+      }
+
+      const { data: ordersData } = await ordersQuery;
+      const firstOrdersMap = {};
+      (ordersData || []).forEach((ord) => {
+        const key = `${ord.assigned_to}_${ord.scheduled_date}`;
+        if (!firstOrdersMap[key]) {
+          firstOrdersMap[key] = ord;
+        }
+      });
+
       let query = supabase
         .from('technician_shifts')
-        .select(`
-          id,
-          technician_id,
-          shift_date,
-          check_in_at,
-          check_in_lat,
-          check_in_lng,
-          check_out_at,
-          check_out_lat,
-          check_out_lng,
-          status,
-          created_at
-        `)
+        .select('*')
         .gte('shift_date', startDate)
         .lte('shift_date', endDate)
         .order('shift_date', { ascending: false })
@@ -158,7 +381,9 @@ export default function AttendancePage() {
 
       const shiftsWithTech = (data || []).map((s) => ({
         ...s,
-        technician: usersMap[s.technician_id] || { name: 'Técnico', email: '' },
+        technician: usersMap[s.technician_id] || { name: 'Técnico', email: '', default_entry_time: null },
+        editor: s.edited_by ? usersMap[s.edited_by] : null,
+        firstOrder: firstOrdersMap[`${s.technician_id}_${s.shift_date}`] || null,
       }));
 
       setShifts(shiftsWithTech);
@@ -276,23 +501,86 @@ export default function AttendancePage() {
 
       const totalHoursDecimal = durationMs / (1000 * 60 * 60);
 
+      const isOvertimeApproved = shift.overtime_approved !== false;
+      const hasCustomOvertime =
+        shift.custom_overtime_hours !== null &&
+        shift.custom_overtime_hours !== undefined &&
+        shift.custom_overtime_hours !== '' &&
+        !isNaN(Number(shift.custom_overtime_hours));
+
       let regularHours = 0;
+      let rawOvertimeHours = 0;
       let overtimeHours = 0;
 
       if (totalHoursDecimal <= standardHoursPerDay) {
         regularHours = totalHoursDecimal;
-        overtimeHours = 0;
+        rawOvertimeHours = 0;
+        if (hasCustomOvertime && isOvertimeApproved) {
+          overtimeHours = Math.max(0, Number(shift.custom_overtime_hours));
+        } else {
+          overtimeHours = 0;
+        }
       } else {
         regularHours = standardHoursPerDay;
-        overtimeHours = totalHoursDecimal - standardHoursPerDay;
+        rawOvertimeHours = totalHoursDecimal - standardHoursPerDay;
+        if (!isOvertimeApproved) {
+          overtimeHours = 0;
+        } else if (hasCustomOvertime) {
+          overtimeHours = Math.max(0, Number(shift.custom_overtime_hours));
+        } else {
+          overtimeHours = rawOvertimeHours;
+        }
       }
+
+      const isOvertimeDismissed = !isOvertimeApproved && rawOvertimeHours > 0;
 
       const isAnomalous =
         (isOngoing && totalHoursDecimal > 12) ||
         (isOngoing && shift.shift_date < todayStr);
 
-      const checkInHour = checkIn.getHours() + checkIn.getMinutes() / 60;
-      const isLateCheckIn = checkInHour > 9.15;
+      // Determinación de horario designado
+      let expectedTimeStr = null;
+      let expectedSource = null;
+
+      if (expectedStartHour === 'auto') {
+        // Inteligente: Prevalece la 1ra Orden del día con hora asignada; si no, el horario habitual del técnico
+        if (shift.firstOrder?.scheduled_time) {
+          expectedTimeStr = shift.firstOrder.scheduled_time.slice(0, 5);
+          expectedSource = `1ra OT ${shift.firstOrder.order_number || ''}`.trim();
+        } else if (shift.technician?.default_entry_time) {
+          expectedTimeStr = shift.technician.default_entry_time.slice(0, 5);
+          expectedSource = 'Ficha Técnico';
+        }
+      } else if (expectedStartHour === 'free') {
+        expectedTimeStr = null;
+        expectedSource = null;
+      } else {
+        const numH = parseFloat(expectedStartHour);
+        const hh = String(Math.floor(numH)).padStart(2, '0');
+        const mm = String(Math.round((numH % 1) * 60)).padStart(2, '0');
+        expectedTimeStr = `${hh}:${mm}`;
+        expectedSource = 'Filtro Manual';
+      }
+
+      let isLateCheckIn = false;
+      let delayMinutes = 0;
+      let thresholdTimeStr = null;
+
+      if (expectedTimeStr) {
+        const [expH, expM] = expectedTimeStr.split(':').map(Number);
+        const expDecimal = expH + (expM || 0) / 60;
+        const thresholdHour = expDecimal + (15 / 60); // +15 min de tolerancia
+        const checkInHour = checkIn.getHours() + checkIn.getMinutes() / 60;
+
+        if (checkInHour > thresholdHour) {
+          isLateCheckIn = true;
+          delayMinutes = Math.round((checkInHour - expDecimal) * 60);
+        }
+
+        const thH = String(Math.floor(thresholdHour)).padStart(2, '0');
+        const thM = String(Math.round((thresholdHour % 1) * 60)).padStart(2, '0');
+        thresholdTimeStr = `${thH}:${thM}`;
+      }
 
       return {
         ...shift,
@@ -301,21 +589,33 @@ export default function AttendancePage() {
         totalHoursDecimal,
         regularHours,
         overtimeHours,
+        rawOvertimeHours,
+        isOvertimeApproved,
+        hasCustomOvertime,
+        isOvertimeDismissed,
         isOngoing,
         isAnomalous,
+        expectedTimeStr,
+        expectedSource,
         isLateCheckIn,
+        delayMinutes,
+        thresholdTimeStr,
       };
     });
-  }, [shifts, standardHoursPerDay, todayStr]);
+  }, [shifts, standardHoursPerDay, todayStr, expectedStartHour]);
 
   const filteredShifts = useMemo(() => {
     return processedShifts.filter((s) => {
+      // Filtrar micro-fichajes menores a 1 minuto si está activo (excepto si están en curso)
+      if (hideMicroShifts && !s.isOngoing && s.totalHoursDecimal < 1 / 60) {
+        return false;
+      }
       if (statusFilter === 'active') return s.isOngoing;
       if (statusFilter === 'completed') return !s.isOngoing;
       if (statusFilter === 'anomalous') return s.isAnomalous;
       return true;
     });
-  }, [processedShifts, statusFilter]);
+  }, [processedShifts, statusFilter, hideMicroShifts]);
 
   const stats = useMemo(() => {
     let totalHours = 0;
@@ -323,11 +623,16 @@ export default function AttendancePage() {
     let overtimeHours = 0;
     let anomalousCount = 0;
     let activeCount = 0;
+    let relevantCount = 0;
 
     processedShifts.forEach((s) => {
-      totalHours += s.totalHoursDecimal;
+      if (hideMicroShifts && !s.isOngoing && s.totalHoursDecimal < 1 / 60) {
+        return;
+      }
+      relevantCount++;
       regularHours += s.regularHours;
       overtimeHours += s.overtimeHours;
+      totalHours += s.regularHours + s.overtimeHours;
       if (s.isAnomalous) anomalousCount++;
       if (s.isOngoing) activeCount++;
     });
@@ -338,9 +643,31 @@ export default function AttendancePage() {
       overtimeHours,
       anomalousCount,
       activeCount,
-      totalRecords: processedShifts.length,
+      totalRecords: relevantCount,
     };
-  }, [processedShifts]);
+  }, [processedShifts, hideMicroShifts]);
+
+  // Distribución automática de deducciones sobre adelantos en orden cronológico topeada al bruto disponible
+  const autoDistributeDeductions = useCallback((advancesList, currentGross) => {
+    let remainingGross = Math.max(0, currentGross);
+    const newDeductions = {};
+
+    // Orden cronológico estricto: del más antiguo al más nuevo
+    const sorted = [...(advancesList || [])].sort((a, b) => {
+      const da = new Date(a.advance_date || a.created_at).getTime();
+      const db = new Date(b.advance_date || b.created_at).getTime();
+      return da - db;
+    });
+
+    sorted.forEach((adv) => {
+      const origAmount = Number(adv.amount) || 0;
+      const deduction = Math.min(origAmount, Math.max(0, remainingGross));
+      newDeductions[adv.id] = Math.round(deduction * 100) / 100;
+      remainingGross = Math.max(0, remainingGross - deduction);
+    });
+
+    return newDeductions;
+  }, []);
 
   // Cómputo en vivo para Liquidación Mixta (Tab 2)
   const calculateSettlementPreview = useCallback(async () => {
@@ -348,14 +675,15 @@ export default function AttendancePage() {
     setIsCalculatingPreview(true);
 
     try {
-      // 1. Horas del período para el técnico seleccionado
+      // 1. Horas del período para el técnico seleccionado (solo turnos pendientes de liquidar)
       const { data: shiftsData } = await supabase
         .from('technician_shifts')
-        .select('check_in_at, check_out_at, shift_date, status')
+        .select('*')
         .eq('technician_id', settlementTechId)
         .gte('shift_date', settlementStartDate)
         .lte('shift_date', settlementEndDate)
-        .eq('status', 'completed');
+        .eq('status', 'completed')
+        .is('settlement_id', null);
 
       let regHs = 0;
       let overHs = 0;
@@ -365,11 +693,29 @@ export default function AttendancePage() {
           const inD = new Date(s.check_in_at);
           const outD = new Date(s.check_out_at);
           const durHs = Math.max(0, outD.getTime() - inD.getTime()) / (1000 * 60 * 60);
-          if (durHs <= settlementStandardHours) {
+
+          const isApproved = s.overtime_approved !== false;
+          const hasCustom =
+            s.custom_overtime_hours !== null &&
+            s.custom_overtime_hours !== undefined &&
+            s.custom_overtime_hours !== '' &&
+            !isNaN(Number(s.custom_overtime_hours));
+
+          if (durHs <= standardHoursPerDay) {
             regHs += durHs;
+            if (isApproved && hasCustom) {
+              overHs += Math.max(0, Number(s.custom_overtime_hours));
+            }
           } else {
-            regHs += settlementStandardHours;
-            overHs += durHs - settlementStandardHours;
+            regHs += standardHoursPerDay;
+            const rawOver = durHs - standardHoursPerDay;
+            if (!isApproved) {
+              // Horas extras desestimadas administrativamente
+            } else if (hasCustom) {
+              overHs += Math.max(0, Number(s.custom_overtime_hours));
+            } else {
+              overHs += rawOver;
+            }
           }
         }
       });
@@ -381,6 +727,7 @@ export default function AttendancePage() {
         regular: roundedRegHs,
         overtime: roundedOverHs,
         subtotal: hoursSubtotal,
+        shifts: shiftsData || [],
       });
 
       // 2. Órdenes por obra / módulos completados pendientes de pago (solo con pago pactado > 0)
@@ -404,17 +751,26 @@ export default function AttendancePage() {
         (o) => Number(o.technician_payout || 0) > 0
       );
       setPreviewOrders(validOrders);
+      const pieceworkSubtotal = Math.round(
+        validOrders.reduce((acc, o) => acc + (Number(o.technician_payout) || 0), 0) * 100
+      ) / 100;
 
-      // 3. Adelantos pendientes de descuento para este técnico
+      // 3. Adelantos pendientes de descuento para este técnico (cronológico ascendente)
       const { data: advancesData } = await supabase
         .from('technician_advances')
         .select('*')
         .eq('technician_id', settlementTechId)
         .eq('status', 'pending')
         .lte('advance_date', settlementEndDate)
-        .order('advance_date', { ascending: false });
+        .order('advance_date', { ascending: true })
+        .order('created_at', { ascending: true });
 
-      setPreviewAdvances(advancesData || []);
+      const advList = advancesData || [];
+      setPreviewAdvances(advList);
+
+      const grossAvailable = Math.round((hoursSubtotal + pieceworkSubtotal) * 100) / 100;
+      const initialDeductions = autoDistributeDeductions(advList, grossAvailable);
+      setAdvanceDeductions(initialDeductions);
     } catch (err) {
       console.error('Error calculando vista previa de liquidación:', err);
     } finally {
@@ -426,7 +782,8 @@ export default function AttendancePage() {
     settlementEndDate,
     hourlyRateRegular,
     hourlyRateOvertime,
-    settlementStandardHours,
+    standardHoursPerDay,
+    autoDistributeDeductions,
   ]);
 
   useEffect(() => {
@@ -435,27 +792,101 @@ export default function AttendancePage() {
     }
   }, [activeTab, settlementTechId, settlementStartDate, settlementEndDate, calculateSettlementPreview]);
 
+  const handleAutoAdjustDeductions = () => {
+    const gross = (previewHours.subtotal || 0) +
+      Math.round(previewOrders.reduce((acc, o) => acc + (Number(o.technician_payout) || 0), 0) * 100) / 100;
+    const newDeductions = autoDistributeDeductions(previewAdvances, gross);
+    setAdvanceDeductions(newDeductions);
+  };
+
+  const handleZeroDeductions = () => {
+    const zeros = {};
+    (previewAdvances || []).forEach((adv) => {
+      zeros[adv.id] = 0;
+    });
+    setAdvanceDeductions(zeros);
+  };
+
+  const handleDeductionChange = (advId, origAmount, val) => {
+    if (val === '') {
+      setAdvanceDeductions((prev) => ({ ...prev, [advId]: '' }));
+      return;
+    }
+    const num = Number(val);
+    if (isNaN(num)) return;
+    const clamped = Math.min(origAmount, Math.max(0, num));
+    setAdvanceDeductions((prev) => ({ ...prev, [advId]: clamped }));
+  };
+
+  const handleDeductionBlur = (advId, origAmount) => {
+    setAdvanceDeductions((prev) => {
+      const current = prev[advId];
+      if (current === '' || current === undefined || isNaN(Number(current))) {
+        return { ...prev, [advId]: 0 };
+      }
+      const valid = Math.min(origAmount, Math.max(0, Math.round(Number(current) * 100) / 100));
+      return { ...prev, [advId]: valid };
+    });
+  };
+
   // Totales de la liquidación en preparación
   const previewTotals = useMemo(() => {
     const hoursSub = previewHours.subtotal || 0;
     const pieceworkSub = Math.round(previewOrders.reduce((acc, o) => acc + (Number(o.technician_payout) || 0), 0) * 100) / 100;
-    const advancesSub = Math.round(previewAdvances.reduce((acc, a) => acc + (Number(a.amount) || 0), 0) * 100) / 100;
     const gross = Math.round((hoursSub + pieceworkSub) * 100) / 100;
-    const net = Math.round((gross - advancesSub) * 100) / 100;
+
+    let totalPendingAdvancesAmount = 0;
+    let effectiveDeductionsSum = 0;
+
+    (previewAdvances || []).forEach((adv) => {
+      const origAmt = Number(adv.amount) || 0;
+      totalPendingAdvancesAmount += origAmt;
+
+      const userVal = advanceDeductions[adv.id];
+      const parsedVal = (userVal === undefined || userVal === '') ? 0 : Number(userVal);
+      const effDeduction = Math.min(origAmt, Math.max(0, isNaN(parsedVal) ? 0 : parsedVal));
+      effectiveDeductionsSum += effDeduction;
+    });
+
+    totalPendingAdvancesAmount = Math.round(totalPendingAdvancesAmount * 100) / 100;
+    effectiveDeductionsSum = Math.round(effectiveDeductionsSum * 100) / 100;
+
+    // Saldo remanente de deuda total que queda para próximas liquidaciones
+    const remainingDebtTotal = Math.max(0, Math.round((totalPendingAdvancesAmount - effectiveDeductionsSum) * 100) / 100);
+
+    // Neto a pagar = Bruto - deducciones efectivas de hoy
+    const rawNet = Math.round((gross - effectiveDeductionsSum) * 100) / 100;
+    const net = Math.max(0, rawNet);
+
+    const hasWorkToSettle = (previewHours.regular > 0 || previewHours.overtime > 0 || previewOrders.length > 0);
 
     return {
       hoursSubtotal: hoursSub,
       pieceworkSubtotal: pieceworkSub,
-      advancesSubtotal: advancesSub,
       grossTotal: gross,
+      totalPendingAdvancesAmount,
+      totalSelectedPending: totalPendingAdvancesAmount,
+      advancesSubtotal: effectiveDeductionsSum,
+      remainingDebtTotal,
+      remainingAdvancesBalance: remainingDebtTotal,
       netTotal: net,
+      hasWorkToSettle,
     };
-  }, [previewHours, previewOrders, previewAdvances]);
+  }, [previewHours, previewOrders, previewAdvances, advanceDeductions]);
 
   // Guardar Liquidación Oficial
   const handleSaveSettlement = async () => {
     if (!settlementTechId) {
       Swal.fire('Atención', 'Seleccioná un técnico para emitir la liquidación.', 'warning');
+      return;
+    }
+
+    if (!previewTotals.hasWorkToSettle) {
+      Swal.fire(
+        'Sin Horas ni Obras',
+        'No existen jornadas u órdenes de trabajo pendientes para liquidar en este período.',
+        'warning'
+      );
       return;
     }
 
@@ -467,11 +898,18 @@ export default function AttendancePage() {
       html: `
         <div class="text-left text-sm space-y-2">
           <p>Técnico: <b>${techName}</b></p>
-          <p>Período: <b>${formatDate(settlementStartDate)} al ${formatDate(settlementEndDate)}</b></p>
+          <p>Período: <b>${formatLocalDate(settlementStartDate)} al ${formatLocalDate(settlementEndDate)}</b></p>
           <hr class="my-2"/>
           <p>Subtotal Horas: <b>${formatCurrency(previewTotals.hoursSubtotal)}</b></p>
           <p>Subtotal Obras: <b>${formatCurrency(previewTotals.pieceworkSubtotal)}</b></p>
-          <p class="text-red-600">Menos Adelantos: <b>-${formatCurrency(previewTotals.advancesSubtotal)}</b></p>
+          <p class="text-red-600 font-semibold">Adelantos a Deducir Hoy: <b>-${formatCurrency(previewTotals.advancesSubtotal)}</b></p>
+          ${
+            previewTotals.remainingDebtTotal > 0
+              ? `<div class="text-xs text-amber-700 bg-amber-50 dark:bg-amber-950/40 p-2 rounded-lg border border-amber-200 dark:border-amber-900 mt-1">
+                  De ${formatCurrency(previewTotals.totalPendingAdvancesAmount)} de deuda total — Quedan <b>${formatCurrency(previewTotals.remainingDebtTotal)}</b> pendientes para próxima liquidación.
+                </div>`
+              : ''
+          }
           <p class="text-emerald-600 font-bold text-base mt-2">Total Neto a Pagar: ${formatCurrency(previewTotals.netTotal)}</p>
         </div>
       `,
@@ -486,6 +924,9 @@ export default function AttendancePage() {
 
     setIsSubmittingSettlement(true);
     try {
+      // Guardar tarifas silenciosamente para este técnico en users
+      updateTechnicianRatesSilently(settlementTechId, hourlyRateRegular, hourlyRateOvertime);
+
       const now = new Date();
       const settlementNumber = `LIQ-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}-${String(Math.floor(1000 + Math.random() * 9000))}`;
 
@@ -508,12 +949,24 @@ export default function AttendancePage() {
           gross_total: previewTotals.grossTotal,
           net_total: previewTotals.netTotal,
           status: 'approved',
-          notes: `Liquidación emitida para ${techName}. Deducción de ${previewAdvances.length} adelanto(s).`,
+          notes: `Liquidación emitida para ${techName}. Deducción de anticipos por ${formatCurrency(previewTotals.advancesSubtotal)}.`,
         })
         .select()
         .single();
 
       if (setErr) throw setErr;
+
+      // 1.5. Vincular jornadas liquidadas a esta liquidación (Evitar Doble Pago)
+      const shiftIds = (previewHours.shifts || []).map((s) => s.id);
+      if (shiftIds.length > 0) {
+        const { error: shiftLinkErr } = await supabase
+          .from('technician_shifts')
+          .update({ settlement_id: newSettlement.id })
+          .in('id', shiftIds);
+        if (shiftLinkErr) {
+          console.warn('Error vinculando turnos a la liquidación:', shiftLinkErr);
+        }
+      }
 
       // 2. Insertar ítems en settlement_items si hay órdenes
       if (previewOrders.length > 0) {
@@ -533,16 +986,70 @@ export default function AttendancePage() {
           .in('id', orderIds);
       }
 
-      // 4. Marcar adelantos como descontados (discounted) vinculando el settlement_id
-      if (previewAdvances.length > 0) {
-        const advIds = previewAdvances.map((a) => a.id);
-        await supabase
-          .from('technician_advances')
-          .update({
-            status: 'discounted',
-            settlement_id: newSettlement.id,
-          })
-          .in('id', advIds);
+      // 4. Procesar adelantos (Deducción al 100% o Split de saldo remanente)
+      const discountedAdvancesForPDF = [];
+
+      for (const adv of previewAdvances) {
+        const origAmount = Number(adv.amount) || 0;
+        const userVal = advanceDeductions[adv.id];
+        const parsedVal = (userVal === undefined || userVal === '') ? 0 : Number(userVal);
+        let deductedAmount = Math.min(origAmount, Math.max(0, isNaN(parsedVal) ? 0 : parsedVal));
+        deductedAmount = Math.round(deductedAmount * 100) / 100;
+        const remainder = Math.round((origAmount - deductedAmount) * 100) / 100;
+
+        if (deductedAmount <= 0) {
+          // No se absorbe nada hoy de este adelanto; queda en pending para próximas liquidaciones
+          continue;
+        }
+
+        discountedAdvancesForPDF.push({
+          ...adv,
+          amount: deductedAmount,
+        });
+
+        if (remainder <= 0) {
+          // Descuento al 100%
+          const { error: updErr } = await supabase
+            .from('technician_advances')
+            .update({
+              status: 'discounted',
+              settlement_id: newSettlement.id,
+            })
+            .eq('id', adv.id);
+          if (updErr) throw updErr;
+        } else {
+          // Descuento parcial: actualizar registro original e insertar registro nuevo con saldo remanente
+          const originalNotes = adv.notes ? `${adv.notes.trim()} ` : '';
+          const partialNote = `${originalNotes}(Descuento parcial de adelanto original por $${origAmount.toLocaleString('es-AR', { minimumFractionDigits: 2 })})`;
+
+          const { error: updErr } = await supabase
+            .from('technician_advances')
+            .update({
+              amount: deductedAmount,
+              status: 'discounted',
+              settlement_id: newSettlement.id,
+              notes: partialNote,
+            })
+            .eq('id', adv.id);
+          if (updErr) throw updErr;
+
+          const advDateStr = adv.advance_date ? formatLocalDate(adv.advance_date) : 'fecha anterior';
+          const remNote = `Saldo pendiente de adelanto del ${advDateStr} ($${origAmount.toLocaleString('es-AR', { minimumFractionDigits: 2 })} - $${deductedAmount.toLocaleString('es-AR', { minimumFractionDigits: 2 })} descontados en liq. ${settlementNumber})`;
+
+          const { error: insErr } = await supabase
+            .from('technician_advances')
+            .insert({
+              technician_id: adv.technician_id,
+              advance_date: adv.advance_date,
+              amount: remainder,
+              payment_method: adv.payment_method || 'transferencia',
+              reference: adv.reference || null,
+              status: 'pending',
+              settlement_id: null,
+              notes: remNote,
+            });
+          if (insErr) throw insErr;
+        }
       }
 
       // Recargar datos
@@ -561,7 +1068,7 @@ export default function AttendancePage() {
 
       if (pdfRes.isConfirmed) {
         await openAndDownloadPDF(
-          generateSettlementPDF(newSettlement, techObj, previewOrders, previewAdvances)
+          generateSettlementPDF(newSettlement, techObj, previewOrders, discountedAdvancesForPDF)
         );
       }
     } catch (err) {
@@ -712,25 +1219,217 @@ export default function AttendancePage() {
     }
   };
 
-  // Forzar Cierre de Turno Anómalo (Tab 1)
-  const handleForceCloseShift = async (shiftId) => {
-    if (!window.confirm('¿Confirmas el cierre administrativo forzado de este turno?')) {
+  // Helpers para conversión datetime-local <-> ISO
+  const toLocalDatetimeInput = (isoStr) => {
+    if (!isoStr) return '';
+    const d = new Date(isoStr);
+    if (isNaN(d.getTime())) return '';
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
+  const handleOpenCloseShiftModal = (shift) => {
+    const shiftDate = shift.shift_date;
+    const checkIn = new Date(shift.check_in_at);
+    const now = new Date();
+    const diffHours = (now - checkIn) / (1000 * 60 * 60);
+
+    // Sugerencia inteligente: Si es de día anterior o colgado >10h, sugerir 18:00 del mismo shift_date
+    let suggestedOut = '';
+    if (shiftDate < todayStr || diffHours > 10) {
+      suggestedOut = `${shiftDate}T18:00`;
+    } else {
+      suggestedOut = toLocalDatetimeInput(now.toISOString());
+    }
+
+    setShiftModalMode('close');
+    setShiftModalData({
+      id: shift.id,
+      technician_id: shift.technician_id,
+      technician_name: shift.technician?.name || 'Técnico',
+      shift_date: shiftDate,
+      check_in_at: toLocalDatetimeInput(shift.check_in_at),
+      check_out_at: suggestedOut,
+      admin_notes: 'Cierre administrativo: jornada finalizada en horario habitual pactado.',
+      overtime_approved: shift.overtime_approved !== false,
+      custom_overtime_hours: shift.custom_overtime_hours !== null && shift.custom_overtime_hours !== undefined ? String(shift.custom_overtime_hours) : '',
+    });
+    setIsShiftModalOpen(true);
+  };
+
+  const handleOpenEditShiftModal = (shift) => {
+    setShiftModalMode('edit');
+    setShiftModalData({
+      id: shift.id,
+      technician_id: shift.technician_id,
+      technician_name: shift.technician?.name || 'Técnico',
+      shift_date: shift.shift_date,
+      check_in_at: toLocalDatetimeInput(shift.check_in_at),
+      check_out_at: toLocalDatetimeInput(shift.check_out_at),
+      admin_notes: shift.admin_notes || '',
+      overtime_approved: shift.overtime_approved !== false,
+      custom_overtime_hours: shift.custom_overtime_hours !== null && shift.custom_overtime_hours !== undefined ? String(shift.custom_overtime_hours) : '',
+    });
+    setIsShiftModalOpen(true);
+  };
+
+  const handleOpenManualShiftModal = () => {
+    const defaultTechId = selectedTechId !== 'all' ? selectedTechId : (technicians[0]?.id || '');
+    setShiftModalMode('manual');
+    setShiftModalData({
+      id: null,
+      technician_id: defaultTechId,
+      technician_name: technicians.find((t) => t.id === defaultTechId)?.name || '',
+      shift_date: todayStr,
+      check_in_at: `${todayStr}T08:00`,
+      check_out_at: `${todayStr}T18:00`,
+      admin_notes: 'Jornada manual registrada por administración (falla de móvil / olvido de fichaje).',
+      overtime_approved: true,
+      custom_overtime_hours: '',
+    });
+    setIsShiftModalOpen(true);
+  };
+
+  const handleSaveShiftModal = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+
+    if (!shiftModalData.admin_notes || shiftModalData.admin_notes.trim().length < 5) {
+      Swal.fire('Nota Obligatoria', 'Debes ingresar una nota administrativa explicando el motivo (mínimo 5 caracteres).', 'warning');
       return;
     }
-    try {
-      const nowIso = new Date().toISOString();
-      const { error } = await supabase
-        .from('technician_shifts')
-        .update({
-          status: 'completed',
-          check_out_at: nowIso,
-        })
-        .eq('id', shiftId);
 
-      if (error) throw error;
+    if (!shiftModalData.check_in_at) {
+      Swal.fire('Ingreso Requerido', 'La fecha y hora de ingreso son obligatorias.', 'warning');
+      return;
+    }
+
+    const inDate = new Date(shiftModalData.check_in_at);
+    const outDate = shiftModalData.check_out_at ? new Date(shiftModalData.check_out_at) : null;
+
+    if (outDate && outDate < inDate) {
+      Swal.fire('Error Cronológico', 'La hora de egreso no puede ser anterior a la hora de ingreso.', 'error');
+      return;
+    }
+
+    if ((shiftModalMode === 'manual' || shiftModalMode === 'close') && !outDate) {
+      Swal.fire('Egreso Requerido', 'Debes especificar la hora de egreso.', 'warning');
+      return;
+    }
+
+    setIsSavingShift(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const inIso = inDate.toISOString();
+      const outIso = outDate ? outDate.toISOString() : null;
+      const shiftDate = shiftModalData.check_in_at.split('T')[0];
+
+      const customOt =
+        shiftModalData.custom_overtime_hours !== '' &&
+        shiftModalData.custom_overtime_hours !== null &&
+        !isNaN(Number(shiftModalData.custom_overtime_hours))
+          ? Number(shiftModalData.custom_overtime_hours)
+          : null;
+
+      const payload = {
+        technician_id: shiftModalData.technician_id,
+        shift_date: shiftDate,
+        check_in_at: inIso,
+        check_out_at: outIso,
+        status: shiftModalMode === 'manual' ? 'completed' : (outIso ? 'completed' : 'active'),
+        admin_notes: shiftModalData.admin_notes.trim(),
+        edited_by: user?.id || null,
+        edited_at: new Date().toISOString(),
+        overtime_approved: Boolean(shiftModalData.overtime_approved),
+        custom_overtime_hours: customOt,
+      };
+
+      if (shiftModalMode === 'manual') {
+        const { error } = await supabase.from('technician_shifts').insert(payload);
+        if (error) {
+          if (error.message && (error.message.includes('overtime_approved') || error.message.includes('custom_overtime_hours'))) {
+            delete payload.overtime_approved;
+            delete payload.custom_overtime_hours;
+            const { error: retryErr } = await supabase.from('technician_shifts').insert(payload);
+            if (retryErr) throw retryErr;
+          } else {
+            throw error;
+          }
+        }
+        Swal.fire('Éxito', 'Jornada manual registrada correctamente.', 'success');
+      } else {
+        const { error } = await supabase
+          .from('technician_shifts')
+          .update(payload)
+          .eq('id', shiftModalData.id);
+
+        if (error) {
+          if (error.message && (error.message.includes('overtime_approved') || error.message.includes('custom_overtime_hours'))) {
+            delete payload.overtime_approved;
+            delete payload.custom_overtime_hours;
+            const { error: retryErr } = await supabase.from('technician_shifts').update(payload).eq('id', shiftModalData.id);
+            if (retryErr) throw retryErr;
+          } else {
+            throw error;
+          }
+        }
+        Swal.fire(
+          'Éxito',
+          shiftModalMode === 'close'
+            ? 'Turno cerrado administrativamente sin horas fantasmas.'
+            : 'Horario y horas extras actualizados correctamente.',
+          'success'
+        );
+      }
+
+      setIsShiftModalOpen(false);
       loadShifts();
     } catch (err) {
-      alert('Error cerrando turno: ' + err.message);
+      console.error('Error guardando jornada laboral:', err);
+      Swal.fire('Error', 'No se pudo guardar la modificación: ' + err.message, 'error');
+    } finally {
+      setIsSavingShift(false);
+    }
+  };
+
+  // Eliminar Jornada (Limpieza de pruebas y errores)
+  const handleDeleteShift = async (shift) => {
+    const techName = shift.technician?.name || 'Técnico';
+    const dateFormatted = formatLocalDate(shift.shift_date);
+    const durationText = formatDurationHuman(shift.totalHoursDecimal);
+
+    const result = await Swal.fire({
+      title: '¿Eliminar registro de jornada?',
+      html: `
+        <div class="text-left text-xs space-y-1.5 text-gray-600 dark:text-gray-300">
+          <p>Técnico: <b>${techName}</b></p>
+          <p>Fecha: <b>${dateFormatted}</b></p>
+          <p>Duración: <b>${durationText}</b> (${shift.totalHoursDecimal.toFixed(2)} hs)</p>
+          <p class="text-red-500 font-semibold mt-2">Esta acción borrará el registro de asistencia permanentemente.</p>
+        </div>
+      `,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#ef4444',
+      cancelButtonColor: '#6b7280',
+      confirmButtonText: 'Sí, eliminar',
+      cancelButtonText: 'Cancelar',
+    });
+
+    if (result.isConfirmed) {
+      try {
+        const { error } = await supabase
+          .from('technician_shifts')
+          .delete()
+          .eq('id', shift.id);
+
+        if (error) throw error;
+
+        Swal.fire('Eliminado', 'La jornada fue eliminada correctamente.', 'success');
+        loadShifts();
+      } catch (err) {
+        console.error('Error eliminando jornada:', err);
+        Swal.fire('Error', 'No se pudo eliminar la jornada: ' + err.message, 'error');
+      }
     }
   };
 
@@ -768,19 +1467,21 @@ export default function AttendancePage() {
     };
 
     const rows = filteredShifts.map((s) => [
-      s.shift_date,
+      formatLocalDate(s.shift_date),
       `"${sanitizeText(s.technician?.name || 'Técnico')}"`,
       `"${sanitizeText(s.technician?.email || '')}"`,
-      formatTime(s.checkInDate),
-      formatTime(s.checkOutDate),
-      s.regularHours.toFixed(2),
-      s.overtimeHours.toFixed(2),
-      s.totalHoursDecimal.toFixed(2),
+      formatTime24(s.checkInDate),
+      s.isOngoing ? 'En Curso' : formatTime24(s.checkOutDate),
+      formatDurationHuman(s.regularHours),
+      s.isOvertimeDismissed
+        ? '0h 00m (Desestimada)'
+        : formatDurationHuman(s.overtimeHours),
+      formatDurationHuman(s.regularHours + s.overtimeHours),
       s.status === 'active' ? 'En Curso' : 'Completado',
       s.isAnomalous
         ? 'Anomalía (>12hs)'
         : s.isLateCheckIn
-        ? 'Ingreso Tardío (>09:00)'
+        ? `Ingreso Tardío (+${s.delayMinutes}m de ${s.expectedTimeStr} hs • ${s.expectedSource})`
         : 'Normal',
       s.check_in_lat || '',
       s.check_in_lng || '',
@@ -824,9 +1525,17 @@ export default function AttendancePage() {
     if (target === 'shifts') {
       setStartDate(s);
       setEndDate(e);
+      setPeriodPreset(rangeType);
     } else {
       setSettlementStartDate(s);
       setSettlementEndDate(e);
+    }
+  };
+
+  const handlePeriodPresetChange = (preset) => {
+    setPeriodPreset(preset);
+    if (preset !== 'custom') {
+      setQuickRange(preset, 'shifts');
     }
   };
 
@@ -851,39 +1560,74 @@ export default function AttendancePage() {
     };
   }, [advances]);
 
+  // Cálculos en vivo para el modal de turno
+  const modalDurationHours = useMemo(() => {
+    if (!shiftModalData.check_in_at || !shiftModalData.check_out_at) return 0;
+    const inD = new Date(shiftModalData.check_in_at);
+    const outD = new Date(shiftModalData.check_out_at);
+    if (isNaN(inD.getTime()) || isNaN(outD.getTime()) || outD < inD) return 0;
+    return (outD.getTime() - inD.getTime()) / (1000 * 60 * 60);
+  }, [shiftModalData.check_in_at, shiftModalData.check_out_at]);
+
+  const modalRawOvertimeHours = useMemo(() => {
+    return modalDurationHours > standardHoursPerDay ? modalDurationHours - standardHoursPerDay : 0;
+  }, [modalDurationHours, standardHoursPerDay]);
+
   return (
     <div className="space-y-6">
       {/* Header Principal con Acciones Rápidas */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
+      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+        <div className="min-w-0 flex-1">
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2.5">
-            <Clock size={26} className="text-brand-500" />
-            <span>Control de Asistencia, Liquidaciones y Adelantos</span>
+            <Clock size={26} className="text-brand-500 shrink-0" />
+            <span className="truncate">Control de Asistencia, Liquidaciones y Adelantos</span>
           </h1>
-          <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">
+          <p className="text-gray-500 dark:text-gray-400 text-sm mt-1 max-w-3xl">
             Auditoría de jornadas laborales, liquidación mixta (horas + obras) y deducción automática de anticipos a técnicos.
           </p>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-2 sm:gap-2.5 shrink-0 flex-wrap sm:flex-nowrap justify-start sm:justify-end">
+          {/* Botón rápido para configurar tarifas pactadas de los técnicos */}
           <button
-            onClick={() => setIsAdvanceModalOpen(true)}
-            className="flex items-center gap-2 py-2.5 px-4 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm active:scale-95 transition-all"
-            title="Registrar entrega de adelanto en pesos a un técnico"
+            onClick={() => handleOpenRatesModal()}
+            className="flex items-center gap-1.5 py-2 px-3.5 rounded-xl text-xs font-medium border border-emerald-300 dark:border-emerald-700/60 bg-emerald-50/90 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all active:scale-95 shadow-xs"
+            title="Ver y configurar tarifas por hora ordinaria y extra de los técnicos"
           >
-            <DollarSign size={15} />
-            <span>Cargar Adelanto ($)</span>
+            <DollarSign size={14} className="text-emerald-600 dark:text-emerald-400" />
+            <span>Tarifas por Hora</span>
           </button>
 
           {activeTab === 'shifts' && (
+            <>
+              <button
+                onClick={handleExportCSV}
+                disabled={isLoading || filteredShifts.length === 0}
+                className="btn-secondary flex items-center gap-1.5 py-2 px-3.5 text-xs font-medium rounded-xl shadow-xs transition-all active:scale-95 disabled:opacity-50"
+                title="Descargar archivo CSV compatible con Excel para auditoría"
+              >
+                <Download size={14} className="text-gray-500 dark:text-gray-400" />
+                <span>Exportar Excel</span>
+              </button>
+              <button
+                onClick={handleOpenManualShiftModal}
+                className="btn-primary flex items-center gap-1.5 py-2 px-4 text-xs font-semibold rounded-xl shadow-sm hover:shadow transition-all active:scale-95"
+                title="Cargar una jornada completa manual cuando el técnico no pudo fichar"
+              >
+                <Plus size={15} />
+                <span>Registrar Jornada Manual</span>
+              </button>
+            </>
+          )}
+
+          {activeTab === 'advances' && (
             <button
-              onClick={handleExportCSV}
-              disabled={isLoading || filteredShifts.length === 0}
-              className="btn-primary flex items-center gap-2 py-2.5 px-4 text-xs font-semibold shadow-sm active:scale-95 transition-all"
-              title="Descargar archivo CSV compatible con Excel para auditoría"
+              onClick={() => setIsAdvanceModalOpen(true)}
+              className="btn-primary flex items-center gap-1.5 py-2 px-4 text-xs font-semibold rounded-xl shadow-sm hover:shadow transition-all active:scale-95"
+              title="Registrar entrega de adelanto en pesos a un técnico"
             >
-              <Download size={15} />
-              <span>Exportar Excel (CSV)</span>
+              <Plus size={15} />
+              <span>Cargar Adelanto ($)</span>
             </button>
           )}
         </div>
@@ -952,11 +1696,8 @@ export default function AttendancePage() {
               <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                 Horas Totales
               </span>
-              <div className="mt-2 flex items-baseline gap-2">
-                <span className="text-2xl font-bold text-gray-900 dark:text-white font-mono tabular-nums">
-                  {stats.totalHours.toFixed(1)}
-                </span>
-                <span className="text-xs text-gray-400">hs</span>
+              <div className="mt-2 text-2xl font-bold text-gray-900 dark:text-white font-mono tabular-nums">
+                {formatDurationHuman(stats.totalHours)}
               </div>
               <span className="text-[11px] text-gray-400 mt-1">
                 {stats.totalRecords} jornadas registradas
@@ -967,11 +1708,8 @@ export default function AttendancePage() {
               <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                 Horas Ordinarias
               </span>
-              <div className="mt-2 flex items-baseline gap-2">
-                <span className="text-2xl font-bold text-brand-600 dark:text-brand-400 font-mono tabular-nums">
-                  {stats.regularHours.toFixed(1)}
-                </span>
-                <span className="text-xs text-gray-400">hs</span>
+              <div className="mt-2 text-2xl font-bold text-brand-600 dark:text-brand-400 font-mono tabular-nums">
+                {formatDurationHuman(stats.regularHours)}
               </div>
               <span className="text-[11px] text-gray-400 mt-1">
                 Base pactada: {standardHoursPerDay} hs / día
@@ -982,11 +1720,8 @@ export default function AttendancePage() {
               <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                 Horas Extras
               </span>
-              <div className="mt-2 flex items-baseline gap-2">
-                <span className="text-2xl font-bold text-amber-600 dark:text-amber-400 font-mono tabular-nums">
-                  {stats.overtimeHours.toFixed(1)}
-                </span>
-                <span className="text-xs text-gray-400">hs</span>
+              <div className="mt-2 text-2xl font-bold text-amber-600 dark:text-amber-400 font-mono tabular-nums">
+                {formatDurationHuman(stats.overtimeHours)}
               </div>
               <span className="text-[11px] text-amber-600 dark:text-amber-400 mt-1 font-medium">
                 Excedente a liquidar
@@ -1009,147 +1744,155 @@ export default function AttendancePage() {
             </div>
           </div>
 
-          {/* Barra de Filtros y Rango de Fechas */}
-          <div className="card p-4 space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 dark:border-slate-800 pb-3">
-              <div className="flex items-center gap-2 text-xs font-semibold text-gray-700 dark:text-gray-300">
-                <Filter size={14} className="text-brand-500" />
-                <span>Filtros de Período y Parámetros</span>
-              </div>
-
-              {/* Accesos rápidos de fechas */}
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <button
-                  onClick={() => setQuickRange('this_month', 'shifts')}
-                  className="px-2.5 py-1 text-xs rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 hover:bg-gray-100 text-gray-700 dark:text-gray-300 transition-colors"
-                >
-                  Este Mes
-                </button>
-                <button
-                  onClick={() => setQuickRange('first_half', 'shifts')}
-                  className="px-2.5 py-1 text-xs rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 hover:bg-gray-100 text-gray-700 dark:text-gray-300 transition-colors"
-                >
-                  1ra Quincena
-                </button>
-                <button
-                  onClick={() => setQuickRange('second_half', 'shifts')}
-                  className="px-2.5 py-1 text-xs rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 hover:bg-gray-100 text-gray-700 dark:text-gray-300 transition-colors"
-                >
-                  2da Quincena
-                </button>
-                <button
-                  onClick={() => setQuickRange('prev_month', 'shifts')}
-                  className="px-2.5 py-1 text-xs rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 hover:bg-gray-100 text-gray-700 dark:text-gray-300 transition-colors"
-                >
-                  Mes Anterior
-                </button>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
-                  Fecha Desde
-                </label>
-                <input
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className="w-full text-xs py-2 px-3 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
-                  Fecha Hasta
-                </label>
-                <input
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className="w-full text-xs py-2 px-3 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
-                  Técnico
-                </label>
+          {/* Barra Compacta Unificada de Filtros */}
+          <div className="card p-3 flex flex-wrap items-center justify-between gap-3 text-xs">
+            {/* Lado izquierdo: Período, Técnico y Jornada Base */}
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Selector de Período */}
+              <div className="flex items-center gap-1.5">
+                <Calendar size={14} className="text-brand-500 shrink-0" />
                 <select
-                  value={selectedTechId}
-                  onChange={(e) => setSelectedTechId(e.target.value)}
-                  className="w-full text-xs py-2 px-3 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white"
+                  value={periodPreset}
+                  onChange={(e) => handlePeriodPresetChange(e.target.value)}
+                  className="py-1.5 px-2.5 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white font-medium"
                 >
-                  <option value="all">Todos los técnicos ({technicians.length})</option>
-                  {technicians.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                    </option>
-                  ))}
+                  <option value="this_month">Este Mes</option>
+                  <option value="first_half">1ra Quincena</option>
+                  <option value="second_half">2da Quincena</option>
+                  <option value="prev_month">Mes Anterior</option>
+                  <option value="custom">Personalizado...</option>
                 </select>
               </div>
 
-              <div>
-                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
-                  Jornada Estándar Base
-                </label>
-                <select
-                  value={standardHoursPerDay}
-                  onChange={(e) => setStandardHoursPerDay(Number(e.target.value))}
-                  className="w-full text-xs py-2 px-3 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white font-mono tabular-nums"
-                >
-                  <option value={8}>8 horas / día (44hs sem.)</option>
-                  <option value={9}>9 horas / día (45hs sem.)</option>
-                  <option value={6}>6 horas / día (Part-time)</option>
-                </select>
-              </div>
+              {/* Inputs de fecha inline solo si es Personalizado */}
+              {periodPreset === 'custom' && (
+                <div className="flex items-center gap-1 animate-in fade-in duration-150">
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => {
+                      setStartDate(e.target.value);
+                      setPeriodPreset('custom');
+                    }}
+                    className="py-1 px-2 rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white text-[11px]"
+                  />
+                  <span className="text-gray-400 text-xs">a</span>
+                  <input
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => {
+                      setEndDate(e.target.value);
+                      setPeriodPreset('custom');
+                    }}
+                    className="py-1 px-2 rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white text-[11px]"
+                  />
+                </div>
+              )}
+
+              {/* Selector de Técnico */}
+              <select
+                value={selectedTechId}
+                onChange={(e) => setSelectedTechId(e.target.value)}
+                className="py-1.5 px-2.5 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white max-w-[170px] truncate"
+              >
+                <option value="all">Todos los técnicos ({technicians.length})</option>
+                {technicians.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+
+              {/* Botón directo de tarifa si hay un técnico seleccionado */}
+              {selectedTechId !== 'all' && (() => {
+                const currentTech = technicians.find((t) => t.id === selectedTechId);
+                if (!currentTech) return null;
+                const reg = currentTech.hourly_rate_regular ? Number(currentTech.hourly_rate_regular) : 12000;
+                const over = currentTech.hourly_rate_overtime ? Number(currentTech.hourly_rate_overtime) : Math.round(reg * 1.5);
+                return (
+                  <button
+                    type="button"
+                    onClick={() => handleOpenRatesModal(currentTech)}
+                    className="flex items-center gap-1.5 py-1.5 px-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors text-xs"
+                    title="Hacé clic para ver o editar la tarifa por hora de este técnico"
+                  >
+                    <DollarSign size={13} className="text-emerald-600 dark:text-emerald-400" />
+                    <span>${reg.toLocaleString('es-AR')}/h (${over.toLocaleString('es-AR')}/h extra)</span>
+                    <Edit2 size={11} className="opacity-70 ml-0.5" />
+                  </button>
+                );
+              })()}
+
+              {/* Selector de Jornada Base */}
+              <select
+                value={standardHoursPerDay}
+                onChange={(e) => setStandardHoursPerDay(Number(e.target.value))}
+                className="py-1.5 px-2.5 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white font-medium"
+                title="Jornada base diaria pactada"
+              >
+                <option value={8}>Base 8 hs</option>
+                <option value={9}>Base 9 hs</option>
+                <option value={6}>Base 6 hs</option>
+              </select>
+
+              {/* Selector de Horario de Entrada Esperado */}
+              <select
+                value={expectedStartHour}
+                onChange={(e) => setExpectedStartHour(e.target.value)}
+                className="py-1.5 px-2.5 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white font-medium text-xs"
+                title="Modo de control de horario de ingreso"
+              >
+                <option value="auto">Auto (1ra OT / Ficha)</option>
+                <option value="free">Entrada: Libre (Sin tope)</option>
+                <option value="8">Entrada: 08:00 hs (+15m tol.)</option>
+                <option value="8.5">Entrada: 08:30 hs (+15m tol.)</option>
+                <option value="9">Entrada: 09:00 hs (+15m tol.)</option>
+              </select>
+
+              {/* Toggle Ocultar pruebas < 1m */}
+              <label className="flex items-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400 cursor-pointer select-none ml-1 pl-2 border-l border-gray-200 dark:border-slate-700">
+                <input
+                  type="checkbox"
+                  checked={hideMicroShifts}
+                  onChange={(e) => setHideMicroShifts(e.target.checked)}
+                  className="rounded text-brand-600 focus:ring-brand-500"
+                />
+                <span>Ocultar pruebas (&lt;1m)</span>
+              </label>
             </div>
 
-            {/* Filtro secundario por estado del turno */}
-            <div className="flex items-center gap-2 pt-1 border-t border-gray-100 dark:border-slate-800">
-              <span className="text-xs text-gray-400">Mostrar:</span>
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <button
-                  onClick={() => setStatusFilter('all')}
-                  className={`px-2.5 py-1 text-xs rounded-lg font-medium transition-colors ${
-                    statusFilter === 'all'
-                      ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900'
-                      : 'bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200'
-                  }`}
-                >
-                  Todos ({processedShifts.length})
-                </button>
-                <button
-                  onClick={() => setStatusFilter('completed')}
-                  className={`px-2.5 py-1 text-xs rounded-lg font-medium transition-colors ${
-                    statusFilter === 'completed'
-                      ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900'
-                      : 'bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200'
-                  }`}
-                >
-                  Finalizados ({processedShifts.filter((s) => !s.isOngoing).length})
-                </button>
-                <button
-                  onClick={() => setStatusFilter('active')}
-                  className={`px-2.5 py-1 text-xs rounded-lg font-medium transition-colors ${
-                    statusFilter === 'active'
-                      ? 'bg-emerald-600 text-white'
-                      : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100'
-                  }`}
-                >
-                  En Curso ({stats.activeCount})
-                </button>
-                <button
-                  onClick={() => setStatusFilter('anomalous')}
-                  className={`px-2.5 py-1 text-xs rounded-lg font-medium transition-colors ${
-                    statusFilter === 'anomalous'
-                      ? 'bg-red-600 text-white'
-                      : 'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 hover:bg-red-100'
-                  }`}
-                >
-                  Anomalías ({stats.anomalousCount})
-                </button>
-              </div>
+            {/* Lado derecho: Píldoras de estado */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <button
+                onClick={() => setStatusFilter('all')}
+                className={`px-2.5 py-1 text-xs rounded-lg font-medium transition-colors ${
+                  statusFilter === 'all'
+                    ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900'
+                    : 'bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200'
+                }`}
+              >
+                Todos ({stats.totalRecords})
+              </button>
+              <button
+                onClick={() => setStatusFilter('active')}
+                className={`px-2.5 py-1 text-xs rounded-lg font-medium transition-colors ${
+                  statusFilter === 'active'
+                    ? 'bg-emerald-600 text-white'
+                    : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100'
+                }`}
+              >
+                En Curso ({stats.activeCount})
+              </button>
+              <button
+                onClick={() => setStatusFilter('anomalous')}
+                className={`px-2.5 py-1 text-xs rounded-lg font-medium transition-colors ${
+                  statusFilter === 'anomalous'
+                    ? 'bg-red-600 text-white'
+                    : 'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 hover:bg-red-100'
+                }`}
+              >
+                Anomalías ({stats.anomalousCount})
+              </button>
             </div>
           </div>
 
@@ -1196,7 +1939,7 @@ export default function AttendancePage() {
                         }`}
                       >
                         <td className="py-3.5 px-4 font-mono font-medium text-gray-900 dark:text-white whitespace-nowrap">
-                          {formatDate(shift.shift_date)}
+                          {formatLocalDate(shift.shift_date)}
                         </td>
                         <td className="py-3.5 px-4 font-semibold text-gray-900 dark:text-white">
                           <div className="flex items-center gap-2">
@@ -1208,42 +1951,79 @@ export default function AttendancePage() {
                                 .join('')
                                 .toUpperCase()}
                             </div>
-                            <span className="truncate max-w-[160px]">
-                              {shift.technician?.name || 'Técnico'}
-                            </span>
+                            <div className="flex flex-col min-w-0">
+                              <span className="truncate max-w-[160px]">
+                                {shift.technician?.name || 'Técnico'}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenRatesModal(shift.technician)}
+                                className="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono text-left hover:underline flex items-center gap-0.5 mt-0.5"
+                                title="Hacé clic para ver o editar las tarifas por hora pactadas para este técnico"
+                              >
+                                <span>${(shift.technician?.hourly_rate_regular ? Number(shift.technician.hourly_rate_regular) : 12000).toLocaleString('es-AR')}/h</span>
+                              </button>
+                            </div>
                           </div>
                         </td>
                         <td className="py-3.5 px-4 text-center font-mono tabular-nums text-gray-700 dark:text-gray-300">
-                          <span className="inline-block px-2 py-0.5 rounded bg-gray-100 dark:bg-slate-800">
-                            {formatTime(shift.checkInDate)} hs
+                          <span className="font-mono text-xs whitespace-nowrap">
+                            {formatTime24(shift.checkInDate)}
                           </span>
                         </td>
                         <td className="py-3.5 px-4 text-center font-mono tabular-nums">
                           {shift.isOngoing ? (
-                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 font-semibold text-[11px]">
+                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 font-semibold text-[11px] whitespace-nowrap">
                               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                               En Curso
                             </span>
                           ) : (
-                            <span className="inline-block px-2 py-0.5 rounded bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-gray-300">
-                              {formatTime(shift.checkOutDate)} hs
+                            <span className="font-mono text-xs whitespace-nowrap">
+                              {formatTime24(shift.checkOutDate)}
                             </span>
                           )}
                         </td>
-                        <td className="py-3.5 px-4 text-right font-mono tabular-nums text-slate-800 dark:text-slate-200 font-medium">
-                          {shift.regularHours.toFixed(2)} hs
+                        <td className="py-3.5 px-4 text-right font-mono tabular-nums text-slate-800 dark:text-slate-200 font-medium whitespace-nowrap">
+                          {formatDurationHuman(shift.regularHours)}
                         </td>
-                        <td className="py-3.5 px-4 text-right font-mono tabular-nums">
-                          {shift.overtimeHours > 0 ? (
-                            <span className="font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-800/50">
-                              +{shift.overtimeHours.toFixed(2)} hs
-                            </span>
+                        <td className="py-3.5 px-4 text-right font-mono tabular-nums whitespace-nowrap">
+                          {shift.isOvertimeDismissed ? (
+                            <div className="flex flex-col items-end">
+                              <span
+                                className="font-mono text-xs text-gray-400 line-through bg-gray-100 dark:bg-slate-800 px-1.5 py-0.5 rounded border border-gray-200 dark:border-slate-700"
+                                title={`Desestimadas por administración (${formatDurationHuman(shift.rawOvertimeHours)} registradas)`}
+                              >
+                                {formatDurationHuman(shift.rawOvertimeHours)}
+                              </span>
+                              <span className="text-[9px] text-red-500 font-semibold uppercase tracking-wider mt-0.5">
+                                Desestimadas
+                              </span>
+                            </div>
+                          ) : shift.overtimeHours > 0 ? (
+                            <div className="flex flex-col items-end">
+                              <span
+                                className="font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-800/50 whitespace-nowrap"
+                                title={shift.hasCustomOvertime ? 'Ajustado manualmente por administración' : 'Calculado y aprobado automáticamente'}
+                              >
+                                +{formatDurationHuman(shift.overtimeHours)}
+                              </span>
+                              {shift.hasCustomOvertime && (
+                                <span className="text-[9px] text-blue-500 dark:text-blue-400 font-semibold uppercase tracking-wider mt-0.5">
+                                  Ajustado
+                                </span>
+                              )}
+                            </div>
                           ) : (
-                            <span className="text-gray-400">0.00 hs</span>
+                            <span className="text-gray-400 font-mono">—</span>
                           )}
                         </td>
-                        <td className="py-3.5 px-4 text-right font-mono tabular-nums font-bold text-gray-900 dark:text-white">
-                          {shift.totalHoursDecimal.toFixed(2)} hs
+                        <td className="py-3.5 px-4 text-right font-mono tabular-nums font-bold text-gray-900 dark:text-white whitespace-nowrap">
+                          {formatDurationHuman(shift.regularHours + shift.overtimeHours)}
+                          {shift.isOvertimeDismissed && (
+                            <span className="block text-[10px] text-gray-400 font-normal line-through">
+                              {formatDurationHuman(shift.totalHoursDecimal)}
+                            </span>
+                          )}
                         </td>
                         <td className="py-3.5 px-4">
                           <div className="flex items-center gap-1.5 flex-wrap">
@@ -1262,24 +2042,53 @@ export default function AttendancePage() {
                                 <span>Completado</span>
                               </span>
                             )}
-                            {shift.isLateCheckIn && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300 border border-amber-200/80 dark:border-amber-800/40 font-medium">
-                                Ingreso tardío
+                            {shift.isLateCheckIn ? (
+                              <span 
+                                className="text-[10px] px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300 border border-amber-200/80 dark:border-amber-800/40 font-medium whitespace-nowrap cursor-help"
+                                title={`Horario designado: ${shift.expectedTimeStr} hs (${shift.expectedSource}) • Tolerancia: ${shift.thresholdTimeStr} hs • Demora: +${shift.delayMinutes} min`}
+                              >
+                                Ingreso tardío (+{shift.delayMinutes}m • {shift.expectedSource})
                               </span>
-                            )}
+                            ) : shift.expectedTimeStr && !shift.isOngoing ? (
+                              <span 
+                                className="text-[10px] px-1.5 py-0.5 rounded-md bg-slate-50 text-slate-500 dark:bg-slate-800/40 dark:text-slate-400 border border-slate-200/60 dark:border-slate-700/60 font-medium whitespace-nowrap cursor-help"
+                                title={`Puntual para ${shift.expectedSource} (${shift.expectedTimeStr} hs)`}
+                              >
+                                A tiempo ({shift.expectedTimeStr} hs)
+                              </span>
+                            ) : null}
                           </div>
                         </td>
-                        <td className="py-3.5 px-4 text-center">
-                          {shift.isAnomalous ? (
+                        <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                          <div className="flex items-center justify-center gap-1.5">
+                            {shift.status === 'active' && (
+                              <button
+                                onClick={() => handleOpenCloseShiftModal(shift)}
+                                className="px-2 py-1 rounded-lg text-xs font-semibold bg-red-600 hover:bg-red-700 text-white transition-colors shadow-xs"
+                                title="Finalizar turno administrativamente con horario sugerido o ajustado"
+                              >
+                                Cerrar
+                              </button>
+                            )}
                             <button
-                              onClick={() => handleForceCloseShift(shift.id)}
-                              className="px-2.5 py-1 rounded-md text-[10px] font-semibold bg-red-600 hover:bg-red-700 text-white transition-colors shadow-xs"
-                              title="Finalizar turno administrativamente ahora"
+                              onClick={() => handleOpenEditShiftModal(shift)}
+                              className="p-1.5 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors border border-gray-200 dark:border-slate-700"
+                              title="Editar horario de ingreso o egreso de este turno"
                             >
-                              Cerrar Turno
+                              <Edit2 size={13} />
                             </button>
-                          ) : (
-                            <span className="text-gray-300 dark:text-slate-600 text-xs">—</span>
+                            <button
+                              onClick={() => handleDeleteShift(shift)}
+                              className="p-1.5 rounded-lg text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors border border-red-100 dark:border-red-900/40"
+                              title="Eliminar registro de jornada"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                          {shift.admin_notes && (
+                            <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-1 max-w-[150px] mx-auto truncate" title={shift.admin_notes}>
+                              Obs: {shift.admin_notes}
+                            </div>
                           )}
                         </td>
                       </tr>
@@ -1330,7 +2139,7 @@ export default function AttendancePage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
               <div>
                 <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
                   Técnico a Liquidar
@@ -1374,25 +2183,50 @@ export default function AttendancePage() {
 
               <div>
                 <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                  Jornada Base Diaria
+                </label>
+                <select
+                  value={standardHoursPerDay}
+                  onChange={(e) => setStandardHoursPerDay(Number(e.target.value))}
+                  className="w-full text-xs py-2 px-3 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white font-medium"
+                >
+                  <option value={8}>Base 8 hs / día</option>
+                  <option value={9}>Base 9 hs / día</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
                   Tarifa Hora Ordinaria ($/h)
                 </label>
                 <input
                   type="number"
                   value={hourlyRateRegular}
-                  onChange={(e) => setHourlyRateRegular(Number(e.target.value))}
+                  onChange={(e) => {
+                    const val = Number(e.target.value);
+                    setHourlyRateRegular(val);
+                    if (val > 0) {
+                      setHourlyRateOvertime(Math.round(val * 1.5));
+                    }
+                  }}
+                  onBlur={() => updateTechnicianRatesSilently(settlementTechId, hourlyRateRegular, hourlyRateOvertime)}
                   className="w-full text-xs py-2 px-3 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white font-mono"
                   placeholder="12000"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
-                  Tarifa Hora Extra ($/h)
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400">
+                    Tarifa Hora Extra ($/h)
+                  </label>
+                  <span className="text-[10px] text-gray-400 font-mono">1.5x</span>
+                </div>
                 <input
                   type="number"
                   value={hourlyRateOvertime}
                   onChange={(e) => setHourlyRateOvertime(Number(e.target.value))}
+                  onBlur={() => updateTechnicianRatesSilently(settlementTechId, hourlyRateRegular, hourlyRateOvertime)}
                   className="w-full text-xs py-2 px-3 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white font-mono"
                   placeholder="18000"
                 />
@@ -1411,7 +2245,7 @@ export default function AttendancePage() {
                 {formatCurrency(previewTotals.hoursSubtotal)}
               </div>
               <span className="text-[11px] text-gray-500 mt-1 block">
-                {previewHours.regular} hs ord. + {previewHours.overtime} hs extras
+                {formatDurationHuman(previewHours.regular)} ord. + {formatDurationHuman(previewHours.overtime)} extras
               </span>
             </div>
 
@@ -1431,33 +2265,75 @@ export default function AttendancePage() {
             {/* Card 3: Deducción de Adelantos */}
             <div className="card p-4 border-l-4 border-l-red-500 bg-red-50/20 dark:bg-red-950/20">
               <span className="text-xs font-semibold text-red-600 dark:text-red-400 uppercase tracking-wider">
-                3. Adelantos a Deducir
+                3. Adelantos a Descontar Hoy
               </span>
               <div className="mt-2 text-2xl font-bold text-red-600 dark:text-red-400 font-mono">
                 -{formatCurrency(previewTotals.advancesSubtotal)}
               </div>
               <span className="text-[11px] text-red-500 mt-1 block font-medium">
-                {previewAdvances.length} anticipo(s) en pesos descontados
+                {previewTotals.totalPendingAdvancesAmount > 0
+                  ? `De ${formatCurrency(previewTotals.totalPendingAdvancesAmount)} de deuda total — Quedan ${formatCurrency(previewTotals.remainingDebtTotal)} pendientes`
+                  : 'Sin adelantos pendientes'}
               </span>
             </div>
 
             {/* Card 4: Total Neto a Pagar */}
-            <div className="card p-4 border-l-4 border-l-emerald-500 bg-emerald-50/30 dark:bg-emerald-950/30 flex flex-col justify-between">
+            <div
+              className={`card p-4 border-l-4 flex flex-col justify-between ${
+                previewTotals.netTotal === 0 && previewTotals.advancesSubtotal > 0
+                  ? 'border-l-amber-500 bg-amber-50/40 dark:bg-amber-950/30'
+                  : 'border-l-emerald-500 bg-emerald-50/30 dark:bg-emerald-950/30'
+              }`}
+            >
               <div>
-                <span className="text-xs font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider">
-                  TOTAL NETO A LIQUIDAR
+                <span
+                  className={`text-xs font-bold uppercase tracking-wider ${
+                    previewTotals.netTotal === 0 && previewTotals.advancesSubtotal > 0
+                      ? 'text-amber-800 dark:text-amber-300'
+                      : 'text-emerald-800 dark:text-emerald-300'
+                  }`}
+                >
+                  4. TOTAL NETO A PAGAR
                 </span>
-                <div className="mt-2 text-2xl font-extrabold text-emerald-700 dark:text-emerald-300 font-mono">
+                <div
+                  className={`mt-2 text-2xl font-extrabold font-mono ${
+                    previewTotals.netTotal === 0 && previewTotals.advancesSubtotal > 0
+                      ? 'text-amber-700 dark:text-amber-300'
+                      : 'text-emerald-700 dark:text-emerald-300'
+                  }`}
+                >
                   {formatCurrency(previewTotals.netTotal)}
                 </div>
+                {previewTotals.netTotal === 0 && previewTotals.advancesSubtotal > 0 ? (
+                  <p className="text-[11px] text-amber-700 dark:text-amber-300 mt-1 font-semibold leading-tight">
+                    Cubierto por adelantos (Neto en mano: $ 0,00)
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-emerald-700 dark:text-emerald-300 mt-1 font-semibold leading-tight">
+                    Monto neto final a transferir o abonar
+                  </p>
+                )}
               </div>
               <button
                 onClick={handleSaveSettlement}
-                disabled={isSubmittingSettlement || isCalculatingPreview}
-                className="mt-3 w-full py-2 px-3 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition-all text-center flex items-center justify-center gap-1.5"
+                disabled={isSubmittingSettlement || isCalculatingPreview || !previewTotals.hasWorkToSettle}
+                className={`mt-3 w-full py-2 px-3 rounded-xl text-xs font-bold text-white shadow-sm transition-all text-center flex items-center justify-center gap-1.5 ${
+                  !previewTotals.hasWorkToSettle
+                    ? 'bg-gray-400 cursor-not-allowed opacity-60'
+                    : 'bg-emerald-600 hover:bg-emerald-700'
+                }`}
+                title={
+                  !previewTotals.hasWorkToSettle
+                    ? 'No hay horas ni obras pendientes de liquidación para este período'
+                    : 'Emitir Liquidación Oficial'
+                }
               >
                 <CheckCircle2 size={14} />
-                <span>Emitir Liquidación Oficial</span>
+                <span>
+                  {!previewTotals.hasWorkToSettle
+                    ? 'Sin Horas ni Obras a Liquidar'
+                    : 'Emitir Liquidación Oficial'}
+                </span>
               </button>
             </div>
           </div>
@@ -1492,7 +2368,7 @@ export default function AttendancePage() {
                           {ord.client?.name || 'Cliente'}
                         </span>
                         <span className="block text-[11px] text-gray-400">
-                          {ord.completed_at ? formatDate(ord.completed_at) : formatDate(ord.scheduled_date)} • {ord.labor_rate_type || 'walter_module'}
+                          {ord.completed_at ? formatLocalDate(ord.completed_at) : formatLocalDate(ord.scheduled_date)} • {ord.labor_rate_type || 'walter_module'}
                         </span>
                       </div>
                       <span className="font-mono font-bold text-purple-600 dark:text-purple-400">
@@ -1504,16 +2380,36 @@ export default function AttendancePage() {
               )}
             </div>
 
-            {/* Adelantos Deducidos */}
+            {/* Adelantos Pendientes del Técnico con Descuento Individual */}
             <div className="card p-4 space-y-3">
               <div className="flex items-center justify-between border-b border-gray-100 dark:border-slate-800 pb-2">
-                <span className="text-xs font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
+                <div className="flex items-center gap-2">
                   <TrendingDown size={14} className="text-red-500" />
-                  <span>Adelantos a Deducir en esta Liquidación ({previewAdvances.length})</span>
-                </span>
-                <span className="text-xs font-mono font-bold text-red-600">
-                  -{formatCurrency(previewTotals.advancesSubtotal)}
-                </span>
+                  <span className="text-xs font-bold text-gray-900 dark:text-white">
+                    Adelantos Pendientes del Técnico ({previewAdvances.length})
+                  </span>
+                </div>
+                {previewAdvances.length > 0 && (
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleAutoAdjustDeductions}
+                      className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 hover:underline"
+                      title="Reparte el descuento automáticamente desde el adelanto más viejo hasta cubrir el sueldo bruto"
+                    >
+                      Auto-ajustar al sueldo
+                    </button>
+                    <span className="text-gray-300 dark:text-slate-700">|</span>
+                    <button
+                      type="button"
+                      onClick={handleZeroDeductions}
+                      className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 hover:underline"
+                      title="Pone todos los descuentos en $ 0 para no deducir adelantos en esta quincena"
+                    >
+                      No descontar ninguno ($ 0)
+                    </button>
+                  </div>
+                )}
               </div>
 
               {previewAdvances.length === 0 ? (
@@ -1521,25 +2417,85 @@ export default function AttendancePage() {
                   No hay adelantos pendientes de descuento para este técnico.
                 </div>
               ) : (
-                <div className="divide-y divide-gray-100 dark:divide-slate-800 max-h-64 overflow-y-auto pr-1">
-                  {previewAdvances.map((adv) => (
-                    <div key={adv.id} className="py-2.5 flex items-center justify-between text-xs">
-                      <div>
-                        <span className="font-bold text-red-700 dark:text-red-400">
-                          {formatDate(adv.advance_date)}
-                        </span>
-                        <span className="text-gray-500 ml-2 uppercase text-[10px]">
-                          [{adv.payment_method}]
-                        </span>
-                        <span className="block text-[11px] text-gray-400">
-                          {adv.reference || adv.notes || 'Anticipo a cuenta de haberes'}
-                        </span>
+                <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+                  {previewAdvances.map((adv) => {
+                    const origAmount = Number(adv.amount) || 0;
+                    const customVal = advanceDeductions[adv.id];
+                    const deductedAmount = customVal !== undefined && customVal !== '' 
+                      ? Math.min(origAmount, Math.max(0, Number(customVal) || 0)) 
+                      : 0;
+                    const remainder = Math.max(0, Math.round((origAmount - deductedAmount) * 100) / 100);
+                    const isDiscounting = deductedAmount > 0;
+
+                    return (
+                      <div
+                        key={adv.id}
+                        className={`p-3 rounded-xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                          isDiscounting
+                            ? 'bg-red-50/40 dark:bg-red-950/20 border-red-200 dark:border-red-900/50 shadow-sm'
+                            : 'bg-gray-50/40 dark:bg-slate-800/20 border-gray-100 dark:border-slate-800 opacity-60 hover:opacity-90'
+                        }`}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-red-700 dark:text-red-400">
+                              {formatLocalDate(adv.advance_date)}
+                            </span>
+                            <span className="text-gray-500 uppercase text-[10px] font-semibold bg-gray-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">
+                              {adv.payment_method}
+                            </span>
+                          </div>
+                          <span className="block text-[11px] text-gray-500 dark:text-gray-400 truncate mt-0.5" title={adv.reference || adv.notes}>
+                            {adv.reference || adv.notes || 'Anticipo a cuenta de haberes'}
+                          </span>
+                          <span className="block text-[10px] text-gray-400 mt-0.5">
+                            Monto total: <strong className="font-mono text-gray-700 dark:text-gray-300">{formatCurrency(origAmount)}</strong>
+                          </span>
+                        </div>
+
+                        <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                          <div className="flex items-center gap-1.5">
+                            <label className="text-[10px] text-gray-500 dark:text-gray-400 font-semibold whitespace-nowrap">
+                              Descontar hoy:
+                            </label>
+                            <div className="relative">
+                              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-red-500 text-xs font-mono font-bold">$</span>
+                              <input
+                                type="number"
+                                min="0"
+                                max={origAmount}
+                                step="1"
+                                value={advanceDeductions[adv.id] !== undefined ? advanceDeductions[adv.id] : ''}
+                                onChange={(e) => handleDeductionChange(adv.id, origAmount, e.target.value)}
+                                onBlur={() => handleDeductionBlur(adv.id, origAmount)}
+                                placeholder="0"
+                                className="w-28 py-1 pl-5 pr-2 text-right font-mono font-bold text-xs rounded-lg border border-red-200 dark:border-red-900 bg-white dark:bg-slate-900 text-red-600 focus:outline-none focus:ring-1 focus:ring-red-500"
+                                title={`Monto a descontar hoy de este adelanto (máx: $${origAmount})`}
+                              />
+                            </div>
+                          </div>
+
+                          <div className="text-[10px] text-right font-medium">
+                            {isDiscounting ? (
+                              remainder > 0 ? (
+                                <span className="text-amber-600 dark:text-amber-400">
+                                  Queda debiendo de este adelanto: {formatCurrency(remainder)}
+                                </span>
+                              ) : (
+                                <span className="text-emerald-600 dark:text-emerald-400">
+                                  100% absorbido
+                                </span>
+                              )
+                            ) : (
+                              <span className="text-gray-400">
+                                No se descuenta hoy (Pasa entero: {formatCurrency(origAmount)})
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                      <span className="font-mono font-bold text-red-600 dark:text-red-400">
-                        -{formatCurrency(adv.amount)}
-                      </span>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -1589,7 +2545,7 @@ export default function AttendancePage() {
                           {set.technician?.name || 'Técnico'}
                         </td>
                         <td className="py-3 px-4 text-gray-500 whitespace-nowrap">
-                          {formatDate(set.period_start)} al {formatDate(set.period_end)}
+                          {formatLocalDate(set.period_start)} al {formatLocalDate(set.period_end)}
                         </td>
                         <td className="py-3 px-4 text-right font-mono text-gray-700 dark:text-gray-300">
                           {formatCurrency(set.hours_subtotal || 0)}
@@ -1702,18 +2658,11 @@ export default function AttendancePage() {
                   Libro Mayor de Anticipos y Adelantos en Pesos
                 </h3>
               </div>
-              <button
-                onClick={() => setIsAdvanceModalOpen(true)}
-                className="py-1.5 px-3 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1.5"
-              >
-                <Plus size={14} />
-                <span>Nuevo Adelanto</span>
-              </button>
             </div>
 
             {advances.length === 0 ? (
               <div className="p-12 text-center text-gray-400 text-xs">
-                No hay adelantos registrados en el sistema. Hacé clic en "Nuevo Adelanto" para cargar el primero.
+                No hay adelantos registrados en el sistema. Hacé clic en "Cargar Adelanto ($)" para registrar el primero.
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -1734,7 +2683,7 @@ export default function AttendancePage() {
                     {advances.map((adv) => (
                       <tr key={adv.id} className="hover:bg-gray-50/50 dark:hover:bg-slate-800/40">
                         <td className="py-3 px-4 font-mono font-medium text-gray-900 dark:text-white whitespace-nowrap">
-                          {formatDate(adv.advance_date)}
+                          {formatLocalDate(adv.advance_date)}
                         </td>
                         <td className="py-3 px-4 font-semibold text-gray-900 dark:text-white">
                           {adv.technician?.name || 'Técnico'}
@@ -1782,6 +2731,171 @@ export default function AttendancePage() {
                 </table>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* MODAL NATIVO: TARIFAS HORARIAS DE TÉCNICOS                */}
+      {/* ========================================================= */}
+      {isRatesModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-lg border border-gray-200 dark:border-slate-800 overflow-hidden animate-in zoom-in-95 duration-150">
+            {/* Header del Modal */}
+            <div className="p-5 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between bg-gray-50/50 dark:bg-slate-800/40">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                  <DollarSign size={22} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-gray-900 dark:text-white">
+                    Tarifas Horarias del Técnico
+                  </h3>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Configuración de valor por hora ordinaria y extra
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsRatesModalOpen(false)}
+                className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Formulario */}
+            <form onSubmit={handleSaveRatesModal} className="p-6 space-y-5">
+              {/* Selector de Técnico */}
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400 mb-1.5">
+                  Técnico Asignado
+                </label>
+                <div className="relative">
+                  <select
+                    value={ratesModalTechId}
+                    onChange={(e) => handleRatesTechChange(e.target.value)}
+                    className="w-full py-2.5 px-3.5 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-brand-500 transition-all cursor-pointer"
+                  >
+                    {technicians.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name} ({t.email || 'Sin email'})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <p className="text-[11px] text-gray-400 mt-1">
+                  Las tarifas configuradas se aplican al control de jornada y se precargan en liquidaciones.
+                </p>
+              </div>
+
+              {/* Grid de Tarifas */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Tarifa Ordinaria */}
+                <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-slate-800/60 border border-gray-100 dark:border-slate-700/60">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-xs font-bold text-gray-800 dark:text-gray-200">
+                      Hora Ordinaria ($/h)
+                    </label>
+                    <span className="text-[10px] font-semibold text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-950/60 px-1.5 py-0.5 rounded">
+                      Base (8 hs)
+                    </span>
+                  </div>
+                  <div className="relative mt-1">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 font-mono text-gray-400 font-bold text-sm">
+                      $
+                    </span>
+                    <input
+                      type="number"
+                      required
+                      min="1"
+                      step="100"
+                      value={ratesModalRegular}
+                      onChange={(e) => handleRatesRegularChange(e.target.value)}
+                      placeholder="12000"
+                      className="w-full py-2 pl-7 pr-3 rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-900 dark:text-white font-mono font-bold text-base focus:outline-none focus:ring-2 focus:ring-brand-500"
+                    />
+                  </div>
+                  <span className="text-[10px] text-gray-400 mt-1.5 block">
+                    Valor por cada hora de jornada estándar.
+                  </span>
+                </div>
+
+                {/* Tarifa Extra */}
+                <div className="p-3.5 rounded-xl bg-amber-50/40 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/40">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-xs font-bold text-amber-900 dark:text-amber-200">
+                      Hora Extra ($/h)
+                    </label>
+                    <span className="text-[10px] font-bold text-amber-700 dark:text-amber-400 bg-amber-100/80 dark:bg-amber-900/50 px-1.5 py-0.5 rounded">
+                      1.5x Auto
+                    </span>
+                  </div>
+                  <div className="relative mt-1">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 font-mono text-gray-400 font-bold text-sm">
+                      $
+                    </span>
+                    <input
+                      type="number"
+                      required
+                      min="1"
+                      step="100"
+                      value={ratesModalOvertime}
+                      onChange={(e) => setRatesModalOvertime(e.target.value === '' ? '' : Number(e.target.value))}
+                      placeholder="18000"
+                      className="w-full py-2 pl-7 pr-3 rounded-lg border border-amber-200 dark:border-amber-800/80 bg-white dark:bg-slate-900 text-gray-900 dark:text-white font-mono font-bold text-base focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    />
+                  </div>
+                  <span className="text-[10px] text-gray-400 mt-1.5 block">
+                    Calculado al 150% (editable a medida).
+                  </span>
+                </div>
+              </div>
+
+              {/* Ejemplo en vivo de Cómputo */}
+              {ratesModalRegular > 0 && (
+                <div className="p-3 rounded-xl bg-blue-50/60 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/40 text-xs">
+                  <div className="flex items-center justify-between font-medium text-blue-900 dark:text-blue-200">
+                    <span>Simulación para 1 jornada de 10 hs (8h + 2h ext):</span>
+                    <span className="font-mono font-bold text-sm text-blue-700 dark:text-blue-300">
+                      ${(Number(ratesModalRegular) * 8 + Number(ratesModalOvertime || ratesModalRegular * 1.5) * 2).toLocaleString('es-AR')}
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-blue-700/80 dark:text-blue-400/80 mt-1">
+                    8h ord (${(Number(ratesModalRegular) * 8).toLocaleString('es-AR')}) + 2h extras (${(Number(ratesModalOvertime || ratesModalRegular * 1.5) * 2).toLocaleString('es-AR')})
+                  </div>
+                </div>
+              )}
+
+              {/* Footer con Acciones */}
+              <div className="pt-3 border-t border-gray-100 dark:border-slate-800 flex items-center justify-end gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setIsRatesModalOpen(false)}
+                  className="py-2.5 px-4 rounded-xl text-xs font-semibold text-gray-700 dark:text-gray-300 bg-gray-100 hover:bg-gray-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingRates}
+                  className="py-2.5 px-5 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 active:scale-95 shadow-sm transition-all flex items-center gap-2 disabled:opacity-50"
+                >
+                  {isSavingRates ? (
+                    <>
+                      <span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                      <span>Guardando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check size={15} />
+                      <span>Guardar Tarifas</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
@@ -2016,6 +3130,270 @@ export default function AttendancePage() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Cierre / Edición / Registro Manual de Turno */}
+      {isShiftModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-gray-200 dark:border-slate-800 shadow-2xl max-w-lg w-full overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div className="p-5 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div
+                  className={`w-9 h-9 rounded-xl flex items-center justify-center ${
+                    shiftModalMode === 'close'
+                      ? 'bg-red-50 text-red-600 dark:bg-red-900/30 dark:text-red-400'
+                      : shiftModalMode === 'manual'
+                      ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400'
+                      : 'bg-brand-50 text-brand-600 dark:bg-brand-900/30 dark:text-brand-400'
+                  }`}
+                >
+                  <Clock size={20} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-gray-900 dark:text-white text-base">
+                    {shiftModalMode === 'close'
+                      ? 'Cierre Administrativo de Jornada'
+                      : shiftModalMode === 'manual'
+                      ? 'Registrar Jornada Manual'
+                      : 'Editar Horario de Jornada'}
+                  </h3>
+                  <p className="text-gray-500 text-xs">
+                    {shiftModalMode === 'close'
+                      ? 'Asigna un horario de salida real para evitar horas extras erróneas.'
+                      : shiftModalMode === 'manual'
+                      ? 'Crea un turno completado para un técnico que no pudo fichar.'
+                      : 'Rectifica la hora de ingreso o egreso antes de emitir la liquidación.'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsShiftModalOpen(false)}
+                className="p-1 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-slate-800"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveShiftModal} className="p-5 space-y-4 text-xs">
+              {/* Técnico */}
+              {shiftModalMode === 'manual' ? (
+                <div>
+                  <label className="block font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Técnico Responsable *
+                  </label>
+                  <select
+                    value={shiftModalData.technician_id}
+                    onChange={(e) =>
+                      setShiftModalData({ ...shiftModalData, technician_id: e.target.value })
+                    }
+                    className="w-full py-2 px-3 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white"
+                    required
+                  >
+                    {technicians.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name} ({t.email})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <div className="p-3 rounded-xl bg-gray-50 dark:bg-slate-800/60 border border-gray-200 dark:border-slate-700 flex items-center justify-between">
+                  <div>
+                    <span className="text-gray-400 block text-[10px] uppercase font-bold tracking-wider">
+                      Técnico
+                    </span>
+                    <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                      {shiftModalData.technician_name}
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-gray-400 block text-[10px] uppercase font-bold tracking-wider">
+                      Fecha Jornada
+                    </span>
+                    <span className="text-xs font-mono font-bold text-gray-800 dark:text-gray-200">
+                      {formatLocalDate(shiftModalData.shift_date)}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Horas Ingreso y Egreso */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Fecha y Hora de Ingreso *
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={shiftModalData.check_in_at}
+                    onChange={(e) => {
+                      const newIn = e.target.value;
+                      const newDate = newIn ? newIn.split('T')[0] : shiftModalData.shift_date;
+                      setShiftModalData({
+                        ...shiftModalData,
+                        check_in_at: newIn,
+                        shift_date: newDate,
+                      });
+                    }}
+                    className="w-full py-2 px-3 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white font-mono"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Fecha y Hora de Egreso {shiftModalMode !== 'edit' && '*'}
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={shiftModalData.check_out_at}
+                    onChange={(e) =>
+                      setShiftModalData({ ...shiftModalData, check_out_at: e.target.value })
+                    }
+                    placeholder={shiftModalMode === 'edit' ? 'Dejar en blanco si sigue activa' : ''}
+                    className="w-full py-2 px-3 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white font-mono"
+                    required={shiftModalMode !== 'edit'}
+                  />
+                  {shiftModalMode === 'close' && (
+                    <span className="text-[10px] text-amber-600 dark:text-amber-400 mt-1 block">
+                      Horario sugerido calculado automáticamente. Puedes modificarlo libremente.
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Sección de Horas Extras y Duración */}
+              {shiftModalData.check_out_at && modalDurationHours > 0 && (
+                <div className="p-3.5 rounded-xl border border-amber-200 dark:border-amber-900/50 bg-amber-50/40 dark:bg-amber-950/20 space-y-2.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <span className="text-xs font-bold text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                        Cómputo de Horas y Horas Extras
+                      </span>
+                      <span className="text-[11px] text-amber-800/80 dark:text-amber-300/80 block mt-0.5">
+                        Duración: {formatDurationHuman(modalDurationHours)} • Base pactada: {standardHoursPerDay} hs • Reloj: {modalRawOvertimeHours > 0 ? `+${formatDurationHuman(modalRawOvertimeHours)} excedente` : 'Sin excedente'}
+                      </span>
+                    </div>
+
+                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={shiftModalData.overtime_approved}
+                        onChange={(e) =>
+                          setShiftModalData({ ...shiftModalData, overtime_approved: e.target.checked })
+                        }
+                        className="w-4 h-4 rounded border-amber-300 text-amber-600 focus:ring-amber-500"
+                      />
+                      <span className="text-xs font-semibold text-gray-800 dark:text-gray-200">
+                        Aprobar Horas Extras
+                      </span>
+                    </label>
+                  </div>
+
+                  {!shiftModalData.overtime_approved ? (
+                    <div className="p-2 rounded-lg bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/50 text-[11px] text-red-700 dark:text-red-300 font-medium">
+                      Horas extras <b>desestimadas</b> para esta jornada. Se liquidarán 0 hs extras (se reconocen solo las horas ordinarias).
+                    </div>
+                  ) : (
+                    <div className="pt-2 border-t border-amber-200/60 dark:border-amber-900/40 flex flex-wrap items-center justify-between gap-3 text-xs">
+                      <div className="text-gray-700 dark:text-gray-300">
+                        <span>Horas extras a liquidar: </span>
+                        <b className="text-amber-700 dark:text-amber-300 font-mono">
+                          +{formatDurationHuman(
+                            shiftModalData.custom_overtime_hours !== '' &&
+                            shiftModalData.custom_overtime_hours !== null &&
+                            !isNaN(Number(shiftModalData.custom_overtime_hours))
+                              ? Number(shiftModalData.custom_overtime_hours)
+                              : modalRawOvertimeHours
+                          )}
+                        </b>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <label className="text-[11px] text-gray-500 whitespace-nowrap">
+                          Ajuste manual (opcional):
+                        </label>
+                        <input
+                          type="number"
+                          step="0.25"
+                          min="0"
+                          max="24"
+                          placeholder="Auto (reloj)"
+                          value={shiftModalData.custom_overtime_hours}
+                          onChange={(e) =>
+                            setShiftModalData({ ...shiftModalData, custom_overtime_hours: e.target.value })
+                          }
+                          className="w-24 py-1 px-2 text-xs font-mono rounded-lg border border-amber-300 dark:border-amber-800 bg-white dark:bg-slate-800 text-gray-900 dark:text-white"
+                          title="Ingresa horas decimales si acuerdas reconocer un monto diferente al reloj (ej: 1 o 1.5)"
+                        />
+                        <span className="text-[11px] text-gray-400">hs</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Nota Administrativa Obligatoria */}
+              <div>
+                <label className="block font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Nota / Justificación Administrativa *
+                </label>
+                <textarea
+                  rows={3}
+                  value={shiftModalData.admin_notes}
+                  onChange={(e) =>
+                    setShiftModalData({ ...shiftModalData, admin_notes: e.target.value })
+                  }
+                  placeholder="Ej: Técnico olvidó fichar salida; se cierra a horario habitual 18:00 hs según acuerdo."
+                  className="w-full py-2 px-3 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white"
+                  required
+                />
+                <span className="text-[10px] text-gray-400 block mt-0.5">
+                  Esta nota queda registrada en la auditoría del turno y respalda la liquidación de horas.
+                </span>
+              </div>
+
+              {/* Botones de acción */}
+              <div className="pt-3 flex items-center justify-end gap-2 border-t border-gray-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  disabled={isSavingShift}
+                  onClick={() => setIsShiftModalOpen(false)}
+                  className="py-2 px-4 rounded-xl text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-800 font-semibold"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingShift}
+                  className={`py-2 px-5 rounded-xl text-white font-bold shadow-sm transition-all flex items-center gap-1.5 ${
+                    shiftModalMode === 'close'
+                      ? 'bg-red-600 hover:bg-red-700'
+                      : shiftModalMode === 'manual'
+                      ? 'bg-indigo-600 hover:bg-indigo-700'
+                      : 'bg-brand-600 hover:bg-brand-700'
+                  }`}
+                >
+                  {isSavingShift ? (
+                    <span>Guardando...</span>
+                  ) : (
+                    <>
+                      <Check size={14} />
+                      <span>
+                        {shiftModalMode === 'close'
+                          ? 'Confirmar Cierre'
+                          : shiftModalMode === 'manual'
+                          ? 'Registrar Turno'
+                          : 'Guardar Cambios'}
+                      </span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

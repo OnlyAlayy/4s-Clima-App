@@ -1,7 +1,27 @@
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
+import dotenv from 'dotenv';
 import Afip from '@afipsdk/afip.js';
 import { createClient } from '@supabase/supabase-js';
+
+// Cargar variables de entorno locales de forma segura si no están en process.env
+try {
+  if (dotenv && typeof dotenv.config === 'function') {
+    const envCandidates = [
+      path.resolve(process.cwd(), '.env'),
+      path.resolve(process.cwd(), '..', '.env'),
+      path.resolve(process.cwd(), '..', '..', '.env'),
+    ];
+    for (const envPath of envCandidates) {
+      if (fs.existsSync(envPath)) {
+        dotenv.config({ path: envPath });
+      }
+    }
+  }
+} catch (envErr) {
+  console.warn('[invoice.js] Carga de .env omitida o no requerida en este entorno:', envErr?.message || envErr);
+}
 
 export default async function handler(req, res) {
   // CORS configuration segura con lista blanca
@@ -43,8 +63,8 @@ export default async function handler(req, res) {
     }
     const token = authHeader.replace('Bearer ', '');
 
-    const supabaseUrl = process.env.VITE_SUPABASE_URL;
-    const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY;
+    const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
+    const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
     if (!supabaseUrl || !supabaseAnonKey) {
       return res.status(500).json({ error: 'Configuración de base de datos faltante en el servidor.' });
     }
@@ -77,19 +97,6 @@ export default async function handler(req, res) {
     }
 
     const roundCurrency = (val) => Math.round((Number(val) + Number.EPSILON) * 100) / 100;
-    const rawAmount = req.body.netAmount !== undefined ? req.body.netAmount : req.body.amount;
-    const impNeto = roundCurrency(rawAmount || 0);
-    if (isNaN(impNeto) || impNeto <= 0) {
-      return res.status(400).json({ error: 'Monto neto a facturar inválido (debe ser mayor a 0).' });
-    }
-
-    const isCreditNote = req.body.isCreditNote === true;
-    const associatedInvoice = req.body.associatedInvoice; // Required if isCreditNote
-    const voucherLetter = (req.body.voucherLetter || req.body.voucher_letter || 'A').toUpperCase();
-    const isTypeC = voucherLetter === 'C';
-
-    const impIVA = isTypeC ? 0 : roundCurrency(impNeto * 0.21);
-    const impTotal = isTypeC ? impNeto : roundCurrency(impNeto + impIVA);
 
     // 2.5 Fetch Client & Order Data from DB (Idempotencia y validación fiscal)
     const { data: orderData, error: orderError } = await supabase
@@ -102,11 +109,57 @@ export default async function handler(req, res) {
       return res.status(404).json({ error: 'Orden de trabajo no encontrada' });
     }
 
+    const isCreditNote = req.body.isCreditNote === true;
+
     // Prevención de Doble Facturación (Idempotencia)
     if (orderData.afip_cae && !isCreditNote) {
       return res.status(409).json({ 
         error: `Esta orden ya cuenta con un comprobante AFIP emitido (Comprobante: ${orderData.afip_voucher_number || 'A-00001-N/D'}, CAE: ${orderData.afip_cae}). Operación cancelada para evitar duplicación fiscal.` 
       });
+    }
+
+    let voucherLetter = (req.body.voucherLetter || req.body.voucher_letter || '').toUpperCase();
+    if (!voucherLetter && orderData.afip_voucher_number) {
+      voucherLetter = orderData.afip_voucher_number.toUpperCase().startsWith('C') ? 'C' : 'A';
+    }
+    if (!voucherLetter) voucherLetter = 'A';
+    const isTypeC = voucherLetter === 'C';
+
+    const rawAmount = req.body.netAmount !== undefined ? req.body.netAmount : req.body.amount;
+    const impNeto = roundCurrency(rawAmount || 0);
+    if (isNaN(impNeto) || impNeto <= 0) {
+      return res.status(400).json({ error: 'Monto neto a facturar inválido (debe ser mayor a 0).' });
+    }
+
+    const impIVA = isTypeC ? 0 : roundCurrency(impNeto * 0.21);
+    const impTotal = isTypeC ? impNeto : roundCurrency(impNeto + impIVA);
+
+    // Resolver comprobante asociado en Notas de Crédito
+    const ptoVta = parseInt(process.env.AFIP_PTO_VTA || '1', 10);
+    let assocPtoVta = ptoVta;
+    let assocInvoiceNum = null;
+
+    if (req.body.associatedInvoice !== undefined && req.body.associatedInvoice !== null) {
+      const parts = String(req.body.associatedInvoice).split('-');
+      const num = parseInt(parts[parts.length - 1].replace(/\D/g, ''), 10);
+      if (!isNaN(num) && num > 0) assocInvoiceNum = num;
+      if (parts.length >= 2) {
+        const p = parseInt(parts[1].replace(/\D/g, ''), 10);
+        if (!isNaN(p) && p > 0) assocPtoVta = p;
+      }
+    }
+    if (!assocInvoiceNum && orderData.afip_voucher_number) {
+      const parts = String(orderData.afip_voucher_number).split('-');
+      const num = parseInt(parts[parts.length - 1].replace(/\D/g, ''), 10);
+      if (!isNaN(num) && num > 0) assocInvoiceNum = num;
+      if (parts.length >= 2) {
+        const p = parseInt(parts[1].replace(/\D/g, ''), 10);
+        if (!isNaN(p) && p > 0) assocPtoVta = p;
+      }
+    }
+
+    if (isCreditNote && !assocInvoiceNum) {
+      return res.status(400).json({ error: 'Para emitir Nota de Crédito se requiere un comprobante asociado válido.' });
     }
     
     // Validación fiscal: Factura A exige CUIT 11 dígitos; Factura C permite CUIT o Consumidor Final
@@ -130,21 +183,35 @@ export default async function handler(req, res) {
       condicionIva = 5;
     }
     
-    // In Vercel, we need to extract certificates from env vars and write to /tmp
+    // In Vercel, we need to extract certificates from env vars and write to tempDir
     // For local testing, we can use the env vars if present, otherwise fallback to local files if they exist
-    const certPath = path.join('/tmp', 'afip_cert.crt');
-    const keyPath = path.join('/tmp', 'afip_key.key');
+    const tempDir = os.tmpdir();
+    const certPath = path.join(tempDir, 'afip_cert.crt');
+    const keyPath = path.join(tempDir, 'afip_key.key');
     
     if (process.env.AFIP_CERT_PEM && process.env.AFIP_KEY_PEM) {
       fs.writeFileSync(certPath, process.env.AFIP_CERT_PEM.replace(/\\n/g, '\n'));
       fs.writeFileSync(keyPath, process.env.AFIP_KEY_PEM.replace(/\\n/g, '\n'));
     } else {
       // Fallback for local testing if env vars aren't set
-      if (fs.existsSync('afip_certificado.crt')) {
-        fs.copyFileSync('afip_certificado.crt', certPath);
-        fs.copyFileSync('afip_privada.key', keyPath);
+      const certCandidates = [
+        path.resolve(process.cwd(), 'afip_certificado.crt'),
+        path.resolve(process.cwd(), '..', 'afip_certificado.crt'),
+        path.resolve(process.cwd(), '..', '..', 'afip_certificado.crt'),
+      ];
+      const keyCandidates = [
+        path.resolve(process.cwd(), 'afip_privada.key'),
+        path.resolve(process.cwd(), '..', 'afip_privada.key'),
+        path.resolve(process.cwd(), '..', '..', 'afip_privada.key'),
+      ];
+      const foundCert = certCandidates.find((p) => fs.existsSync(p));
+      const foundKey = keyCandidates.find((p) => fs.existsSync(p));
+
+      if (foundCert && foundKey) {
+        fs.copyFileSync(foundCert, certPath);
+        fs.copyFileSync(foundKey, keyPath);
       } else {
-         return res.status(500).json({ error: 'Faltan los certificados de AFIP en el entorno.' });
+        return res.status(500).json({ error: 'Faltan los certificados de AFIP en el entorno.' });
       }
     }
 
@@ -153,13 +220,12 @@ export default async function handler(req, res) {
       CUIT: 23477380719,
       cert: certPath,
       key: keyPath,
-      res_folder: '/tmp', // AFIP SDK writes tokens here
+      res_folder: tempDir, // AFIP SDK writes tokens here
       production: false
     });
 
     const date = new Date(Date.now() - ((new Date()).getTimezoneOffset() * 60000)).toISOString().split('T')[0].replace(/-/g, '');
 
-    const ptoVta = parseInt(process.env.AFIP_PTO_VTA || '1', 10);
     // Tipos de comprobante en AFIP:
     // Factura A: 1, Nota de Crédito A: 3
     // Factura C: 11, Nota de Crédito C: 13
@@ -168,7 +234,8 @@ export default async function handler(req, res) {
       : (isCreditNote ? 3 : 1);
     const lastVoucher = await afip.ElectronicBilling.getLastVoucher(ptoVta, cbteTipo);
     const voucherNumber = lastVoucher + 1;
-    const formattedVoucherNumber = `${voucherLetter}-${String(ptoVta).padStart(5, '0')}-${String(voucherNumber).padStart(8, '0')}`;
+    const voucherPrefix = isCreditNote ? `NC-${voucherLetter}` : voucherLetter;
+    const formattedVoucherNumber = `${voucherPrefix}-${String(ptoVta).padStart(5, '0')}-${String(voucherNumber).padStart(8, '0')}`;
 
     const data = {
       'CantReg' 	: 1,  
@@ -204,12 +271,12 @@ export default async function handler(req, res) {
       ];
     }
 
-    if (isCreditNote && associatedInvoice) {
+    if (isCreditNote && assocInvoiceNum) {
       data['CbtesAsoc'] = [
         {
           'Tipo' 	: isTypeC ? 11 : 1,
-          'PtoVta' 	: ptoVta,
-          'Nro' 	: associatedInvoice
+          'PtoVta' 	: assocPtoVta,
+          'Nro' 	: assocInvoiceNum
         }
       ];
     }
@@ -240,19 +307,64 @@ export default async function handler(req, res) {
       ? customObs
       : orderData.observations;
 
-    const updateData = isCreditNote 
-      ? { payment_status: 'unbilled', total_amount: 0, afip_voucher_number: null, afip_cae: null }
-      : { 
-          payment_status: 'pending', 
-          total_amount: impTotal, 
-          afip_voucher_number: formattedVoucherNumber, 
-          afip_cae: cae.toString(),
-          observations: finalObservations
-        };
+    if (isCreditNote) {
+      // 3.A Anulación con Nota de Crédito: Liberar todas las órdenes que compartan este comprobante o CAE (Lotes)
+      let targetOrderIds = [orderId];
+      try {
+        let query = authSupabase.from('work_orders').select('id');
+        if (orderData.afip_voucher_number && orderData.afip_cae) {
+          query = query.or(`afip_voucher_number.eq."${orderData.afip_voucher_number}",afip_cae.eq."${orderData.afip_cae}"`);
+        } else if (orderData.afip_voucher_number) {
+          query = query.eq('afip_voucher_number', orderData.afip_voucher_number);
+        } else if (orderData.afip_cae) {
+          query = query.eq('afip_cae', orderData.afip_cae);
+        }
+        const { data: matchedOrders } = await query;
+        if (matchedOrders && matchedOrders.length > 0) {
+          targetOrderIds = Array.from(new Set([...targetOrderIds, ...matchedOrders.map(o => o.id)]));
+        }
+      } catch (findErr) {
+        console.warn('Error buscando órdenes vinculadas al comprobante anulado:', findErr);
+      }
 
-    const { error: updateError } = await authSupabase.from('work_orders').update(updateData).eq('id', orderId);
-    if (updateError) {
-      console.error('Error actualizando work_order:', updateError);
+      // Restablecer todas las órdenes vinculadas a 'unbilled'
+      const { error: updateError } = await authSupabase
+        .from('work_orders')
+        .update({ 
+          payment_status: 'unbilled', 
+          total_amount: 0, 
+          afip_voucher_number: null, 
+          afip_cae: null 
+        })
+        .in('id', targetOrderIds);
+
+      if (updateError) {
+        console.error('Error actualizando work_orders tras Nota de Crédito:', updateError);
+      }
+
+      // Restablecer todos los extras asociados a billed = false para permitir refacturación
+      const { error: extrasError } = await authSupabase
+        .from('extras')
+        .update({ billed: false })
+        .in('work_order_id', targetOrderIds);
+
+      if (extrasError) {
+        console.error('Error restableciendo extras a billed=false:', extrasError);
+      }
+    } else {
+      // 3.B Emisión de Factura estándar
+      const updateData = { 
+        payment_status: 'pending', 
+        total_amount: impTotal, 
+        afip_voucher_number: formattedVoucherNumber, 
+        afip_cae: cae.toString(),
+        observations: finalObservations
+      };
+
+      const { error: updateError } = await authSupabase.from('work_orders').update(updateData).eq('id', orderId);
+      if (updateError) {
+        console.error('Error actualizando work_order:', updateError);
+      }
     }
 
     res.status(200).json({

@@ -9,6 +9,7 @@ const COLUMNS = [
   { id: WORK_ORDER_STATUS.PENDING, title: 'Pendientes', color: 'border-blue-500 bg-blue-50' },
   { id: WORK_ORDER_STATUS.TRAVELING, title: 'En Camino', color: 'border-indigo-500 bg-indigo-50' },
   { id: WORK_ORDER_STATUS.IN_PROGRESS, title: 'En Planta', color: 'border-amber-500 bg-amber-50' },
+  { id: WORK_ORDER_STATUS.ON_HOLD, title: 'En Pausa / Bloqueadas', color: 'border-orange-500 bg-orange-50' },
   { id: WORK_ORDER_STATUS.COMPLETED, title: 'Completadas', color: 'border-emerald-500 bg-emerald-50' }
 ];
 
@@ -22,6 +23,7 @@ export default function WorkOrdersKanban({ initialOrders, onOrderUpdated }) {
       [WORK_ORDER_STATUS.PENDING]: [],
       [WORK_ORDER_STATUS.TRAVELING]: [],
       [WORK_ORDER_STATUS.IN_PROGRESS]: [],
+      [WORK_ORDER_STATUS.ON_HOLD]: [],
       [WORK_ORDER_STATUS.COMPLETED]: [],
       [WORK_ORDER_STATUS.CANCELLED]: []
     };
@@ -69,6 +71,13 @@ export default function WorkOrdersKanban({ initialOrders, onOrderUpdated }) {
       const updateData = { status: destStatus };
       if (destStatus === WORK_ORDER_STATUS.COMPLETED) {
         updateData.completed_at = new Date().toISOString();
+      } else if (destStatus === WORK_ORDER_STATUS.ON_HOLD) {
+        updateData.paused_at = new Date().toISOString();
+      }
+      if (sourceStatus === WORK_ORDER_STATUS.ON_HOLD && destStatus !== WORK_ORDER_STATUS.ON_HOLD) {
+        updateData.paused_at = null;
+        updateData.hold_reason = null;
+        updateData.hold_notes = null;
       }
 
       const { error } = await supabase
@@ -116,9 +125,16 @@ export default function WorkOrdersKanban({ initialOrders, onOrderUpdated }) {
                             className={`bg-white dark:bg-slate-800 p-4 mb-3 rounded-lg shadow-sm border border-gray-200 dark:border-slate-700 cursor-grab active:cursor-grabbing transition-shadow ${snapshot.isDragging ? 'shadow-lg border-brand-300' : 'hover:shadow-md'}`}
                           >
                           <div className="flex justify-between items-start mb-2">
-                            <span className="text-xs font-mono font-semibold text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-slate-700 px-2 py-1 rounded">
-                              #{order.order_number || order.id.slice(0, 8)}
-                            </span>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-xs font-mono font-semibold text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-slate-700 px-2 py-1 rounded">
+                                #{order.order_number || order.id.slice(0, 8)}
+                              </span>
+                              {order.type === 'obra' && (
+                                <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                                  Obra
+                                </span>
+                              )}
+                            </div>
                             <span className="text-xs text-gray-400 dark:text-slate-500">{formatDate(order.scheduled_date)}</span>
                           </div>
                           <h4 className="font-semibold text-gray-900 dark:text-white mb-1 leading-tight">{order.client?.name || 'Cliente sin nombre'}</h4>

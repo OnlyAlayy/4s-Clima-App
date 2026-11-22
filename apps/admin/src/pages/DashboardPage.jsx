@@ -160,48 +160,48 @@ export default function DashboardPage() {
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <div className="stat-card">
-          <div className="stat-icon bg-blue-50">
-            <ClipboardList size={22} className="text-blue-500" />
+          <div className="stat-icon bg-blue-50 dark:bg-blue-950/70 border border-transparent dark:border-blue-800/60">
+            <ClipboardList size={22} className="text-blue-500 dark:text-blue-400" />
           </div>
           <div>
             <div className="stat-value">{stats.totalOrders}</div>
-            <div className="stat-label">Órdenes Totales</div>
+            <div className="stat-label dark:text-slate-400">Órdenes Totales</div>
           </div>
         </div>
 
         <div className="stat-card">
-          <div className="stat-icon bg-emerald-50">
-            <CheckCircle2 size={22} className="text-emerald-500" />
+          <div className="stat-icon bg-emerald-50 dark:bg-emerald-950/70 border border-transparent dark:border-emerald-800/60">
+            <CheckCircle2 size={22} className="text-emerald-500 dark:text-emerald-400" />
           </div>
           <div>
             <div className="stat-value">{stats.completedToday}</div>
-            <div className="stat-label">Completadas Hoy</div>
+            <div className="stat-label dark:text-slate-400">Completadas Hoy</div>
           </div>
         </div>
 
         <div className="stat-card">
-          <div className="stat-icon bg-amber-50">
-            <Clock size={22} className="text-amber-500" />
+          <div className="stat-icon bg-amber-50 dark:bg-amber-950/70 border border-transparent dark:border-amber-800/60">
+            <Clock size={22} className="text-amber-500 dark:text-amber-400" />
           </div>
           <div>
             <div className="stat-value">{stats.inProgress}</div>
-            <div className="stat-label">En Progreso</div>
+            <div className="stat-label dark:text-slate-400">En Progreso</div>
           </div>
         </div>
 
-        <div className="stat-card border-red-200 bg-red-50/30">
-          <div className="stat-icon bg-red-100">
-            <DollarSign size={22} className="text-red-500" />
+        <div className="stat-card border-red-200 dark:border-red-900/40 bg-red-50/30 dark:bg-red-950/20">
+          <div className="stat-icon bg-red-100 dark:bg-red-950/70 border border-transparent dark:border-red-800/60">
+            <DollarSign size={22} className="text-red-500 dark:text-red-400" />
           </div>
           <div>
-            <div className="stat-value text-red-600">
+            <div className="stat-value text-red-600 dark:text-red-400">
               {stats.unbilledExtras}
             </div>
-            <div className="stat-label text-red-500">
+            <div className="stat-label text-red-500 dark:text-red-400">
               Extras Sin Facturar
             </div>
             {stats.unbilledTotal > 0 && (
-              <div className="text-xs font-semibold text-red-600 mt-0.5">
+              <div className="text-xs font-semibold text-red-600 dark:text-red-300 mt-0.5">
                 {formatCurrency(stats.unbilledTotal)}
               </div>
             )}
@@ -213,7 +213,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
         
         {/* Gráfico de Rendimiento */}
-        <div className="card lg:col-span-2 shadow-sm border border-gray-100 flex flex-col">
+        <div className="card lg:col-span-2 shadow-sm border border-gray-100 dark:border-slate-800 flex flex-col">
           <div className="mb-4">
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Rendimiento Semanal</h2>
             <p className="text-xs text-gray-500 dark:text-gray-400">Órdenes completadas en los últimos 7 días</p>
@@ -243,22 +243,22 @@ export default function DashboardPage() {
 
         {/* Secondary stats */}
         <div className="flex flex-col gap-4">
-          <div className="stat-card shadow-sm border border-gray-100 flex-1">
-            <div className="stat-icon bg-purple-50">
-              <Building2 size={22} className="text-purple-500" />
+          <div className="stat-card shadow-sm border border-gray-100 dark:border-slate-800 flex-1">
+            <div className="stat-icon bg-purple-50 dark:bg-purple-950/70 border border-transparent dark:border-purple-800/60">
+              <Building2 size={22} className="text-purple-500 dark:text-purple-400" />
             </div>
             <div>
               <div className="stat-value text-2xl">{stats.totalClients}</div>
-              <div className="stat-label">Clientes Activos</div>
+              <div className="stat-label dark:text-slate-400">Clientes Activos</div>
             </div>
           </div>
-          <div className="stat-card shadow-sm border border-gray-100 flex-1">
-            <div className="stat-icon bg-cyan-50">
-              <Users size={22} className="text-cyan-500" />
+          <div className="stat-card shadow-sm border border-gray-100 dark:border-slate-800 flex-1">
+            <div className="stat-icon bg-cyan-50 dark:bg-cyan-950/70 border border-transparent dark:border-cyan-800/60">
+              <Users size={22} className="text-cyan-500 dark:text-cyan-400" />
             </div>
             <div>
               <div className="stat-value text-2xl">{stats.totalTechnicians}</div>
-              <div className="stat-label">Técnicos Registrados</div>
+              <div className="stat-label dark:text-slate-400">Técnicos Registrados</div>
             </div>
           </div>
         </div>

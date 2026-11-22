@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import { supabase } from '@4s-clima/shared/supabase';
 import { WORK_ORDER_STATUS } from '@4s-clima/shared/constants';
 import { db } from '../services/offlineDb';
+import nativeLocationTracker from '../services/nativeLocationTracker';
+import { useShiftStore } from './shiftStore';
 
 /**
  * Store de órdenes de trabajo.
@@ -51,12 +53,19 @@ export const useWorkOrderStore = create((set, get) => ({
             travel_started_at,
             arrived_at,
             is_survey_only,
+            target_unit,
+            indoor_work_notes,
+            outdoor_work_notes,
+            hold_reason,
+            hold_notes,
+            paused_at,
+            paused_by,
             client:clients(id, name),
             plant:plants(id, name, address, latitude, longitude),
-            equipment:equipment(id, type, brand, model)
+            equipment:equipment(*)
           `)
           .eq('assigned_to', technicianId)
-          .in('status', [WORK_ORDER_STATUS.PENDING, WORK_ORDER_STATUS.TRAVELING, WORK_ORDER_STATUS.IN_PROGRESS])
+          .in('status', [WORK_ORDER_STATUS.PENDING, WORK_ORDER_STATUS.TRAVELING, WORK_ORDER_STATUS.IN_PROGRESS, WORK_ORDER_STATUS.ON_HOLD])
           .order('scheduled_date', { ascending: true });
 
         if (error) throw error;
@@ -135,9 +144,16 @@ export const useWorkOrderStore = create((set, get) => ({
             travel_started_at,
             arrived_at,
             is_survey_only,
+            target_unit,
+            indoor_work_notes,
+            outdoor_work_notes,
+            hold_reason,
+            hold_notes,
+            paused_at,
+            paused_by,
             client:clients(id, name, address, contact_name, contact_phone),
             plant:plants(id, name, address, floor, contact_name, contact_phone, notes, latitude, longitude),
-            equipment:equipment(id, type, brand, model, serial_number, capacity_btu, refrigerant_type, location_description),
+            equipment:equipment(*),
             checklist_items(*),
             extras(id, work_order_id, description, quantity, unit, created_at),
             photos(*),
@@ -147,6 +163,35 @@ export const useWorkOrderStore = create((set, get) => ({
           .single();
 
         if (error) throw error;
+
+        // Cargar historial de tramos y visitas de la orden
+        try {
+          const { data: visitsData, error: visitsError } = await supabase
+            .from('work_order_visits')
+            .select(`
+              id,
+              work_order_id,
+              technician_id,
+              started_at,
+              ended_at,
+              outcome,
+              reason_code,
+              summary_notes,
+              created_at,
+              technician:users!technician_id(id, name)
+            `)
+            .eq('work_order_id', orderId)
+            .order('started_at', { ascending: false });
+
+          if (!visitsError && visitsData) {
+            data.visits = visitsData;
+          } else {
+            data.visits = [];
+          }
+        } catch (vErr) {
+          console.warn('Nota: no se pudo cargar historial de tramos de visita:', vErr);
+          data.visits = [];
+        }
 
         await db.workOrders.put(data);
         set({ currentOrder: data, isLoading: false });
@@ -166,6 +211,21 @@ export const useWorkOrderStore = create((set, get) => ({
    * Enciende el Live Tracking GPS estilo delivery.
    */
   startTravel: async (orderId) => {
+    // Salvaguarda: Verificar que la jornada laboral esté activa antes de viajar
+    try {
+      const shiftState = useShiftStore.getState();
+      if (!shiftState.activeShift) {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const currentUserId = sessionData?.session?.user?.id;
+        if (currentUserId) {
+          console.log('[WorkOrderStore] No hay jornada activa al iniciar viaje. Iniciando turno automáticamente...');
+          await shiftState.checkIn(currentUserId);
+        }
+      }
+    } catch (shiftErr) {
+      console.warn('[WorkOrderStore] Advertencia al auto-iniciar jornada para viaje:', shiftErr);
+    }
+
     const now = new Date().toISOString();
     try {
       if (navigator.onLine) {
@@ -227,6 +287,21 @@ export const useWorkOrderStore = create((set, get) => ({
    * Apaga el Live Tracking GPS para preservar batería e inicia el trabajo en sitio.
    */
   arriveAtPlant: async (orderId) => {
+    // Salvaguarda: Verificar que la jornada laboral esté activa al ingresar a planta
+    try {
+      const shiftState = useShiftStore.getState();
+      if (!shiftState.activeShift) {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const currentUserId = sessionData?.session?.user?.id;
+        if (currentUserId) {
+          console.log('[WorkOrderStore] No hay jornada activa al ingresar a planta. Iniciando turno automáticamente...');
+          await shiftState.checkIn(currentUserId);
+        }
+      }
+    } catch (shiftErr) {
+      console.warn('[WorkOrderStore] Advertencia al auto-iniciar jornada para planta:', shiftErr);
+    }
+
     const now = new Date().toISOString();
     try {
       if (navigator.onLine) {
@@ -234,14 +309,18 @@ export const useWorkOrderStore = create((set, get) => ({
           status: WORK_ORDER_STATUS.IN_PROGRESS,
           started_at: now,
           arrived_at: now,
+          hold_reason: null,
+          hold_notes: null,
+          paused_at: null,
+          paused_by: null,
         };
         const { error } = await supabase
           .from('work_orders')
           .update(updatePayload)
           .eq('id', orderId);
 
-        // Si la columna arrived_at aún no fue migrada en DB, fallback sin esa columna
-        if (error && error.message?.includes('arrived_at')) {
+        // Si alguna columna aún no fue migrada en DB, fallback con columnas base
+        if (error) {
           const retry = await supabase
             .from('work_orders')
             .update({
@@ -250,8 +329,31 @@ export const useWorkOrderStore = create((set, get) => ({
             })
             .eq('id', orderId);
           if (retry.error) throw retry.error;
-        } else if (error) {
-          throw error;
+        }
+
+        // Registrar apertura de tramo / visita en work_order_visits si no hay una activa
+        try {
+          const { data: sessionData } = await supabase.auth.getSession();
+          const currentUserId = sessionData?.session?.user?.id;
+          if (currentUserId) {
+            const { data: openVisits } = await supabase
+              .from('work_order_visits')
+              .select('id')
+              .eq('work_order_id', orderId)
+              .eq('outcome', 'in_progress')
+              .limit(1);
+
+            if (!openVisits || openVisits.length === 0) {
+              await supabase.from('work_order_visits').insert({
+                work_order_id: orderId,
+                technician_id: currentUserId,
+                started_at: now,
+                outcome: 'in_progress',
+              });
+            }
+          }
+        } catch (vErr) {
+          console.warn('Nota: no se pudo registrar tramo en work_order_visits:', vErr);
         }
       }
 
@@ -260,6 +362,10 @@ export const useWorkOrderStore = create((set, get) => ({
         status: WORK_ORDER_STATUS.IN_PROGRESS,
         started_at: now,
         arrived_at: now,
+        hold_reason: null,
+        hold_notes: null,
+        paused_at: null,
+        paused_by: null,
         synced: navigator.onLine,
       });
 
@@ -272,6 +378,10 @@ export const useWorkOrderStore = create((set, get) => ({
             status: WORK_ORDER_STATUS.IN_PROGRESS,
             started_at: now,
             arrived_at: now,
+            hold_reason: null,
+            hold_notes: null,
+            paused_at: null,
+            paused_by: null,
           },
         });
       }
@@ -297,12 +407,198 @@ export const useWorkOrderStore = create((set, get) => ({
   },
 
   /**
+   * Registra un Avance Parcial (Fin de jornada en obras largas / relevo de técnicos).
+   * Cierra el tramo activo con outcome 'partial_advance', devuelve la orden a 'pending'
+   * para reanudar al día siguiente, mantiene el checklist en draft y limpia el GPS.
+   */
+  registerPartialAdvance: async (orderId, summaryNotes = '') => {
+    const now = new Date().toISOString();
+    try {
+      if (navigator.onLine) {
+        // 1. Cerrar tramo/visita activa
+        try {
+          const { data: sessionData } = await supabase.auth.getSession();
+          const currentUserId = sessionData?.session?.user?.id;
+          if (currentUserId) {
+            await supabase
+              .from('work_order_visits')
+              .update({
+                ended_at: now,
+                outcome: 'partial_advance',
+                summary_notes: summaryNotes || 'Avance parcial registrado al cierre de jornada',
+              })
+              .eq('work_order_id', orderId)
+              .eq('outcome', 'in_progress');
+          }
+        } catch (vErr) {
+          console.warn('Nota: error cerrando visita en avance parcial:', vErr);
+        }
+
+        // 2. Pasar orden a 'pending', limpiar travel_started_at y arrived_at, conservar checklist draft
+        const updatePayload = {
+          status: WORK_ORDER_STATUS.PENDING,
+          travel_started_at: null,
+          arrived_at: null,
+          updated_at: now,
+        };
+        const { error } = await supabase
+          .from('work_orders')
+          .update(updatePayload)
+          .eq('id', orderId);
+
+        if (error) throw error;
+      }
+
+      // Desvincular orden en tracker GPS
+      try {
+        nativeLocationTracker.setActiveOrderId(null);
+      } catch (e) { }
+
+      // Actualizar IndexedDB
+      await db.workOrders.update(orderId, {
+        status: WORK_ORDER_STATUS.PENDING,
+        travel_started_at: null,
+        arrived_at: null,
+        synced: navigator.onLine,
+      });
+
+      // Actualizar Zustand store
+      const currentOrder = get().currentOrder;
+      if (currentOrder?.id === orderId) {
+        set({
+          currentOrder: {
+            ...currentOrder,
+            status: WORK_ORDER_STATUS.PENDING,
+            travel_started_at: null,
+            arrived_at: null,
+          },
+        });
+      }
+
+      get().refreshWorkOrders();
+      return true;
+    } catch (error) {
+      console.error('Error registrando avance parcial:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Pausa la Orden de Trabajo por impedimento operativo (falta de repuestos, cliente ausente, fallo humano, etc.).
+   * Cierra el tramo activo con outcome 'blocked', guarda motivo y explicación, pasa la orden a 'on_hold'
+   * y desvincula el GPS de la orden.
+   */
+  pauseWorkOrder: async (orderId, { holdReason, holdNotes }) => {
+    const now = new Date().toISOString();
+    try {
+      let currentUserId = null;
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        currentUserId = sessionData?.session?.user?.id;
+      } catch (e) { }
+
+      if (navigator.onLine) {
+        // 1. Cerrar tramo activo como 'blocked'
+        try {
+          if (currentUserId) {
+            await supabase
+              .from('work_order_visits')
+              .update({
+                ended_at: now,
+                outcome: 'blocked',
+                reason_code: holdReason,
+                summary_notes: holdNotes,
+              })
+              .eq('work_order_id', orderId)
+              .eq('outcome', 'in_progress');
+          }
+        } catch (vErr) {
+          console.warn('Nota: error cerrando visita en pausa:', vErr);
+        }
+
+        // 2. Actualizar work_orders con estado on_hold y metadata
+        const updatePayload = {
+          status: WORK_ORDER_STATUS.ON_HOLD,
+          hold_reason: holdReason,
+          hold_notes: holdNotes,
+          paused_at: now,
+          paused_by: currentUserId || null,
+          travel_started_at: null,
+          arrived_at: null,
+          updated_at: now,
+        };
+
+        const { error } = await supabase
+          .from('work_orders')
+          .update(updatePayload)
+          .eq('id', orderId);
+
+        if (error) throw error;
+      }
+
+      // Desvincular orden en tracker GPS
+      try {
+        nativeLocationTracker.setActiveOrderId(null);
+      } catch (e) { }
+
+      // Actualizar IndexedDB
+      await db.workOrders.update(orderId, {
+        status: WORK_ORDER_STATUS.ON_HOLD,
+        hold_reason: holdReason,
+        hold_notes: holdNotes,
+        paused_at: now,
+        paused_by: currentUserId || null,
+        travel_started_at: null,
+        arrived_at: null,
+        synced: navigator.onLine,
+      });
+
+      // Actualizar Zustand store
+      const currentOrder = get().currentOrder;
+      if (currentOrder?.id === orderId) {
+        set({
+          currentOrder: {
+            ...currentOrder,
+            status: WORK_ORDER_STATUS.ON_HOLD,
+            hold_reason: holdReason,
+            hold_notes: holdNotes,
+            paused_at: now,
+            paused_by: currentUserId || null,
+            travel_started_at: null,
+            arrived_at: null,
+          },
+        });
+      }
+
+      get().refreshWorkOrders();
+      return true;
+    } catch (error) {
+      console.error('Error reportando pausa / impedimento:', error);
+      throw error;
+    }
+  },
+
+  /**
    * Completa una OT (después de la firma).
    */
   completeWorkOrder: async (orderId) => {
     const now = new Date().toISOString();
     try {
       if (navigator.onLine) {
+        // Cerrar tramo activo como 'completed'
+        try {
+          await supabase
+            .from('work_order_visits')
+            .update({
+              ended_at: now,
+              outcome: 'completed',
+            })
+            .eq('work_order_id', orderId)
+            .eq('outcome', 'in_progress');
+        } catch (vErr) {
+          console.warn('Nota: error cerrando visita en completeWorkOrder:', vErr);
+        }
+
         const { error } = await supabase
           .from('work_orders')
           .update({
@@ -313,6 +609,11 @@ export const useWorkOrderStore = create((set, get) => ({
 
         if (error) throw error;
       }
+
+      // Desvincular orden en tracker GPS
+      try {
+        nativeLocationTracker.setActiveOrderId(null);
+      } catch (e) { }
 
       await db.workOrders.update(orderId, {
         status: WORK_ORDER_STATUS.COMPLETED,
@@ -364,7 +665,7 @@ export const useWorkOrderStore = create((set, get) => ({
     if (isCurrent) {
       try {
         nativeLocationTracker.setActiveOrderId(null);
-      } catch (e) {}
+      } catch (e) { }
     }
 
     set((state) => ({
@@ -389,14 +690,14 @@ export const useWorkOrderStore = create((set, get) => ({
   syncPendingData: async () => {
     if (!navigator.onLine) return;
     if (get().isSyncing) return; // Prevenir race conditions
-    
+
     set({ isSyncing: true });
     try {
       const pending = await db.pendingSync.toArray();
-      
+
       for (const item of pending) {
         let error = null;
-        let dataToUpsert = Array.isArray(item.data) ? [ ...item.data ] : { ...item.data };
+        let dataToUpsert = Array.isArray(item.data) ? [...item.data] : { ...item.data };
 
         // Si son checklist items con IDs temporales, quitamos el ID para que Supabase genere UUIDs reales
         if (item.table === 'checklist_items' && Array.isArray(dataToUpsert)) {
@@ -410,14 +711,14 @@ export const useWorkOrderStore = create((set, get) => ({
         }
 
         // Subir imágenes pendientes a Storage antes de insertar en la BD
-        if ((item.table === 'signatures' && dataToUpsert.signature_blob) || 
-            (item.table === 'photos' && dataToUpsert.photo_blob)) {
-          
+        if ((item.table === 'signatures' && dataToUpsert.signature_blob) ||
+          (item.table === 'photos' && dataToUpsert.photo_blob)) {
+
           try {
             const isSignature = item.table === 'signatures';
             const blobKey = isSignature ? 'signature_blob' : 'photo_blob';
             const urlKey = isSignature ? 'signature_url' : 'url';
-            
+
             // Decodificar base64 a Blob
             const base64Data = dataToUpsert[blobKey];
             const byteCharacters = atob(base64Data);

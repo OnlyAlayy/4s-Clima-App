@@ -1,22 +1,68 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Check, AlertTriangle, X, Minus, ChevronRight,
-  MessageSquare, Save, CheckCircle2, Lock, ShieldCheck
+  MessageSquare, Save, CheckCircle2, Lock, ShieldCheck,
+  Wind, Box, Sliders, FileText, MapPin, Tag, Layers
 } from 'lucide-react';
 import { useWorkOrderStore } from '../stores/workOrderStore';
-import { CHECKLIST_STATUS } from '@4s-clima/shared/constants';
+import { CHECKLIST_STATUS, TARGET_UNIT_LABELS } from '@4s-clima/shared/constants';
 import { getChecklistByEquipmentType } from '@4s-clima/shared/constants/checklists';
 import { supabase } from '@4s-clima/shared/supabase';
 import { db } from '../services/offlineDb';
 
 /**
- * Página de checklist del técnico.
+ * Clasifica automáticamente un ítem de checklist según mención a Unidad Interior o Exterior.
+ */
+function detectUnitScope(categoryName = '', itemName = '') {
+  const text = `${categoryName} ${itemName}`.toLowerCase();
+  if (
+    text.includes('interior') ||
+    text.includes('evaporad') ||
+    text.includes('filtro') ||
+    text.includes('turbina') ||
+    text.includes('salto térmico') ||
+    text.includes('salto termico') ||
+    text.includes('bandeja') ||
+    text.includes('desagüe') ||
+    text.includes('desague') ||
+    text.includes('display') ||
+    text.includes('control remoto') ||
+    text.includes('termorregulación') ||
+    text.includes('sensor de temperatura')
+  ) {
+    return 'indoor';
+  }
+  if (
+    text.includes('exterior') ||
+    text.includes('condensad') ||
+    text.includes('compresor') ||
+    text.includes('forzador') ||
+    text.includes('refrigerante') ||
+    text.includes('presión') ||
+    text.includes('presion') ||
+    text.includes('vacio') ||
+    text.includes('vacío') ||
+    text.includes('hermeticidad') ||
+    text.includes('bornera') ||
+    text.includes('amperaje') ||
+    text.includes('capacitor') ||
+    text.includes('válvula') ||
+    text.includes('valvula')
+  ) {
+    return 'outdoor';
+  }
+  return 'general';
+}
+
+/**
+ * Página de checklist del técnico con soporte para arquitectura dual (UI + UE).
  * Soporta:
- * 1. Guardado parcial en modo borrador (draft) en cualquier momento.
- * 2. Cierre y envío definitivo (submitted) con validación del 100% y confirmación.
- * 3. Inmutabilidad en modo solo lectura una vez enviado.
- * 4. Carga de plantillas dinámicas si la orden tiene checklist_template_id, o fallback automático por tipo de equipo.
+ * 1. Desglose en bloques visuales: Unidad Interior (UI), Unidad Exterior (UE) y General.
+ * 2. Registro técnico diferenciado de indoor_work_notes y outdoor_work_notes.
+ * 3. Guardado parcial en modo borrador (draft) en cualquier momento.
+ * 4. Cierre y envío definitivo (submitted) con validación del 100% y confirmación.
+ * 5. Inmutabilidad en modo solo lectura una vez enviado.
  */
 export default function ChecklistPage() {
   const { id } = useParams();
@@ -25,6 +71,8 @@ export default function ChecklistPage() {
   const [items, setItems] = useState([]);
   const [expandedNotes, setExpandedNotes] = useState({});
   const [notes, setNotes] = useState({});
+  const [indoorWorkNotes, setIndoorWorkNotes] = useState('');
+  const [outdoorWorkNotes, setOutdoorWorkNotes] = useState('');
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [isSubmittingFinal, setIsSubmittingFinal] = useState(false);
   const [draftToast, setDraftToast] = useState(false);
@@ -36,6 +84,18 @@ export default function ChecklistPage() {
       fetchWorkOrder(id);
     }
   }, [id, currentOrder, fetchWorkOrder]);
+
+  // Inicializar notas técnicas de unidades si existen en currentOrder
+  useEffect(() => {
+    if (currentOrder && currentOrder.id === id) {
+      if (currentOrder.indoor_work_notes !== undefined) {
+        setIndoorWorkNotes(currentOrder.indoor_work_notes || '');
+      }
+      if (currentOrder.outdoor_work_notes !== undefined) {
+        setOutdoorWorkNotes(currentOrder.outdoor_work_notes || '');
+      }
+    }
+  }, [currentOrder, id]);
 
   // ¿El checklist ya fue sellado y enviado?
   const isSubmitted = currentOrder?.checklist_status === 'submitted';
@@ -56,9 +116,13 @@ export default function ChecklistPage() {
 
     // 1. Si ya tiene checklist_items guardados en la DB o caché, usarlos
     if (currentOrder.checklist_items && currentOrder.checklist_items.length > 0) {
-      setItems(currentOrder.checklist_items);
+      const populated = currentOrder.checklist_items.map((it) => ({
+        ...it,
+        unit_scope: it.unit_scope || detectUnitScope(it.category, it.item_name),
+      }));
+      setItems(populated);
       const existingNotes = {};
-      currentOrder.checklist_items.forEach((item) => {
+      populated.forEach((item) => {
         if (item.notes) existingNotes[item.id] = item.notes;
       });
       setNotes(existingNotes);
@@ -152,6 +216,7 @@ export default function ChecklistPage() {
               status: null,
               notes: null,
               sort_order: sortOrder++,
+              unit_scope: detectUnitScope(cat.name, itemName),
             });
           });
         });
@@ -223,6 +288,7 @@ export default function ChecklistPage() {
   const buildChecklistData = () => {
     return items.map((item) => ({
       ...item,
+      unit_scope: item.unit_scope || detectUnitScope(item.category, item.item_name),
       notes: notes[item.id] !== undefined ? notes[item.id] : item.notes || null,
     }));
   };
@@ -240,31 +306,69 @@ export default function ChecklistPage() {
     try {
       if (navigator.onLine) {
         if (checklistData.length > 0) {
-          const { error: upsertErr } = await supabase
+          let { error: upsertErr } = await supabase
             .from('checklist_items')
             .upsert(checklistData);
-          if (upsertErr) throw upsertErr;
+          if (upsertErr && (upsertErr.message?.includes('unit_scope') || upsertErr.code === '42703')) {
+            const stripped = checklistData.map(({ unit_scope, ...rest }) => rest);
+            const { error: retryErr } = await supabase.from('checklist_items').upsert(stripped);
+            if (retryErr) throw retryErr;
+          } else if (upsertErr) {
+            throw upsertErr;
+          }
         }
 
-        const { error: woErr } = await supabase
+        const woPayload = {
+          checklist_status: 'draft',
+          indoor_work_notes: indoorWorkNotes || null,
+          outdoor_work_notes: outdoorWorkNotes || null,
+          updated_at: new Date().toISOString(),
+        };
+
+        let { error: woErr } = await supabase
           .from('work_orders')
-          .update({
-            checklist_status: 'draft',
-            updated_at: new Date().toISOString(),
-          })
+          .update(woPayload)
           .eq('id', id);
-        if (woErr) throw woErr;
+
+        if (woErr && (woErr.message?.includes('indoor_work_notes') || woErr.code === '42703')) {
+          const { error: retryWoErr } = await supabase
+            .from('work_orders')
+            .update({
+              checklist_status: 'draft',
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', id);
+          if (retryWoErr) throw retryWoErr;
+        } else if (woErr) {
+          throw woErr;
+        }
       } else {
         // Modo offline
         for (const item of checklistData) {
           await db.checklistItems.put({ ...item, synced: false });
         }
-        await db.workOrders.update(id, { checklist_status: 'draft', synced: false });
+        await db.workOrders.update(id, {
+          checklist_status: 'draft',
+          indoor_work_notes: indoorWorkNotes || null,
+          outdoor_work_notes: outdoorWorkNotes || null,
+          synced: false,
+        });
         await db.pendingSync.add({
           table: 'checklist_items',
           action: 'upsert',
           recordId: id,
           data: checklistData,
+          created_at: new Date().toISOString(),
+        });
+        await db.pendingSync.add({
+          table: 'work_orders',
+          action: 'update',
+          recordId: id,
+          data: {
+            checklist_status: 'draft',
+            indoor_work_notes: indoorWorkNotes || null,
+            outdoor_work_notes: outdoorWorkNotes || null,
+          },
           created_at: new Date().toISOString(),
         });
       }
@@ -277,6 +381,8 @@ export default function ChecklistPage() {
             ...cur,
             checklist_status: 'draft',
             checklist_items: checklistData,
+            indoor_work_notes: indoorWorkNotes,
+            outdoor_work_notes: outdoorWorkNotes,
           },
         });
       }
@@ -334,21 +440,44 @@ export default function ChecklistPage() {
     try {
       if (navigator.onLine) {
         if (checklistData.length > 0) {
-          const { error: upsertErr } = await supabase
+          let { error: upsertErr } = await supabase
             .from('checklist_items')
             .upsert(checklistData);
-          if (upsertErr) throw upsertErr;
+          if (upsertErr && (upsertErr.message?.includes('unit_scope') || upsertErr.code === '42703')) {
+            const stripped = checklistData.map(({ unit_scope, ...rest }) => rest);
+            const { error: retryErr } = await supabase.from('checklist_items').upsert(stripped);
+            if (retryErr) throw retryErr;
+          } else if (upsertErr) {
+            throw upsertErr;
+          }
         }
 
-        const { error: woErr } = await supabase
+        const woPayload = {
+          checklist_status: 'submitted',
+          checklist_submitted_at: now,
+          indoor_work_notes: indoorWorkNotes || null,
+          outdoor_work_notes: outdoorWorkNotes || null,
+          updated_at: now,
+        };
+
+        let { error: woErr } = await supabase
           .from('work_orders')
-          .update({
-            checklist_status: 'submitted',
-            checklist_submitted_at: now,
-            updated_at: now,
-          })
+          .update(woPayload)
           .eq('id', id);
-        if (woErr) throw woErr;
+
+        if (woErr && (woErr.message?.includes('indoor_work_notes') || woErr.code === '42703')) {
+          const { error: retryWoErr } = await supabase
+            .from('work_orders')
+            .update({
+              checklist_status: 'submitted',
+              checklist_submitted_at: now,
+              updated_at: now,
+            })
+            .eq('id', id);
+          if (retryWoErr) throw retryWoErr;
+        } else if (woErr) {
+          throw woErr;
+        }
       } else {
         // Offline queue
         for (const item of checklistData) {
@@ -357,6 +486,8 @@ export default function ChecklistPage() {
         await db.workOrders.update(id, {
           checklist_status: 'submitted',
           checklist_submitted_at: now,
+          indoor_work_notes: indoorWorkNotes || null,
+          outdoor_work_notes: outdoorWorkNotes || null,
           synced: false,
         });
         await db.pendingSync.add({
@@ -370,7 +501,12 @@ export default function ChecklistPage() {
           table: 'work_orders',
           action: 'update',
           recordId: id,
-          data: { checklist_status: 'submitted', checklist_submitted_at: now },
+          data: {
+            checklist_status: 'submitted',
+            checklist_submitted_at: now,
+            indoor_work_notes: indoorWorkNotes || null,
+            outdoor_work_notes: outdoorWorkNotes || null,
+          },
           created_at: now,
         });
       }
@@ -384,6 +520,8 @@ export default function ChecklistPage() {
             checklist_status: 'submitted',
             checklist_submitted_at: now,
             checklist_items: checklistData,
+            indoor_work_notes: indoorWorkNotes,
+            outdoor_work_notes: outdoorWorkNotes,
           },
         });
       }
@@ -396,13 +534,68 @@ export default function ChecklistPage() {
     }
   };
 
-  // Agrupar ítems por categoría
-  const categories = items.reduce((acc, item) => {
-    const cat = item.category || 'General';
-    if (!acc[cat]) acc[cat] = [];
-    acc[cat].push(item);
-    return acc;
-  }, {});
+  // Agrupar ítems por Unidad Interior (UI), Unidad Exterior (UE) y General
+  const groupedSections = useMemo(() => {
+    const indoor = [];
+    const outdoor = [];
+    const general = [];
+
+    items.forEach((item) => {
+      const scope = item.unit_scope || detectUnitScope(item.category, item.item_name);
+      if (scope === 'indoor') indoor.push(item);
+      else if (scope === 'outdoor') outdoor.push(item);
+      else general.push(item);
+    });
+
+    return [
+      {
+        id: 'indoor',
+        scope: 'indoor',
+        title: '1. Unidad Interior (Evaporadora)',
+        subtitle: 'Filtros, turbina, serpentina, bandeja de desagüe, display y sensor',
+        icon: Wind,
+        accent: 'sky',
+        items: indoor,
+        unitModel: currentOrder?.equipment?.indoor_model || currentOrder?.equipment?.model,
+        unitSerial: currentOrder?.equipment?.indoor_serial || currentOrder?.equipment?.serial_number,
+        unitLocation: currentOrder?.equipment?.indoor_location || currentOrder?.equipment?.location_description,
+        notesValue: indoorWorkNotes,
+        notesSetter: setIndoorWorkNotes,
+        notesPlaceholder: 'Detalle de tareas realizadas en UI: limpieza de filtros y serpentina, salto térmico (°C), drenaje...',
+      },
+      {
+        id: 'outdoor',
+        scope: 'outdoor',
+        title: '2. Unidad Exterior (Condensadora)',
+        subtitle: 'Compresor, forzador, presiones de gas refrigerante, bornera eléctrica y consumo',
+        icon: Box,
+        accent: 'amber',
+        items: outdoor,
+        unitModel: currentOrder?.equipment?.outdoor_model,
+        unitSerial: currentOrder?.equipment?.outdoor_serial,
+        unitLocation: currentOrder?.equipment?.outdoor_location,
+        refrigerant: currentOrder?.equipment?.refrigerant_type,
+        capacity: currentOrder?.equipment?.capacity_tr_fg,
+        notesValue: outdoorWorkNotes,
+        notesSetter: setOutdoorWorkNotes,
+        notesPlaceholder: 'Detalle de tareas realizadas en UE: presión manométrica (PSI), consumo (A), capacitor, forzador...',
+      },
+      ...(general.length > 0
+        ? [
+            {
+              id: 'general',
+              scope: 'general',
+              title: '3. Protocolo General / Sistema',
+              subtitle: 'Verificaciones operativas generales e interconexión',
+              icon: Sliders,
+              accent: 'indigo',
+              items: general,
+              notesValue: null,
+            },
+          ]
+        : []),
+    ];
+  }, [items, currentOrder, indoorWorkNotes, outdoorWorkNotes]);
 
   // Progreso
   const completed = items.filter((i) => i.status !== null).length;
@@ -439,8 +632,13 @@ export default function ChecklistPage() {
                 </span>
               )}
             </h1>
-            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">
-              {currentOrder?.client?.name} — {currentOrder?.equipment?.type}
+            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 flex flex-wrap items-center gap-2 mt-0.5">
+              <span>{currentOrder?.client?.name} — {currentOrder?.equipment?.type}</span>
+              {currentOrder?.target_unit && (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-brand-50 text-brand-700 dark:bg-brand-900/40 dark:text-brand-300 border border-brand-200 dark:border-brand-800">
+                  {TARGET_UNIT_LABELS[currentOrder.target_unit] || currentOrder.target_unit}
+                </span>
+              )}
             </p>
           </div>
           <span className="text-sm font-bold bg-brand-50 text-brand-700 dark:bg-brand-900/30 dark:text-brand-400 px-3 py-1.5 rounded-lg border border-brand-200 dark:border-brand-800 shadow-sm">
@@ -495,117 +693,231 @@ export default function ChecklistPage() {
         </span>
       </div>
 
-      {/* Checklist por categorías */}
+      {/* Bloques de Unidades: UI (Evaporadora) y UE (Condensadora) */}
       <div className="space-y-6 animate-slide-up pb-32">
-        {Object.entries(categories).map(([catName, catItems]) => (
-          <section key={catName}>
-            <h2 className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-3 px-2 flex items-center gap-2">
-              <div className="w-1 h-3 bg-brand-500 rounded-full" />
-              {catName}
-            </h2>
-            <div className="space-y-2.5">
-              {catItems.map((item) => (
-                <div key={item.id} id={`checklist-item-${item.id}`} className="space-y-1.5">
+        {groupedSections.map((section) => {
+          const SectionIcon = section.icon;
+          const sCompleted = section.items.filter((i) => i.status !== null).length;
+          const sTotal = section.items.length;
+          const isExcluded =
+            (section.scope === 'indoor' && currentOrder?.target_unit === 'outdoor') ||
+            (section.scope === 'outdoor' && currentOrder?.target_unit === 'indoor');
+
+          return (
+            <section
+              key={section.id}
+              className={`rounded-2xl p-4 border transition-all ${
+                section.scope === 'indoor'
+                  ? 'bg-sky-50/40 dark:bg-sky-950/20 border-sky-200/80 dark:border-sky-800/60'
+                  : section.scope === 'outdoor'
+                  ? 'bg-amber-50/40 dark:bg-amber-950/20 border-amber-200/80 dark:border-amber-800/60'
+                  : 'bg-indigo-50/30 dark:bg-indigo-950/20 border-indigo-200/80 dark:border-indigo-800/60'
+              }`}
+            >
+              {/* Cabecera del Bloque de Unidad */}
+              <div className="flex items-start justify-between gap-3 mb-3 pb-3 border-b border-gray-200/70 dark:border-slate-800">
+                <div className="flex items-start gap-2.5">
                   <div
-                    className="checklist-row shadow-sm"
-                    data-status={item.status}
+                    className={`p-2 rounded-xl shrink-0 ${
+                      section.scope === 'indoor'
+                        ? 'bg-sky-100 text-sky-700 dark:bg-sky-900/50 dark:text-sky-300'
+                        : section.scope === 'outdoor'
+                        ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300'
+                        : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300'
+                    }`}
                   >
-                    <div className="flex-1 min-w-0 pr-2">
-                      <span className="text-sm font-medium text-slate-800 dark:text-slate-200 block leading-snug">
-                        {item.item_name}
-                      </span>
-                      {!isNoteOpen(item) && notes[item.id] && (
-                        <span className="text-xs text-brand-600 dark:text-brand-400 font-semibold truncate block mt-0.5">
-                          Nota: {notes[item.id]}
+                    <SectionIcon size={20} />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-sm font-bold text-slate-900 dark:text-white">
+                        {section.title}
+                      </h2>
+                      {isExcluded && (
+                        <span className="text-[10px] px-2 py-0.5 rounded font-bold uppercase bg-gray-200 text-gray-700 dark:bg-slate-700 dark:text-gray-300">
+                          Fuera de alcance
                         </span>
                       )}
                     </div>
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+                      {section.subtitle}
+                    </p>
+                  </div>
+                </div>
+                {sTotal > 0 && (
+                  <span className="text-xs font-bold px-2 py-1 rounded-lg bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 shadow-sm shrink-0">
+                    {sCompleted}/{sTotal}
+                  </span>
+                )}
+              </div>
 
-                    {/* Botones de estado */}
-                    <div className="flex items-center gap-1.5 flex-shrink-0">
-                      <StatusButton
-                        icon={<Check size={16} />}
-                        status={CHECKLIST_STATUS.OK}
-                        active={item.status === CHECKLIST_STATUS.OK}
-                        onClick={() => toggleStatus(item.id, CHECKLIST_STATUS.OK)}
-                        color="emerald"
-                        disabled={isSubmitted}
-                        label="OK"
-                      />
-                      <StatusButton
-                        icon={<AlertTriangle size={14} />}
-                        status={CHECKLIST_STATUS.WARNING}
-                        active={item.status === CHECKLIST_STATUS.WARNING}
-                        onClick={() => toggleStatus(item.id, CHECKLIST_STATUS.WARNING)}
-                        color="amber"
-                        disabled={isSubmitted}
-                        label="Observación"
-                      />
-                      <StatusButton
-                        icon={<X size={16} />}
-                        status={CHECKLIST_STATUS.FAIL}
-                        active={item.status === CHECKLIST_STATUS.FAIL}
-                        onClick={() => toggleStatus(item.id, CHECKLIST_STATUS.FAIL)}
-                        color="red"
-                        disabled={isSubmitted}
-                        label="Falla"
-                      />
-                      <StatusButton
-                        icon={<Minus size={14} />}
-                        status={CHECKLIST_STATUS.NA}
-                        active={item.status === CHECKLIST_STATUS.NA}
-                        onClick={() => toggleStatus(item.id, CHECKLIST_STATUS.NA)}
-                        color="gray"
-                        disabled={isSubmitted}
-                        label="N/A"
-                      />
-                      {/* Botón Nota / Observación */}
-                      <button
-                        type="button"
-                        onClick={() => toggleNoteExpanded(item)}
-                        className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all shadow-sm border
-                          ${notes[item.id] || isNoteOpen(item)
-                            ? 'bg-brand-50 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400 border-brand-300 dark:border-brand-700'
-                            : 'bg-white dark:bg-slate-900 text-gray-400 dark:text-gray-500 border-gray-200 dark:border-slate-700 active:bg-gray-50 dark:active:bg-slate-800'
-                          }`}
-                        title="Observación / acción"
-                        aria-label="Agregar observación / acción"
-                      >
-                        <MessageSquare size={15} />
-                      </button>
+              {/* Ficha técnica compacta de la unidad física */}
+              {(section.unitModel || section.unitSerial || section.unitLocation || section.refrigerant) && (
+                <div className="mb-3 p-2.5 rounded-xl bg-white/80 dark:bg-slate-900/80 border border-gray-200/80 dark:border-slate-800 text-[11px] space-y-1">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <span className="text-gray-400 font-medium">Modelo: </span>
+                      <span className="font-bold text-slate-800 dark:text-slate-200">
+                        {section.unitModel || 'No especificado'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-gray-400 font-medium">N° Serie: </span>
+                      <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
+                        {section.unitSerial || 'S/N'}
+                      </span>
                     </div>
                   </div>
-
-                  {/* Campo de texto de Observación / acción debajo de la pregunta */}
-                  {isNoteOpen(item) && (
-                    <div className="ml-3 mr-1 animate-fade-in">
-                      <div className="relative flex items-center">
-                        <input
-                          type="text"
-                          placeholder={getDynamicPlaceholder(item.item_name)}
-                          value={notes[item.id] || ''}
-                          onChange={(e) => updateNote(item.id, e.target.value)}
-                          disabled={isSubmitted}
-                          className="input text-xs py-2 pl-3 pr-8 w-full rounded-xl bg-gray-50/90 dark:bg-slate-800/60 border-gray-200 dark:border-slate-700 focus:bg-white dark:focus:bg-slate-900 transition-all font-medium text-slate-800 dark:text-slate-100 placeholder:text-gray-400 dark:placeholder:text-gray-500"
-                        />
-                        {notes[item.id] && !isSubmitted && (
-                          <button
-                            type="button"
-                            onClick={() => updateNote(item.id, '')}
-                            className="absolute right-2.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 p-0.5"
-                            title="Borrar texto"
-                          >
-                            <X size={13} />
-                          </button>
-                        )}
-                      </div>
+                  {section.unitLocation && (
+                    <div className="flex items-center gap-1 text-gray-600 dark:text-gray-300">
+                      <MapPin size={11} className="text-gray-400 shrink-0" />
+                      <span className="truncate">{section.unitLocation}</span>
+                    </div>
+                  )}
+                  {section.refrigerant && (
+                    <div className="flex items-center gap-2 pt-0.5 text-[10px] text-amber-700 dark:text-amber-300 font-medium">
+                      <span>Gas: <strong>{section.refrigerant}</strong></span>
+                      {section.capacity && <span>· Capacidad: <strong>{section.capacity}</strong></span>}
                     </div>
                   )}
                 </div>
-              ))}
-            </div>
-          </section>
-        ))}
+              )}
+
+              {/* Lista de Ítems */}
+              {section.items.length === 0 ? (
+                <div className="p-3 text-center text-xs text-gray-400 dark:text-gray-500 bg-white/40 dark:bg-slate-900/40 rounded-xl border border-dashed border-gray-200 dark:border-slate-800">
+                  Sin puntos específicos de checklist para esta unidad en la plantilla.
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  {section.items.map((item) => (
+                    <div key={item.id} id={`checklist-item-${item.id}`} className="space-y-1.5">
+                      <div className="checklist-row shadow-sm bg-white dark:bg-slate-900" data-status={item.status}>
+                        <div className="flex-1 min-w-0 pr-2">
+                          <span className="text-sm font-medium text-slate-800 dark:text-slate-200 block leading-snug">
+                            {item.item_name}
+                          </span>
+                          {item.category && item.category !== 'General' && (
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mt-0.5 block">
+                              {item.category}
+                            </span>
+                          )}
+                          {!isNoteOpen(item) && notes[item.id] && (
+                            <span className="text-xs text-brand-600 dark:text-brand-400 font-semibold truncate block mt-0.5">
+                              Nota: {notes[item.id]}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Botones de estado */}
+                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                          <StatusButton
+                            icon={<Check size={16} />}
+                            status={CHECKLIST_STATUS.OK}
+                            active={item.status === CHECKLIST_STATUS.OK}
+                            onClick={() => toggleStatus(item.id, CHECKLIST_STATUS.OK)}
+                            color="emerald"
+                            disabled={isSubmitted}
+                            label="OK"
+                          />
+                          <StatusButton
+                            icon={<AlertTriangle size={14} />}
+                            status={CHECKLIST_STATUS.WARNING}
+                            active={item.status === CHECKLIST_STATUS.WARNING}
+                            onClick={() => toggleStatus(item.id, CHECKLIST_STATUS.WARNING)}
+                            color="amber"
+                            disabled={isSubmitted}
+                            label="Observación"
+                          />
+                          <StatusButton
+                            icon={<X size={16} />}
+                            status={CHECKLIST_STATUS.FAIL}
+                            active={item.status === CHECKLIST_STATUS.FAIL}
+                            onClick={() => toggleStatus(item.id, CHECKLIST_STATUS.FAIL)}
+                            color="red"
+                            disabled={isSubmitted}
+                            label="Falla"
+                          />
+                          <StatusButton
+                            icon={<Minus size={14} />}
+                            status={CHECKLIST_STATUS.NA}
+                            active={item.status === CHECKLIST_STATUS.NA}
+                            onClick={() => toggleStatus(item.id, CHECKLIST_STATUS.NA)}
+                            color="gray"
+                            disabled={isSubmitted}
+                            label="N/A"
+                          />
+                          {/* Botón Nota / Observación */}
+                          <button
+                            type="button"
+                            onClick={() => toggleNoteExpanded(item)}
+                            className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all shadow-sm border
+                              ${notes[item.id] || isNoteOpen(item)
+                                ? 'bg-brand-50 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400 border-brand-300 dark:border-brand-700'
+                                : 'bg-white dark:bg-slate-900 text-gray-400 dark:text-gray-500 border-gray-200 dark:border-slate-700 active:bg-gray-50 dark:active:bg-slate-800'
+                              }`}
+                            title="Observación / acción"
+                            aria-label="Agregar observación / acción"
+                          >
+                            <MessageSquare size={15} />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Campo de texto de Observación / acción */}
+                      {isNoteOpen(item) && (
+                        <div className="ml-3 mr-1 animate-fade-in">
+                          <div className="relative flex items-center">
+                            <input
+                              type="text"
+                              placeholder={getDynamicPlaceholder(item.item_name)}
+                              value={notes[item.id] || ''}
+                              onChange={(e) => updateNote(item.id, e.target.value)}
+                              disabled={isSubmitted}
+                              className="input text-xs py-2 pl-3 pr-8 w-full rounded-xl bg-gray-50/90 dark:bg-slate-800/60 border-gray-200 dark:border-slate-700 focus:bg-white dark:focus:bg-slate-900 transition-all font-medium text-slate-800 dark:text-slate-100 placeholder:text-gray-400 dark:placeholder:text-gray-500"
+                            />
+                            {notes[item.id] && !isSubmitted && (
+                              <button
+                                type="button"
+                                onClick={() => updateNote(item.id, '')}
+                                className="absolute right-2.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 p-0.5"
+                                title="Borrar texto"
+                              >
+                                <X size={13} />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Detalle Técnico de la Unidad (indoor_work_notes / outdoor_work_notes) */}
+              {section.notesSetter && (
+                <div className="mt-4 pt-3 border-t border-gray-200/70 dark:border-slate-800">
+                  <label className="text-xs font-bold text-slate-800 dark:text-slate-200 mb-1.5 flex items-center gap-1.5">
+                    <FileText size={14} className={section.scope === 'indoor' ? 'text-sky-600' : 'text-amber-600'} />
+                    <span>
+                      {section.scope === 'indoor'
+                        ? 'Detalle técnico / tareas realizadas en Unidad Interior (UI)'
+                        : 'Detalle técnico / tareas realizadas en Unidad Exterior (UE)'}
+                    </span>
+                  </label>
+                  <textarea
+                    value={section.notesValue || ''}
+                    onChange={(e) => section.notesSetter(e.target.value)}
+                    disabled={isSubmitted}
+                    rows={2}
+                    placeholder={section.notesPlaceholder}
+                    className="input text-xs w-full rounded-xl bg-white dark:bg-slate-900 border-gray-200 dark:border-slate-700 focus:ring-brand-500 font-medium text-slate-800 dark:text-slate-100 placeholder:text-gray-400 dark:placeholder:text-gray-500 shadow-sm"
+                  />
+                </div>
+              )}
+            </section>
+          );
+        })}
       </div>
 
       {/* Barra de acción inferior fija */}

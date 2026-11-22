@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { X } from 'lucide-react';
+import { X, Wind, Box, QrCode } from 'lucide-react';
 import { supabase } from '@4s-clima/shared/supabase';
-import { WORK_ORDER_TYPES, WORK_ORDER_TYPE_LABELS } from '@4s-clima/shared/constants';
+import { getArgentinaDate } from '@4s-clima/shared';
+import { WORK_ORDER_TYPES, WORK_ORDER_TYPE_LABELS, TARGET_UNITS, TARGET_UNIT_LABELS } from '@4s-clima/shared/constants';
 import LocationPickerMap from './geo/LocationPickerMap';
 
 export default function CreateWorkOrderModal({ isOpen, onClose, onCreated }) {
@@ -19,6 +20,7 @@ export default function CreateWorkOrderModal({ isOpen, onClose, onCreated }) {
   const [clientId, setClientId] = useState('');
   const [plantId, setPlantId] = useState('');
   const [equipmentId, setEquipmentId] = useState('');
+  const [targetUnit, setTargetUnit] = useState(TARGET_UNITS.BOTH);
   const [technicianId, setTechnicianId] = useState('');
   const [checklistTemplateId, setChecklistTemplateId] = useState('');
   const [type, setType] = useState(WORK_ORDER_TYPES.PREVENTIVE);
@@ -86,7 +88,7 @@ export default function CreateWorkOrderModal({ isOpen, onClose, onCreated }) {
   };
 
   const loadEquipment = async (pId) => {
-    const { data } = await supabase.from('equipment').select('id, type, brand, model, location_description').eq('plant_id', pId);
+    const { data } = await supabase.from('equipment').select('*').eq('plant_id', pId);
     if (data) setEquipment(data);
   };
 
@@ -94,10 +96,11 @@ export default function CreateWorkOrderModal({ isOpen, onClose, onCreated }) {
     setClientId('');
     setPlantId('');
     setEquipmentId('');
+    setTargetUnit(TARGET_UNITS.BOTH);
     setTechnicianId('');
     setChecklistTemplateId('');
     setType(WORK_ORDER_TYPES.PREVENTIVE);
-    setDate(new Date().toISOString().split('T')[0]); // Hoy
+    setDate(getArgentinaDate()); // Hoy
     setTime('');
     setObservations('');
     setCustomCoords({ lat: null, lng: null });
@@ -120,11 +123,12 @@ export default function CreateWorkOrderModal({ isOpen, onClose, onCreated }) {
     const randomHex = Math.random().toString(16).slice(2, 6).toUpperCase();
     const orderNumber = `OT-${date.replace(/-/g, '')}-${randomHex}`;
 
-    const { data: insertedOrder, error: insertError } = await supabase.from('work_orders').insert({
+    let { data: insertedOrder, error: insertError } = await supabase.from('work_orders').insert({
       order_number: orderNumber,
       client_id: clientId,
       plant_id: isCustom ? null : plantId,
       equipment_id: equipmentId || null,
+      target_unit: equipmentId ? targetUnit : 'both',
       assigned_to: technicianId,
       type,
       scheduled_date: date,
@@ -138,6 +142,34 @@ export default function CreateWorkOrderModal({ isOpen, onClose, onCreated }) {
       custom_longitude: customCoords.lng,
       is_custom_location: isCustom,
     }).select().single();
+
+    // Fallback resiliente si target_unit no fue migrado aún en la base de datos
+    if (insertError && insertError.message && insertError.message.includes('target_unit')) {
+      console.warn('Columna target_unit no detectada aún, reintentando insert sin ella:', insertError.message);
+      const resRetry = await supabase.from('work_orders').insert({
+        order_number: orderNumber,
+        client_id: clientId,
+        plant_id: isCustom ? null : plantId,
+        equipment_id: equipmentId || null,
+        assigned_to: technicianId,
+        type,
+        scheduled_date: date,
+        scheduled_time: time || null,
+        observations: [
+          observations ? observations : '',
+          equipmentId && targetUnit !== 'both' ? `[Alcance: ${TARGET_UNIT_LABELS[targetUnit] || targetUnit}]` : ''
+        ].filter(Boolean).join(' | ') || null,
+        status: 'pending',
+        checklist_status: 'draft',
+        checklist_template_id: checklistTemplateId || null,
+        custom_address: isCustom ? (customAddress || null) : null,
+        custom_latitude: customCoords.lat,
+        custom_longitude: customCoords.lng,
+        is_custom_location: isCustom,
+      }).select().single();
+      insertedOrder = resRetry.data;
+      insertError = resRetry.error;
+    }
 
     setIsSubmitting(false);
 
@@ -229,7 +261,7 @@ export default function CreateWorkOrderModal({ isOpen, onClose, onCreated }) {
 
             {/* Equipo */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Equipo a mantener (Opcional)</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Equipo a mantener (Opcional)</label>
               <select
                 className="select"
                 value={equipmentId}
@@ -251,11 +283,93 @@ export default function CreateWorkOrderModal({ isOpen, onClose, onCreated }) {
                 <option value="">Aplica a toda la planta / Múltiples equipos</option>
                 {equipment.map(e => (
                   <option key={e.id} value={e.id}>
-                    {e.qr_token ? `[${e.qr_token}] ` : ''}{e.type.toUpperCase()} {e.brand} {e.model || ''} {e.location_description ? `- ${e.location_description}` : ''}
+                    {e.qr_token ? `[${e.qr_token}] ` : ''}{e.type.toUpperCase()} {e.brand} {e.indoor_model || e.model || ''}
                   </option>
                 ))}
               </select>
             </div>
+
+            {/* Recuadro informativo del Equipo Dual y Selector de Alcance */}
+            {(() => {
+              const selectedEq = equipment.find(e => e.id === equipmentId);
+              if (!selectedEq) return null;
+
+              const uiModel = selectedEq.indoor_model || selectedEq.model || 'S/D';
+              const uiSerial = selectedEq.indoor_serial || selectedEq.serial_number || 'S/D';
+              const uiLoc = selectedEq.indoor_location || selectedEq.location_description || 'No especificada';
+
+              const ueModel = selectedEq.outdoor_model || 'S/D';
+              const ueSerial = selectedEq.outdoor_serial || 'S/D';
+              const ueLoc = selectedEq.outdoor_location || 'No especificada';
+
+              return (
+                <div className="p-4 bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700/80 rounded-2xl space-y-3.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                        {selectedEq.qr_token || 'S/TOKEN'}
+                      </span>
+                      <span className="text-xs font-bold text-gray-800 dark:text-gray-200">
+                        {selectedEq.brand} {uiModel}
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-gray-500 font-medium">1 QR Vinculado (UI + UE)</span>
+                  </div>
+
+                  {/* Fichas desglosadas UI y UE */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                    <div className="bg-sky-50/70 dark:bg-sky-950/30 p-2.5 rounded-xl border border-sky-200/70 dark:border-sky-800/50 space-y-1">
+                      <div className="flex items-center gap-1.5 font-bold text-sky-900 dark:text-sky-300">
+                        <Wind size={13} className="text-sky-600 dark:text-sky-400" />
+                        <span>Unidad Interior (UI - Evaporadora)</span>
+                      </div>
+                      <div className="text-gray-700 dark:text-gray-300">Modelo: <span className="font-medium">{uiModel}</span></div>
+                      <div className="text-gray-500 font-mono text-[11px]">Serie: {uiSerial}</div>
+                      <div className="text-gray-600 dark:text-gray-400 text-[11px] truncate">Ubicación: {uiLoc}</div>
+                    </div>
+
+                    <div className="bg-amber-50/70 dark:bg-amber-950/30 p-2.5 rounded-xl border border-amber-200/70 dark:border-amber-800/50 space-y-1">
+                      <div className="flex items-center gap-1.5 font-bold text-amber-900 dark:text-amber-300">
+                        <Box size={13} className="text-amber-600 dark:text-amber-400" />
+                        <span>Unidad Exterior (UE - Condensadora)</span>
+                      </div>
+                      <div className="text-gray-700 dark:text-gray-300">Modelo: <span className="font-medium">{ueModel}</span></div>
+                      <div className="text-gray-500 font-mono text-[11px]">Serie: {ueSerial}</div>
+                      <div className="text-gray-600 dark:text-gray-400 text-[11px] truncate">Ubicación: {ueLoc}</div>
+                    </div>
+                  </div>
+
+                  {/* Selector rápido: Alcance sobre el Equipo */}
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
+                      Alcance de la Orden sobre el Equipo (target_unit) *
+                    </label>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      {Object.entries(TARGET_UNIT_LABELS).map(([val, label]) => {
+                        const isChosen = targetUnit === val;
+                        return (
+                          <button
+                            key={val}
+                            type="button"
+                            onClick={() => setTargetUnit(val)}
+                            className={`p-2 rounded-xl text-left border text-xs font-semibold transition-all ${
+                              isChosen
+                                ? 'bg-brand-50 border-brand-500 text-brand-900 dark:bg-brand-950/50 dark:border-brand-500 dark:text-brand-200 shadow-sm'
+                                : 'bg-white dark:bg-slate-800 border-gray-200 dark:border-slate-700 text-gray-700 dark:text-gray-300 hover:border-gray-300'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span>{label}</span>
+                              {isChosen && <div className="w-2 h-2 rounded-full bg-brand-500" />}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
 
             <hr className="border-gray-100" />
 

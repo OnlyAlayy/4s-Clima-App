@@ -17,6 +17,7 @@ import android.location.LocationManager;
 import android.os.BatteryManager;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
 import android.os.IBinder;
 import android.os.PowerManager;
 import android.os.SystemClock;
@@ -68,6 +69,10 @@ public class NativeLocationService extends Service {
     private final ExecutorService httpExecutor = Executors.newSingleThreadExecutor();
     private long lastPersistTime = 0;
     private boolean isRunning = false;
+
+    private long lastShiftCheckTime = 0;
+    private static final long SHIFT_CHECK_INTERVAL_MS = 60000L;
+    private int locationPostCount = 0;
 
     @Override
     public void onCreate() {
@@ -134,6 +139,15 @@ public class NativeLocationService extends Service {
 
         acquireWakeLock();
         startLocationUpdates(distanceFilter);
+
+        // Verificación inicial de vigencia de turno
+        final String fUrl = prefs.getString(NativeLocationPrefs.KEY_SUPABASE_URL, null);
+        final String fKey = prefs.getString(NativeLocationPrefs.KEY_SUPABASE_ANON_KEY, null);
+        final String fToken = prefs.getString(NativeLocationPrefs.KEY_ACCESS_TOKEN, null);
+        final String fTechId = prefs.getString(NativeLocationPrefs.KEY_TECHNICIAN_ID, null);
+        httpExecutor.execute(() -> {
+            checkRemoteShiftActive(fUrl, fKey, fToken, fTechId);
+        });
 
         Log.i(TAG, "ForegroundService activo con notificación y rastreo de GPS iniciado.");
     }
@@ -308,6 +322,15 @@ public class NativeLocationService extends Service {
         // Ejecutar transmisión HTTP en hilo de fondo
         httpExecutor.execute(() -> {
             sendLocationToSupabase(supabaseUrl, supabaseAnonKey, accessToken, technicianId, workOrderId, loc);
+
+            // Verificación periódica de turno activo en Supabase (cada 5 envíos o cada 60 seg)
+            long nowMs = System.currentTimeMillis();
+            locationPostCount++;
+            if (locationPostCount >= 5 || (nowMs - lastShiftCheckTime > SHIFT_CHECK_INTERVAL_MS)) {
+                lastShiftCheckTime = nowMs;
+                locationPostCount = 0;
+                checkRemoteShiftActive(supabaseUrl, supabaseAnonKey, accessToken, technicianId);
+            }
         });
     }
 
@@ -395,13 +418,124 @@ public class NativeLocationService extends Service {
     }
 
     /**
+     * Consulta a Supabase si el técnico aún posee un turno con status='active'.
+     * Si la administración cerró el turno remotamente o la jornada finalizó,
+     * limpia NativeLocationPrefs y apaga el ForegroundService de inmediato.
+     */
+    private void checkRemoteShiftActive(
+            String supabaseUrl,
+            String supabaseAnonKey,
+            String accessToken,
+            String technicianId
+    ) {
+        if (supabaseUrl == null || supabaseAnonKey == null || technicianId == null) {
+            return;
+        }
+
+        HttpURLConnection conn = null;
+        try {
+            String baseUrl = supabaseUrl.replaceAll("/+$", "");
+            URL url = new URL(baseUrl + "/rest/v1/rpc/is_technician_shift_active");
+
+            conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("POST");
+            conn.setRequestProperty("apikey", supabaseAnonKey);
+
+            String bearerToken = (accessToken != null && !accessToken.trim().isEmpty()) ? accessToken : supabaseAnonKey;
+            conn.setRequestProperty("Authorization", "Bearer " + bearerToken);
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setConnectTimeout(6000);
+            conn.setReadTimeout(6000);
+            conn.setDoOutput(true);
+
+            JSONObject payload = new JSONObject();
+            payload.put("p_tech_id", technicianId);
+
+            byte[] jsonBytes = payload.toString().getBytes(StandardCharsets.UTF_8);
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(jsonBytes, 0, jsonBytes.length);
+                os.flush();
+            }
+
+            int responseCode = conn.getResponseCode();
+            if (responseCode >= 200 && responseCode < 300) {
+                java.io.InputStream is = conn.getInputStream();
+                java.util.Scanner scanner = new java.util.Scanner(is, StandardCharsets.UTF_8.name()).useDelimiter("\\A");
+                String responseBody = scanner.hasNext() ? scanner.next().trim() : "";
+                is.close();
+
+                boolean isShiftActive = "true".equalsIgnoreCase(responseBody);
+                if (!isShiftActive) {
+                    Log.w(TAG, "Turno inactivo en base de datos (cerrado remotamente por Admin o Sistema). Apagando NativeLocationService...");
+                    NativeLocationPrefs.clearTracking(getApplicationContext());
+                    new android.os.Handler(getMainLooper()).post(this::stopTrackingService);
+                } else {
+                    Log.d(TAG, "Verificación de turno en Supabase: ACTIVO.");
+                }
+            } else if (responseCode == 404 || responseCode == 400) {
+                // Fallback secundario si la función RPC aún no fue creada: consultar directamente technician_shifts
+                checkRemoteShiftActiveFallback(baseUrl, supabaseAnonKey, bearerToken, technicianId);
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Nota: no se pudo verificar estado de turno (red offline): " + e.getMessage());
+        } finally {
+            if (conn != null) {
+                conn.disconnect();
+            }
+        }
+    }
+
+    private void checkRemoteShiftActiveFallback(
+            String baseUrl,
+            String supabaseAnonKey,
+            String bearerToken,
+            String technicianId
+    ) {
+        HttpURLConnection conn = null;
+        try {
+            URL url = new URL(baseUrl + "/rest/v1/technician_shifts?technician_id=eq." + technicianId + "&status=eq.active&select=id");
+            conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("GET");
+            conn.setRequestProperty("apikey", supabaseAnonKey);
+            conn.setRequestProperty("Authorization", "Bearer " + bearerToken);
+            conn.setConnectTimeout(6000);
+            conn.setReadTimeout(6000);
+
+            int responseCode = conn.getResponseCode();
+            if (responseCode >= 200 && responseCode < 300) {
+                java.io.InputStream is = conn.getInputStream();
+                java.util.Scanner scanner = new java.util.Scanner(is, StandardCharsets.UTF_8.name()).useDelimiter("\\A");
+                String responseBody = scanner.hasNext() ? scanner.next().trim() : "";
+                is.close();
+
+                if ("[]".equals(responseBody)) {
+                    Log.w(TAG, "Fallback: técnico sin turnos activos en Supabase. Apagando NativeLocationService...");
+                    NativeLocationPrefs.clearTracking(getApplicationContext());
+                    new android.os.Handler(getMainLooper()).post(this::stopTrackingService);
+                }
+            }
+        } catch (Exception ignored) {
+        } finally {
+            if (conn != null) {
+                conn.disconnect();
+            }
+        }
+    }
+
+    /**
      * Invocado cuando el usuario cierra la app deslizándola desde las Apps Recientes (Swipe Away).
      * Gracias a android:stopWithTask="false", el servicio sobrevive y continúa emitiendo.
      */
     @Override
     public void onTaskRemoved(Intent rootIntent) {
         super.onTaskRemoved(rootIntent);
-        Log.i(TAG, "onTaskRemoved: Activity principal cerrada por Swipe-Away en Recientes. NativeLocationService permanece activo.");
+        Log.i(TAG, "onTaskRemoved: Activity principal cerrada por Swipe-Away en Recientes.");
+
+        // Si el rastreo ya fue detenido o el turno finalizó, no reprogramar alarma de relanzamiento
+        if (!NativeLocationPrefs.isTrackingActive(getApplicationContext())) {
+            Log.i(TAG, "onTaskRemoved: Tracking inactivo en preferencias, no se programa relanzamiento con AlarmManager.");
+            return;
+        }
 
         // Salvaguarda: programar relanzamiento automático mediante AlarmManager si el OS llega a forzar la detención
         try {
@@ -423,6 +557,7 @@ public class NativeLocationService extends Service {
 
     private synchronized void stopTrackingService() {
         isRunning = false;
+        NativeLocationPrefs.clearTracking(getApplicationContext());
 
         if (fusedLocationClient != null && locationCallback != null) {
             try {

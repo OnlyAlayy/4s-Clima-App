@@ -19,6 +19,8 @@ import TechniciansPage from './pages/TechniciansPage';
 import ExtrasPage from './pages/ExtrasPage';
 import FinancesPage from './pages/FinancesPage';
 import AttendancePage from './pages/AttendancePage';
+import LeadsPage from './pages/LeadsPage';
+import QuotesPage from './pages/QuotesPage';
 import PublicEquipmentPortalPage from './pages/PublicEquipmentPortalPage';
 
 /**
@@ -152,6 +154,9 @@ export default function App() {
         <Route path="clientes/:id" element={<ClientDetailsPage />} />
         <Route path="tecnicos" element={<TechniciansPage />} />
         <Route path="asistencia" element={<AttendancePage />} />
+        <Route path="quotes" element={<QuotesPage />} />
+        <Route path="presupuestos" element={<Navigate to="/quotes" replace />} />
+        <Route path="leads" element={<LeadsPage />} />
         <Route path="extras" element={<ExtrasPage />} />
         <Route path="finanzas" element={<FinancesPage />} />
       </Route>

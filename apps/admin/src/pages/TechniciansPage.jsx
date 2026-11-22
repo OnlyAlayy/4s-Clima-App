@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Users, Phone, Mail, Wrench, Plus, KeyRound, Power, PowerOff } from 'lucide-react';
+import { Users, Phone, Mail, Wrench, Plus, KeyRound, Power, PowerOff, Clock } from 'lucide-react';
+import Swal from 'sweetalert2';
 import { supabase } from '@4s-clima/shared/supabase';
+import { getArgentinaDate } from '@4s-clima/shared';
 import CreateTechnicianModal from '../components/CreateTechnicianModal';
 import ChangePasswordModal from '../components/ChangePasswordModal';
 import { useAdminAuth } from '../App';
@@ -74,7 +76,7 @@ export default function TechniciansPage() {
       if (count !== null) setTotalCount(count);
 
       // Cargar turnos de jornada de hoy
-      const todayStr = new Date().toISOString().split('T')[0];
+      const todayStr = getArgentinaDate();
       const { data: shifts } = await supabase
         .from('technician_shifts')
         .select('*')
@@ -129,6 +131,55 @@ export default function TechniciansPage() {
       loadTechnicians(page);
     } else {
       alert('Error al cambiar el estado: ' + error.message);
+    }
+  };
+
+  const handleEditEntryTime = async (tech) => {
+    const currentVal = tech.default_entry_time ? tech.default_entry_time.slice(0, 5) : '';
+
+    const { value: newTime, isConfirmed } = await Swal.fire({
+      title: 'Horario Habitual de Entrada',
+      html: `
+        <div class="text-left text-xs text-gray-500 space-y-2 mb-3">
+          <p>Técnico: <b class="text-gray-900">${tech.name}</b></p>
+          <p>Configurá el horario en que normalmente debe iniciar su jornada en base/taller. Si su ingreso es libre o variable según las obras, dejalo vacío.</p>
+        </div>
+        <input 
+          id="swal-entry-time" 
+          type="time" 
+          value="${currentVal}" 
+          class="swal2-input !w-48 !m-auto !text-center !font-mono !font-bold"
+        />
+      `,
+      showCancelButton: true,
+      confirmButtonText: 'Guardar Horario',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#2563eb',
+      preConfirm: () => {
+        const input = document.getElementById('swal-entry-time');
+        return input ? input.value : null;
+      },
+    });
+
+    if (isConfirmed) {
+      const finalVal = newTime && newTime.trim() ? `${newTime.trim()}:00` : null;
+      const { error } = await supabase
+        .from('users')
+        .update({ default_entry_time: finalVal })
+        .eq('id', tech.id);
+
+      if (error) {
+        Swal.fire('Error', 'No se pudo actualizar el horario: ' + error.message, 'error');
+      } else {
+        Swal.fire({
+          icon: 'success',
+          title: 'Horario Actualizado',
+          text: finalVal ? `Entrada pactada a las ${newTime} hs (+15m tol)` : 'Horario configurado como Libre/Variable',
+          timer: 1500,
+          showConfirmButton: false,
+        });
+        loadTechnicians(page);
+      }
     }
   };
 
@@ -202,7 +253,7 @@ export default function TechniciansPage() {
                   </div>
                 </div>
 
-                <div className="space-y-1.5 mb-4">
+                <div className="space-y-1.5 mb-3">
                   {tech.email && (
                     <div className="flex items-center gap-2 text-xs text-gray-500">
                       <Mail size={12} />
@@ -215,6 +266,22 @@ export default function TechniciansPage() {
                       <span>{tech.phone}</span>
                     </div>
                   )}
+                </div>
+
+                {/* Horario Habitual de Entrada */}
+                <div className="flex items-center justify-between text-xs py-1.5 px-2.5 rounded-xl bg-gray-50 dark:bg-slate-800/60 border border-gray-100 dark:border-slate-700/60 mb-3">
+                  <span className="text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
+                    <Clock size={13} className="text-brand-500" />
+                    <span>Entrada habitual:</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleEditEntryTime(tech)}
+                    className="font-mono font-bold text-xs text-brand-600 dark:text-brand-400 hover:underline"
+                    title="Hacé clic para configurar o cambiar el horario de entrada"
+                  >
+                    {tech.default_entry_time ? `${tech.default_entry_time.slice(0, 5)} hs` : 'Libre / Variable'}
+                  </button>
                 </div>
 
                 <div className="pt-3 border-t border-gray-100 dark:border-slate-700 flex flex-col gap-3">

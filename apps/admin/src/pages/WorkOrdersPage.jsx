@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Search, Plus, FileText, Download, LayoutList, LayoutGrid, ClipboardList } from 'lucide-react';
 import { supabase } from '@4s-clima/shared/supabase';
+import { getArgentinaDate } from '@4s-clima/shared';
 import { formatDate, getStatusLabel, getStatusColor } from '@4s-clima/shared/utils';
-import { WORK_ORDER_STATUS, WORK_ORDER_TYPE_LABELS } from '@4s-clima/shared/constants';
+import { WORK_ORDER_STATUS, WORK_ORDER_TYPES, WORK_ORDER_TYPE_LABELS } from '@4s-clima/shared/constants';
 import CreateWorkOrderModal from '../components/CreateWorkOrderModal';
 import ChecklistTemplatesModal from '../components/ChecklistTemplatesModal';
 import { generateWorkOrderPDF, openAndDownloadPDF } from '../services/pdfService';
@@ -21,7 +22,8 @@ export default function WorkOrdersPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState(searchParams.get('search') || '');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [dateFilter, setDateFilter] = useState('this_week'); // 'all' | 'today' | 'this_week' | 'this_month'
+  const [typeFilter, setTypeFilter] = useState(searchParams.get('type') || 'all');
+  const [dateFilter, setDateFilter] = useState('all'); // 'all' | 'today' | 'this_week' | 'this_month'
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isTemplatesOpen, setIsTemplatesOpen] = useState(false);
   const [isDownloading, setIsDownloading] = useState(null); // Guarda el id de la orden descargando
@@ -34,12 +36,12 @@ export default function WorkOrdersPage() {
   // Efecto principal de carga (se dispara al cambiar filtros, pagina o modo de vista)
   useEffect(() => {
     loadOrders(page);
-  }, [page, statusFilter, search, dateFilter, viewMode]);
+  }, [page, statusFilter, typeFilter, search, dateFilter, viewMode]);
 
   // Efecto para Reset de página cuando cambian los filtros
   useEffect(() => {
     setPage(1);
-  }, [statusFilter, search, dateFilter, viewMode]);
+  }, [statusFilter, typeFilter, search, dateFilter, viewMode]);
 
   useEffect(() => {
     // Suscripción en tiempo real a cambios en órdenes de trabajo
@@ -57,7 +59,7 @@ export default function WorkOrdersPage() {
     return () => {
       supabase.removeChannel(subscription);
     };
-  }, [page, statusFilter, search, dateFilter, viewMode]);
+  }, [page, statusFilter, typeFilter, search, dateFilter, viewMode]);
 
   async function loadOrders(pageNumber = 1) {
     setIsLoading(true);
@@ -74,6 +76,10 @@ export default function WorkOrdersPage() {
 
     if (statusFilter !== 'all') {
       query = query.eq('status', statusFilter);
+    }
+
+    if (typeFilter !== 'all') {
+      query = query.eq('type', typeFilter);
     }
 
     if (search) {
@@ -94,7 +100,7 @@ export default function WorkOrdersPage() {
     if (dateFilter !== 'all') {
       const today = new Date();
       if (dateFilter === 'today') {
-        const todayStr = today.toISOString().split('T')[0];
+        const todayStr = getArgentinaDate(today);
         query = query.eq('scheduled_date', todayStr);
       } else if (dateFilter === 'this_week') {
         // Ultimos 7 dias y proximos 7 dias
@@ -171,6 +177,7 @@ export default function WorkOrdersPage() {
       `)
       .order('scheduled_date', { ascending: false });
 
+    if (typeFilter !== 'all') query = query.eq('type', typeFilter);
     if (statusFilter !== 'all') query = query.eq('status', statusFilter);
     if (search) {
       const { data: clients } = await supabase.from('clients').select('id').ilike('name', `%${search}%`);
@@ -215,7 +222,7 @@ export default function WorkOrdersPage() {
     ].join('\n');
 
     const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
-    const fileName = `Ordenes_4SClima_${new Date().toISOString().split('T')[0]}.csv`;
+    const fileName = `Ordenes_4SClima_${getArgentinaDate()}.csv`;
     const blob = new Blob([bom, csvContent], { type: 'text/csv;charset=utf-8' });
 
     await saveAndDownloadBlob(blob, fileName, [
@@ -251,17 +258,25 @@ export default function WorkOrdersPage() {
       </div>
 
       <div className="flex flex-wrap items-center gap-3 mb-6">
-        <div className="bg-white border border-gray-200 rounded-lg p-1 flex items-center gap-1 shadow-sm">
+        <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-xl p-1 flex items-center gap-1 shadow-sm">
           <button
             onClick={() => setViewMode('list')}
-            className={`p-1.5 rounded-md transition-colors ${viewMode === 'list' ? 'bg-brand-50 text-brand-600' : 'text-gray-400 hover:text-gray-600'}`}
+            className={`p-1.5 rounded-lg transition-colors ${
+              viewMode === 'list'
+                ? 'bg-brand-50 dark:bg-brand-950/70 text-brand-600 dark:text-brand-400 font-bold border border-transparent dark:border-brand-800/60 shadow-xs'
+                : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-200'
+            }`}
             title="Vista de Lista"
           >
             <LayoutList size={18} />
           </button>
           <button
             onClick={() => setViewMode('kanban')}
-            className={`p-1.5 rounded-md transition-colors ${viewMode === 'kanban' ? 'bg-brand-50 text-brand-600' : 'text-gray-400 hover:text-gray-600'}`}
+            className={`p-1.5 rounded-lg transition-colors ${
+              viewMode === 'kanban'
+                ? 'bg-brand-50 dark:bg-brand-950/70 text-brand-600 dark:text-brand-400 font-bold border border-transparent dark:border-brand-800/60 shadow-xs'
+                : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-200'
+            }`}
             title="Vista de Tablero (Kanban)"
           >
             <LayoutGrid size={18} />
@@ -287,10 +302,31 @@ export default function WorkOrdersPage() {
           onChange={(e) => setDateFilter(e.target.value)}
           className="select w-auto"
         >
+          <option value="all">Todas las fechas</option>
           <option value="today">Hoy</option>
           <option value="this_week">Esta Semana</option>
           <option value="this_month">Este Mes</option>
-          <option value="all">Todas las fechas</option>
+        </select>
+
+        <select
+          value={typeFilter}
+          onChange={(e) => {
+            setTypeFilter(e.target.value);
+            const newParams = Object.fromEntries(searchParams.entries());
+            if (e.target.value !== 'all') {
+              newParams.type = e.target.value;
+            } else {
+              delete newParams.type;
+            }
+            setSearchParams(newParams);
+          }}
+          className="select w-auto"
+        >
+          <option value="all">Todos los tipos</option>
+          <option value={WORK_ORDER_TYPES.PREVENTIVE}>Preventivo (Mantenimiento)</option>
+          <option value={WORK_ORDER_TYPES.CORRECTIVE}>Correctivo</option>
+          <option value={WORK_ORDER_TYPES.INSTALLATION}>Instalación</option>
+          <option value={WORK_ORDER_TYPES.OBRA}>Obra</option>
         </select>
 
         <select
@@ -302,6 +338,7 @@ export default function WorkOrdersPage() {
           <option value={WORK_ORDER_STATUS.PENDING}>Pendientes</option>
           <option value={WORK_ORDER_STATUS.TRAVELING}>En Camino</option>
           <option value={WORK_ORDER_STATUS.IN_PROGRESS}>En Planta</option>
+          <option value={WORK_ORDER_STATUS.ON_HOLD}>En Pausa / Impedimento</option>
           <option value={WORK_ORDER_STATUS.COMPLETED}>Completadas</option>
           <option value={WORK_ORDER_STATUS.CANCELLED}>Canceladas</option>
         </select>
@@ -314,9 +351,17 @@ export default function WorkOrdersPage() {
             ))}
           </div>
         ) : orders.length === 0 ? (
-          <div className="p-12 text-center card">
-            <FileText size={40} className="text-gray-300 mx-auto mb-3" />
-            <p className="text-gray-400">No se encontraron órdenes de trabajo.</p>
+          <div className="p-12 text-center card border border-gray-100 dark:border-slate-800">
+            <FileText size={40} className="text-gray-300 dark:text-slate-600 mx-auto mb-3" />
+            <p className="text-gray-400 font-medium">No se encontraron órdenes de trabajo con los filtros seleccionados.</p>
+            {dateFilter !== 'all' && (
+              <button
+                onClick={() => setDateFilter('all')}
+                className="mt-3 inline-flex items-center gap-1 text-xs text-brand-500 hover:text-brand-400 hover:underline font-semibold"
+              >
+                Ver todas las fechas →
+              </button>
+            )}
           </div>
         ) : viewMode === 'kanban' ? (
           <WorkOrdersKanban initialOrders={orders} onOrderUpdated={() => loadOrders(page)} />
@@ -353,7 +398,15 @@ export default function WorkOrdersPage() {
                         <td className="font-medium text-gray-900 dark:text-white">{order.client?.name || '-'}</td>
                         <td className="text-gray-600 dark:text-gray-400 text-xs">{order.plant?.name || '-'}</td>
                         <td className="text-gray-600 dark:text-gray-400">{order.assigned?.name || '-'}</td>
-                        <td className="text-xs text-gray-500 dark:text-gray-400">{WORK_ORDER_TYPE_LABELS[order.type] || order.type}</td>
+                        <td className="text-xs text-gray-500 dark:text-gray-400">
+                          {order.type === 'obra' ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-md font-bold text-[11px] bg-purple-100 text-purple-800 dark:bg-purple-950/70 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                              Obra
+                            </span>
+                          ) : (
+                            WORK_ORDER_TYPE_LABELS[order.type] || order.type
+                          )}
+                        </td>
                         <td>
                           <span className={`badge ${sc.bg} ${sc.text}`}>
                             <span className={`w-1.5 h-1.5 rounded-full ${sc.dot}`} />

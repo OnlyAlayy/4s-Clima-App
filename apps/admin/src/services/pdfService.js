@@ -1140,12 +1140,12 @@ export const generateSettlementPDF = async (settlement, technician = {}, items =
   doc.setDrawColor(203, 213, 225);
   doc.rect(pageWidth - 95, boxY, 81, boxHeight, 'D');
 
-  const pieceworkSubtotal = Math.round(workItems.reduce((acc, it) => acc + (Number(it.amount || it.technician_payout) || 0), 0) * 100) / 100;
-  const advancesSubtotal = Math.round(advList.reduce((acc, a) => acc + (Number(a.amount) || 0), 0) * 100) / 100;
+  const pieceworkSubtotal = settlement.piecework_subtotal != null ? Number(settlement.piecework_subtotal) : Math.round(workItems.reduce((acc, it) => acc + (Number(it.amount || it.technician_payout) || 0), 0) * 100) / 100;
+  const advancesSubtotal = settlement.advances_subtotal != null ? Number(settlement.advances_subtotal) : Math.round(advList.reduce((acc, a) => acc + (Number(a.amount) || 0), 0) * 100) / 100;
 
   // Cuadratura matemática exacta: Total Bruto = Subtotal Horas + Subtotal Obras
-  const grossTotal = Math.round((hoursSubtotal + pieceworkSubtotal) * 100) / 100;
-  const netTotal = Math.round((grossTotal - advancesSubtotal) * 100) / 100;
+  const grossTotal = settlement.gross_total != null ? Number(settlement.gross_total) : Math.round((hoursSubtotal + pieceworkSubtotal) * 100) / 100;
+  const netTotal = settlement.net_total != null ? Number(settlement.net_total) : Math.round((grossTotal - advancesSubtotal) * 100) / 100;
 
   doc.setFontSize(8.5);
   doc.setFont('helvetica', 'normal');
@@ -1190,7 +1190,236 @@ export const generateSettlementPDF = async (settlement, technician = {}, items =
   doc.setFont('helvetica', 'normal');
   doc.text('Administración / Liquidaciones', pageWidth - 50, signY + 8, { align: 'center' });
 
-  const cleanTech = (technician.name || 'Tecnico').replace(/[s/\:]+/g, '_');
+  const cleanTech = (technician.name || 'Tecnico').replace(/[\s/:]+/g, '_');
   const fileName = `Liquidacion_${settlement.settlement_number || '0001'}_${cleanTech}.pdf`;
+  return savePDF(doc, fileName);
+};
+
+/**
+ * Genera el documento PDF de Presupuesto / Cotización Comercial Membretada
+ *
+ * @param {Object} quote - Registro de public.quotes
+ * @returns {Promise<{ doc: jsPDF, fileName: string }>}
+ */
+export const generateQuotePDF = async (quote) => {
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const pageWidth = doc.internal.pageSize.getWidth();
+
+  // 1. Marco exterior sobrio
+  doc.setLineWidth(0.4);
+  doc.rect(10, 10, pageWidth - 20, 277);
+
+  // 2. Cabecera Institucional
+  doc.setFillColor(15, 23, 42); // slate-900
+  doc.rect(10, 10, pageWidth - 20, 26, 'F');
+
+  doc.setFontSize(16);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(255, 255, 255);
+  doc.text('4S CLIMA', 15, 20);
+
+  doc.setFontSize(7.5);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(203, 213, 225);
+  doc.text('SILVA WALTER JORGE · CUIT 20-22434754-6', 15, 25);
+  doc.text('INSTALACIONES Y MANTENIMIENTO TÉRMICO INDUSTRIAL', 15, 30);
+
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(255, 255, 255);
+  doc.text('PRESUPUESTO FORMAL', pageWidth - 15, 20, { align: 'right' });
+
+  doc.setFontSize(8.5);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(226, 232, 240);
+  doc.text(`N°: ${quote.quote_number || 'PRES-0000'}`, pageWidth - 15, 26, { align: 'right' });
+  doc.text(`Emisión: ${formatDate(quote.created_at || new Date())}`, pageWidth - 15, 31, { align: 'right' });
+
+  // 3. Ficha del Cliente y Datos de Obra
+  doc.setDrawColor(226, 232, 240);
+  doc.setFillColor(248, 250, 252);
+  doc.rect(14, 40, pageWidth - 28, 28, 'FD');
+
+  doc.setTextColor(30, 41, 59);
+  doc.setFontSize(8.5);
+
+  // Columna Izquierda: Cliente
+  doc.setFont('helvetica', 'bold');
+  doc.text('CLIENTE / EMPRESA:', 18, 47);
+  doc.setFont('helvetica', 'normal');
+  doc.text(quote.client_name || 'Cliente Particular', 55, 47);
+
+  doc.setFont('helvetica', 'bold');
+  doc.text('TELÉFONO DE CONTACTO:', 18, 54);
+  doc.setFont('helvetica', 'normal');
+  doc.text(quote.client_phone || '-', 55, 54);
+
+  doc.setFont('helvetica', 'bold');
+  doc.text('CORREO ELECTRÓNICO:', 18, 61);
+  doc.setFont('helvetica', 'normal');
+  doc.text(quote.client_email || '-', 55, 61);
+
+  // Columna Derecha: Obra / Servicio
+  doc.setFont('helvetica', 'bold');
+  doc.text('TIPO DE TRABAJO:', pageWidth / 2 + 10, 47);
+  doc.setFont('helvetica', 'normal');
+  const typeLabel = WORK_ORDER_TYPE_LABELS[quote.work_order_type] || quote.work_order_type || 'Mantenimiento';
+  doc.text(typeLabel, pageWidth / 2 + 45, 47);
+
+  doc.setFont('helvetica', 'bold');
+  doc.text('VALIDEZ COMERCIAL:', pageWidth / 2 + 10, 54);
+  doc.setFont('helvetica', 'normal');
+  doc.text(quote.valid_until ? formatDate(quote.valid_until) : '15 días corridos', pageWidth / 2 + 45, 54);
+
+  doc.setFont('helvetica', 'bold');
+  doc.text('TÍTULO / ASUNTO:', pageWidth / 2 + 10, 61);
+  doc.setFont('helvetica', 'normal');
+  const maxTitleW = (pageWidth / 2) - 50;
+  const titleLines = doc.splitTextToSize(quote.title || 'Servicio de Climatización', maxTitleW);
+  doc.text(titleLines[0] || '', pageWidth / 2 + 45, 61);
+
+  let currentY = 74;
+
+  // 4. Tabla de Ítems / Materiales / Servicios
+  const items = Array.isArray(quote.items) ? quote.items : [];
+  const tableData = items.map((it, idx) => [
+    String(idx + 1),
+    it.description || 'Ítem sin descripción',
+    String(it.quantity || 1),
+    `$${(Number(it.unit_price) || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`,
+    `$${(Number(it.subtotal) || (Number(it.quantity || 1) * Number(it.unit_price || 0))).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`
+  ]);
+
+  if (tableData.length === 0) {
+    tableData.push([
+      '1',
+      quote.title || 'Servicio técnico especializado',
+      '1',
+      `$${Number(quote.subtotal || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`,
+      `$${Number(quote.subtotal || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`
+    ]);
+  }
+
+  autoTable(doc, {
+    startY: currentY,
+    margin: { left: 14, right: 14 },
+    head: [['#', 'Descripción del Ítem / Repuesto / Servicio', 'Cant.', 'Precio Unitario', 'Subtotal']],
+    body: tableData,
+    theme: 'grid',
+    headStyles: { fillColor: [51, 65, 85], textColor: [255, 255, 255], fontSize: 8.5, fontStyle: 'bold' },
+    styles: { fontSize: 8, cellPadding: 2.8 },
+    columnStyles: {
+      0: { cellWidth: 10, halign: 'center' },
+      1: { cellWidth: 'auto' },
+      2: { cellWidth: 18, halign: 'center' },
+      3: { cellWidth: 35, halign: 'right' },
+      4: { cellWidth: 38, halign: 'right', fontStyle: 'bold' }
+    }
+  });
+
+  currentY = doc.lastAutoTable.finalY + 6;
+
+  // 5. Cuadro de Totales y Desglose de IVA
+  const subtotal = Number(quote.subtotal) || 0;
+  const ivaRate = Number(quote.iva_rate) || 0;
+  const ivaAmount = Number(quote.iva_amount) || (subtotal * (ivaRate / 100));
+  const total = Number(quote.total) || (subtotal + ivaAmount);
+
+  const boxWidth = 84;
+  const boxHeight = ivaRate > 0 ? 26 : 20;
+  const boxX = pageWidth - 14 - boxWidth;
+  const boxY = currentY;
+
+  doc.setFillColor(248, 250, 252);
+  doc.rect(boxX, boxY, boxWidth, boxHeight, 'F');
+  doc.setDrawColor(203, 213, 225);
+  doc.rect(boxX, boxY, boxWidth, boxHeight, 'D');
+
+  doc.setFontSize(8.5);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(71, 85, 105);
+  doc.text('Subtotal Neto:', boxX + 5, boxY + 6.5);
+  doc.setFont('helvetica', 'bold');
+  doc.text(`$${subtotal.toLocaleString('es-AR', { minimumFractionDigits: 2 })}`, boxX + boxWidth - 5, boxY + 6.5, { align: 'right' });
+
+  if (ivaRate > 0) {
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(71, 85, 105);
+    doc.text(`IVA (${ivaRate}%):`, boxX + 5, boxY + 13);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`$${ivaAmount.toLocaleString('es-AR', { minimumFractionDigits: 2 })}`, boxX + boxWidth - 5, boxY + 13, { align: 'right' });
+
+    doc.setLineWidth(0.3);
+    doc.setDrawColor(203, 213, 225);
+    doc.line(boxX + 3, boxY + 16, boxX + boxWidth - 3, boxY + 16);
+
+    doc.setFontSize(10.5);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(15, 23, 42);
+    doc.text('TOTAL COTIZADO:', boxX + 5, boxY + 22.5);
+    doc.setTextColor(22, 101, 52); // emerald-800
+    doc.text(`$${total.toLocaleString('es-AR', { minimumFractionDigits: 2 })}`, boxX + boxWidth - 5, boxY + 22.5, { align: 'right' });
+  } else {
+    doc.setLineWidth(0.3);
+    doc.setDrawColor(203, 213, 225);
+    doc.line(boxX + 3, boxY + 10, boxX + boxWidth - 3, boxY + 10);
+
+    doc.setFontSize(10.5);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(15, 23, 42);
+    doc.text('TOTAL COTIZADO:', boxX + 5, boxY + 16.5);
+    doc.setTextColor(22, 101, 52);
+    doc.text(`$${total.toLocaleString('es-AR', { minimumFractionDigits: 2 })}`, boxX + boxWidth - 5, boxY + 16.5, { align: 'right' });
+  }
+
+  // 6. Condiciones Comerciales y Notas
+  const notesY = boxY + boxHeight + 8;
+  doc.setDrawColor(226, 232, 240);
+  doc.setFillColor(248, 250, 252);
+  const notesBoxH = 34;
+  doc.rect(14, notesY, pageWidth - 28, notesBoxH, 'FD');
+
+  doc.setFontSize(8.5);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(15, 23, 42);
+  doc.text('CONDICIONES COMERCIALES Y VALIDEZ DE PRECIOS:', 18, notesY + 6);
+
+  doc.setFontSize(7.5);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(71, 85, 105);
+  const validUntilStr = quote.valid_until ? formatDate(quote.valid_until) : '15 días';
+  doc.text(`• Presupuesto válido hasta el ${validUntilStr}. Precios sujetos a modificación posterior a dicha fecha.`, 18, notesY + 12);
+  doc.text('• La provisión de repuestos e insumos importados queda sujeta a disponibilidad de stock y tipo de cambio.', 18, notesY + 17);
+  doc.text('• La aprobación comercial habilita la coordinación operativa y programación de la Orden de Trabajo.', 18, notesY + 22);
+
+  if (quote.notes) {
+    doc.setFont('helvetica', 'italic');
+    doc.setTextColor(30, 41, 59);
+    const splitNotes = doc.splitTextToSize(`Observaciones: ${quote.notes}`, pageWidth - 36);
+    doc.text(splitNotes[0] || '', 18, notesY + 28);
+  }
+
+  // 7. Espacio de Firmas
+  const signY = 258;
+  doc.setDrawColor(148, 163, 184);
+  doc.setLineWidth(0.4);
+  doc.line(25, signY, 75, signY);
+  doc.line(pageWidth - 75, signY, pageWidth - 25, signY);
+
+  doc.setFontSize(7.5);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(71, 85, 105);
+  doc.text('4S CLIMA - SILVA WALTER JORGE', 50, signY + 4, { align: 'center' });
+  doc.setFont('helvetica', 'normal');
+  doc.text('Área Técnica y Comercial', 50, signY + 8, { align: 'center' });
+
+  doc.setFont('helvetica', 'bold');
+  doc.text('CONFORMIDAD DEL CLIENTE', pageWidth - 50, signY + 4, { align: 'center' });
+  doc.setFont('helvetica', 'normal');
+  doc.text('Firma, Aclaración y Sello', pageWidth - 50, signY + 8, { align: 'center' });
+
+  const cleanNumber = (quote.quote_number || 'PRES-0001').replace(/[\s/\\:]+/g, '_');
+  const cleanClient = (quote.client_name || 'Cliente').replace(/[\s/\\:]+/g, '_');
+  const fileName = `Presupuesto_${cleanNumber}_${cleanClient}.pdf`;
   return savePDF(doc, fileName);
 };
