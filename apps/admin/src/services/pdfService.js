@@ -1243,40 +1243,33 @@ export const generateQuotePDF = async (quote) => {
   doc.setTextColor(30, 41, 59);
   doc.setFontSize(8.5);
 
+  // Helper de impresión segura de campos (evita solapamiento de coordenadas)
+  const printSafeField = (label, value, labelX, defaultValX, y, maxValW) => {
+    doc.setFont('helvetica', 'bold');
+    doc.text(label, labelX, y);
+    const labelW = doc.getTextWidth(label);
+    const valX = Math.max(defaultValX, labelX + labelW + 3);
+    doc.setFont('helvetica', 'normal');
+    const safeVal = String(value || '-');
+    const availW = Math.max(20, maxValW - (valX - defaultValX));
+    const lines = doc.splitTextToSize(safeVal, availW);
+    doc.text(lines[0] || '-', valX, y);
+  };
+
   // Columna Izquierda: Cliente
-  doc.setFont('helvetica', 'bold');
-  doc.text('CLIENTE / EMPRESA:', 18, 47);
-  doc.setFont('helvetica', 'normal');
-  doc.text(quote.client_name || 'Cliente Particular', 55, 47);
-
-  doc.setFont('helvetica', 'bold');
-  doc.text('TELÉFONO DE CONTACTO:', 18, 54);
-  doc.setFont('helvetica', 'normal');
-  doc.text(quote.client_phone || '-', 55, 54);
-
-  doc.setFont('helvetica', 'bold');
-  doc.text('CORREO ELECTRÓNICO:', 18, 61);
-  doc.setFont('helvetica', 'normal');
-  doc.text(quote.client_email || '-', 55, 61);
+  printSafeField('CLIENTE / EMPRESA:', quote.client_name || 'Cliente Particular', 18, 54, 47, 46);
+  printSafeField('TELÉFONO:', quote.client_phone || '-', 18, 54, 54, 46);
+  printSafeField('CORREO:', quote.client_email || '-', 18, 54, 61, 46);
 
   // Columna Derecha: Obra / Servicio
-  doc.setFont('helvetica', 'bold');
-  doc.text('TIPO DE TRABAJO:', pageWidth / 2 + 10, 47);
-  doc.setFont('helvetica', 'normal');
+  const rightLabelX = pageWidth / 2 + 10;
+  const rightValX = pageWidth / 2 + 45;
+  const rightMaxW = (pageWidth / 2) - 48;
+
   const typeLabel = WORK_ORDER_TYPE_LABELS[quote.work_order_type] || quote.work_order_type || 'Mantenimiento';
-  doc.text(typeLabel, pageWidth / 2 + 45, 47);
-
-  doc.setFont('helvetica', 'bold');
-  doc.text('VALIDEZ COMERCIAL:', pageWidth / 2 + 10, 54);
-  doc.setFont('helvetica', 'normal');
-  doc.text(quote.valid_until ? formatDate(quote.valid_until) : '15 días corridos', pageWidth / 2 + 45, 54);
-
-  doc.setFont('helvetica', 'bold');
-  doc.text('TÍTULO / ASUNTO:', pageWidth / 2 + 10, 61);
-  doc.setFont('helvetica', 'normal');
-  const maxTitleW = (pageWidth / 2) - 50;
-  const titleLines = doc.splitTextToSize(quote.title || 'Servicio de Climatización', maxTitleW);
-  doc.text(titleLines[0] || '', pageWidth / 2 + 45, 61);
+  printSafeField('TIPO DE TRABAJO:', typeLabel, rightLabelX, rightValX, 47, rightMaxW);
+  printSafeField('VALIDEZ COMERCIAL:', quote.valid_until ? formatDate(quote.valid_until) : '15 días corridos', rightLabelX, rightValX, 54, rightMaxW);
+  printSafeField('TÍTULO / ASUNTO:', quote.title || 'Servicio de Climatización', rightLabelX, rightValX, 61, rightMaxW);
 
   let currentY = 74;
 
