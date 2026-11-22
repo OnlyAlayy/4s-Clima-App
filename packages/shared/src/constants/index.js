@@ -52,6 +52,15 @@ export const PHOTO_TYPES = {
   BEFORE: 'before',
   AFTER: 'after',
   ISSUE: 'issue',
+  PROGRESS: 'progress',
+};
+
+/** Labels legibles para los tipos de foto */
+export const PHOTO_TYPE_LABELS = {
+  before: 'Antes',
+  after: 'Después',
+  issue: 'Incidencia / Detalle',
+  progress: 'Avance',
 };
 
 /** Unidades para extras/repuestos */

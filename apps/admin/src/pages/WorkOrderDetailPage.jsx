@@ -44,6 +44,7 @@ export default function WorkOrderDetailPage() {
   const [editData, setEditData] = useState({});
   const [technicians, setTechnicians] = useState([]);
   const [expandedPhoto, setExpandedPhoto] = useState(null);
+  const [photoFilter, setPhotoFilter] = useState('all'); // 'all' | 'progress' | 'before' | 'after' | 'issue'
   const [isProfitabilityOpen, setIsProfitabilityOpen] = useState(true);
   const [savingExtraCostId, setSavingExtraCostId] = useState(null);
   const [extraCostDrafts, setExtraCostDrafts] = useState({});
@@ -1164,6 +1165,45 @@ export default function WorkOrderDetailPage() {
                           "{v.summary_notes}"
                         </div>
                       )}
+
+                      {/* Fotos registradas en este tramo / jornada */}
+                      {(() => {
+                        const visitPhotos = photos.filter((p) => p.visit_id === v.id);
+                        if (visitPhotos.length === 0) return null;
+                        return (
+                          <div className="pt-2 border-t border-gray-200/50 dark:border-slate-800 space-y-1.5">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400 flex items-center gap-1">
+                              <Camera size={11} />
+                              Fotos de la Jornada / Avance ({visitPhotos.length})
+                            </span>
+                            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                              {visitPhotos.map((vp) => (
+                                <div
+                                  key={vp.id}
+                                  onClick={() => setExpandedPhoto(expandedPhoto === vp.id ? null : vp.id)}
+                                  className="relative cursor-pointer rounded-lg overflow-hidden border border-gray-200 dark:border-slate-700 aspect-square group shadow-xs hover:ring-2 hover:ring-blue-500 transition-all bg-gray-900"
+                                >
+                                  <img
+                                    src={vp.url || vp.photo_url}
+                                    alt={vp.caption || 'Foto avance'}
+                                    className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                                  />
+                                  <div className="absolute top-1 left-1">
+                                    <span className="text-[8px] font-bold uppercase bg-blue-600 text-white px-1 py-0.2 rounded shadow-xs">
+                                      Avance
+                                    </span>
+                                  </div>
+                                  {vp.caption && (
+                                    <div className="absolute bottom-0 inset-x-0 bg-black/75 text-[9px] text-white px-1 py-0.5 truncate" title={vp.caption}>
+                                      {vp.caption}
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                   );
                 })}
@@ -1311,65 +1351,166 @@ export default function WorkOrderDetailPage() {
 
           {/* Fotos */}
           <div className="card p-6">
-            <h3 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider mb-4 flex items-center gap-2">
-              <Camera size={16} className="text-brand-500" /> Fotos y Evidencia
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+              <h3 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
+                <Camera size={16} className="text-brand-500" /> Fotos y Evidencia
+                {photos.length > 0 && (
+                  <span className="text-xs font-medium text-gray-500 dark:text-gray-400 normal-case">
+                    ({photos.length} {photos.length === 1 ? 'foto' : 'fotos'})
+                  </span>
+                )}
+              </h3>
+
+              {/* Filtros de Fotos */}
               {photos.length > 0 && (
-                <span className="text-xs font-medium text-gray-500 dark:text-gray-400 normal-case">
-                  ({photos.length} {photos.length === 1 ? 'foto' : 'fotos'})
-                </span>
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setPhotoFilter('all')}
+                    className={`px-2.5 py-1 rounded-lg font-bold transition-all ${
+                      photoFilter === 'all'
+                        ? 'bg-brand-500 text-white shadow-xs'
+                        : 'bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200'
+                    }`}
+                  >
+                    Todas ({photos.length})
+                  </button>
+                  {photos.some((p) => p.type === 'progress') && (
+                    <button
+                      type="button"
+                      onClick={() => setPhotoFilter('progress')}
+                      className={`px-2.5 py-1 rounded-lg font-bold transition-all ${
+                        photoFilter === 'progress'
+                          ? 'bg-blue-600 text-white shadow-xs'
+                          : 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 hover:bg-blue-100'
+                      }`}
+                    >
+                      Avances ({photos.filter((p) => p.type === 'progress').length})
+                    </button>
+                  )}
+                  {photos.some((p) => p.type === 'before') && (
+                    <button
+                      type="button"
+                      onClick={() => setPhotoFilter('before')}
+                      className={`px-2.5 py-1 rounded-lg font-bold transition-all ${
+                        photoFilter === 'before'
+                          ? 'bg-amber-500 text-white shadow-xs'
+                          : 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 hover:bg-amber-100'
+                      }`}
+                    >
+                      Antes ({photos.filter((p) => p.type === 'before').length})
+                    </button>
+                  )}
+                  {photos.some((p) => p.type === 'after') && (
+                    <button
+                      type="button"
+                      onClick={() => setPhotoFilter('after')}
+                      className={`px-2.5 py-1 rounded-lg font-bold transition-all ${
+                        photoFilter === 'after'
+                          ? 'bg-emerald-600 text-white shadow-xs'
+                          : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100'
+                      }`}
+                    >
+                      Después ({photos.filter((p) => p.type === 'after').length})
+                    </button>
+                  )}
+                  {photos.some((p) => p.type === 'issue') && (
+                    <button
+                      type="button"
+                      onClick={() => setPhotoFilter('issue')}
+                      className={`px-2.5 py-1 rounded-lg font-bold transition-all ${
+                        photoFilter === 'issue'
+                          ? 'bg-rose-600 text-white shadow-xs'
+                          : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 hover:bg-rose-100'
+                      }`}
+                    >
+                      Incidencias ({photos.filter((p) => p.type === 'issue').length})
+                    </button>
+                  )}
+                </div>
               )}
-            </h3>
+            </div>
+
             {photos.length === 0 ? (
               <p className="text-gray-400 dark:text-gray-600 text-sm text-center py-6">
                 No se subieron fotos para esta orden.
               </p>
-            ) : (
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                {photos.map((photo) => {
-                  const photoUrl = photo.url || photo.photo_url;
-                  const caption = photo.caption || photo.notes;
-                  const isBefore = photo.type === 'before';
-                  const isIssue = photo.type === 'issue';
-                  const label = isBefore
-                    ? isSurveyOrder
-                      ? 'Relevamiento / Inicial'
-                      : 'Antes'
-                    : isIssue
-                    ? 'Incidencia / Detalle'
-                    : 'Después';
+            ) : (() => {
+              const displayedPhotos = photos.filter((p) => photoFilter === 'all' || p.type === photoFilter);
+              if (displayedPhotos.length === 0) {
+                return (
+                  <p className="text-gray-400 dark:text-gray-600 text-xs text-center py-6 italic">
+                    No hay fotos en la categoría seleccionada.
+                  </p>
+                );
+              }
+              return (
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                  {displayedPhotos.map((photo) => {
+                    const photoUrl = photo.url || photo.photo_url;
+                    const caption = photo.caption || photo.notes;
+                    const isProgress = photo.type === 'progress';
+                    const isBefore = photo.type === 'before';
+                    const isIssue = photo.type === 'issue';
+                    const label = isProgress
+                      ? 'Avance'
+                      : isBefore
+                      ? isSurveyOrder
+                        ? 'Relevamiento / Inicial'
+                        : 'Antes'
+                      : isIssue
+                      ? 'Incidencia'
+                      : 'Después';
 
-                  const badgeClass = isBefore
-                    ? 'bg-amber-500 text-white'
-                    : isIssue
-                    ? 'bg-rose-500 text-white'
-                    : 'bg-emerald-500 text-white';
+                    const badgeClass = isProgress
+                      ? 'bg-blue-600 text-white'
+                      : isBefore
+                      ? 'bg-amber-500 text-white'
+                      : isIssue
+                      ? 'bg-rose-500 text-white'
+                      : 'bg-emerald-500 text-white';
 
-                  return (
-                    <div
-                      key={photo.id}
-                      className="relative group cursor-pointer rounded-xl overflow-hidden border border-gray-100 dark:border-slate-800 aspect-square bg-gray-900 shadow-sm"
-                      onClick={() => setExpandedPhoto(expandedPhoto === photo.id ? null : photo.id)}
-                    >
-                      <img
-                        src={photoUrl}
-                        alt={caption || label}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                      />
-                      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 via-black/50 to-transparent p-2.5">
-                        <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded shadow-sm inline-block ${badgeClass}`}>
-                          {label}
-                        </span>
-                        {caption && (
-                          <p className="text-white text-xs font-medium mt-1 truncate drop-shadow" title={caption}>
-                            {caption}
+                    const relatedVisit = photo.visit_id ? visits.find((v) => v.id === photo.visit_id) : null;
+                    const techName = relatedVisit?.technician?.name || photo.creator?.name || order.assigned?.name || 'Técnico';
+                    const photoDate = photo.taken_at || photo.created_at;
+
+                    return (
+                      <div
+                        key={photo.id}
+                        className="relative group cursor-pointer rounded-xl overflow-hidden border border-gray-100 dark:border-slate-800 aspect-square bg-gray-900 shadow-sm"
+                        onClick={() => setExpandedPhoto(expandedPhoto === photo.id ? null : photo.id)}
+                      >
+                        <img
+                          src={photoUrl}
+                          alt={caption || label}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        />
+                        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent p-2.5">
+                          <div className="flex items-center justify-between gap-1 mb-1">
+                            <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded shadow-sm inline-block ${badgeClass}`}>
+                              {label}
+                            </span>
+                            {photoDate && (
+                              <span className="text-[9px] text-gray-300 font-mono">
+                                {formatDateTime(photoDate)}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-white text-xs font-semibold truncate drop-shadow" title={caption || `Por ${techName}`}>
+                            {caption || `Por ${techName}`}
                           </p>
-                        )}
+                          {caption && (
+                            <p className="text-[10px] text-gray-300 truncate">
+                              Téc: {techName}
+                            </p>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+                    );
+                  })}
+                </div>
+              );
+            })()}
           </div>
 
           {/* Firma */}
@@ -1483,15 +1624,22 @@ export default function WorkOrderDetailPage() {
         const p = photos.find((item) => item.id === expandedPhoto);
         const pUrl = p?.url || p?.photo_url;
         const pCaption = p?.caption || p?.notes;
+        const isProgress = p?.type === 'progress';
         const isBefore = p?.type === 'before';
         const isIssue = p?.type === 'issue';
-        const label = isBefore
+        const label = isProgress
+          ? 'Avance de Obra / Jornada'
+          : isBefore
           ? isSurveyOrder
             ? 'Relevamiento / Estado Inicial'
             : 'Antes del servicio'
           : isIssue
           ? 'Incidencia / Detalle'
           : 'Después del servicio';
+
+        const relatedVisit = p?.visit_id ? visits.find((v) => v.id === p.visit_id) : null;
+        const techName = relatedVisit?.technician?.name || p?.creator?.name || order.assigned?.name || 'Técnico';
+        const photoDate = p?.taken_at || p?.created_at;
 
         return (
           <div
@@ -1507,16 +1655,30 @@ export default function WorkOrderDetailPage() {
                 alt="Foto expandida"
                 className="max-w-full max-h-[75vh] rounded-xl object-contain shadow-2xl"
               />
-              <div className="mt-3 flex items-center gap-2 flex-wrap justify-center">
+              <div className="mt-3 flex items-center gap-2 flex-wrap justify-center text-xs">
                 <span
-                  className={`text-xs font-bold uppercase px-2.5 py-0.5 rounded text-white ${
-                    isBefore ? 'bg-amber-500' : isIssue ? 'bg-rose-500' : 'bg-emerald-500'
+                  className={`font-bold uppercase px-2.5 py-1 rounded-lg text-white shadow-xs ${
+                    isProgress
+                      ? 'bg-blue-600'
+                      : isBefore
+                      ? 'bg-amber-500'
+                      : isIssue
+                      ? 'bg-rose-500'
+                      : 'bg-emerald-500'
                   }`}
                 >
                   {label}
                 </span>
+                {photoDate && (
+                  <span className="text-white/80 bg-white/10 backdrop-blur-md px-2.5 py-1 rounded-lg font-mono">
+                    {formatDateTime(photoDate)}
+                  </span>
+                )}
+                <span className="text-white/80 bg-white/10 backdrop-blur-md px-2.5 py-1 rounded-lg">
+                  Subido por: <strong>{techName}</strong>
+                </span>
                 {pCaption && (
-                  <span className="text-sm text-white font-medium bg-white/20 backdrop-blur-md px-3 py-0.5 rounded-lg">
+                  <span className="text-white font-medium bg-white/20 backdrop-blur-md px-3 py-1 rounded-lg">
                     {pCaption}
                   </span>
                 )}

@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, MapPin, Phone, Clock, Wrench, Building2,
   ClipboardCheck, Play, ChevronRight, Thermometer, Hash, Package, Check, Navigation, Camera,
-  User, QrCode, Wind, Box, PauseCircle, AlertTriangle, RotateCcw, History, X
+  User, QrCode, Wind, Box, PauseCircle, AlertTriangle, RotateCcw, History, X,
+  Trash2, Plus, Image as ImageIcon
 } from 'lucide-react';
 import { supabase } from '@4s-clima/shared/supabase';
 import { useWorkOrderStore } from '../stores/workOrderStore';
@@ -18,6 +19,11 @@ import {
   VISIT_OUTCOMES,
   VISIT_OUTCOME_LABELS
 } from '@4s-clima/shared/constants';
+import { Camera as CapCamera, CameraResultType, CameraSource } from '@capacitor/camera';
+import { Capacitor } from '@capacitor/core';
+import imageCompression from 'browser-image-compression';
+import { db } from '../services/offlineDb';
+import toast from 'react-hot-toast';
 import LocationViewerMap from '../components/geo/LocationViewerMap';
 import LiveTrackingSender from '../components/geo/LiveTrackingSender';
 import nativeLocationTracker from '../services/nativeLocationTracker';
@@ -47,16 +53,190 @@ export default function WorkOrderPage() {
   // Estados para modal de Avance Parcial
   const [isPartialModalOpen, setIsPartialModalOpen] = useState(false);
   const [partialNotes, setPartialNotes] = useState('');
+  const [partialPhotos, setPartialPhotos] = useState([]);
   const [isSubmittingPartial, setIsSubmittingPartial] = useState(false);
+  const partialFileInputRef = useRef(null);
 
   // Estados para modal de Pausa / Impedimento
   const [isHoldModalOpen, setIsHoldModalOpen] = useState(false);
   const [selectedHoldReason, setSelectedHoldReason] = useState(HOLD_REASONS.MISSING_PARTS);
   const [holdNotesInput, setHoldNotesInput] = useState('');
+  const [holdPhotos, setHoldPhotos] = useState([]);
   const [isSubmittingHold, setIsSubmittingHold] = useState(false);
+  const holdFileInputRef = useRef(null);
 
   // Acordeón de tramos/visitas
   const [isVisitsExpanded, setIsVisitsExpanded] = useState(true);
+
+  // Procesar fotos adjuntadas en Web
+  const handleAddPhotos = async (files, setTargetPhotos) => {
+    if (!files || files.length === 0) return;
+    const processed = [];
+    for (const file of files) {
+      try {
+        const options = {
+          maxSizeMB: 0.6,
+          maxWidthOrHeight: 1280,
+          useWebWorker: true,
+          fileType: 'image/jpeg',
+          initialQuality: 0.82,
+        };
+        const compressed = await imageCompression(file, options);
+        const previewUrl = URL.createObjectURL(compressed);
+        processed.push({
+          id: `progress-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+          file: compressed,
+          preview: previewUrl,
+          caption: '',
+        });
+      } catch (e) {
+        console.warn('Error comprimiendo foto:', e);
+        processed.push({
+          id: `progress-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+          file,
+          preview: URL.createObjectURL(file),
+          caption: '',
+        });
+      }
+    }
+    setTargetPhotos((prev) => [...prev, ...processed]);
+  };
+
+  // Abrir cámara nativa en Capacitor
+  const handleNativeCamera = async (setTargetPhotos) => {
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const image = await CapCamera.getPhoto({
+          quality: 80,
+          allowEditing: false,
+          resultType: CameraResultType.DataUrl,
+          source: CameraSource.Prompt,
+          promptLabelHeader: 'Foto de Avance de Obra',
+          promptLabelPhoto: 'Elegir de Galería',
+          promptLabelPicture: 'Tomar Foto con Cámara',
+          promptLabelCancel: 'Cancelar',
+        });
+        if (!image?.dataUrl) return;
+        const res = await fetch(image.dataUrl);
+        const blob = await res.blob();
+        const file = new File([blob], `progress-${Date.now()}.${image.format || 'jpg'}`, {
+          type: `image/${image.format || 'jpeg'}`,
+        });
+        setTargetPhotos((prev) => [
+          ...prev,
+          {
+            id: `progress-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+            file,
+            preview: image.dataUrl,
+            caption: '',
+          },
+        ]);
+      } catch (err) {
+        if (!err?.message?.includes('cancelled')) {
+          console.error('Error abriendo cámara nativa:', err);
+          toast.error('No se pudo abrir la cámara.');
+        }
+      }
+    }
+  };
+
+  // Subir fotos de avance a Supabase Storage y registrar en public.photos / IndexedDB
+  const uploadProgressPhotos = async (photosList, defaultNote, activeVisitId) => {
+    if (!photosList || photosList.length === 0) return;
+
+    let currentUserId = null;
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      currentUserId = sessionData?.session?.user?.id || null;
+    } catch (e) { }
+
+    for (let i = 0; i < photosList.length; i++) {
+      const item = photosList[i];
+      const randomId = typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : (Math.random().toString(36).substring(2) + Date.now().toString(36));
+      const fileName = `photos/${id}/progress-${Date.now()}-${randomId}-${i}.jpg`;
+      const noteText = item.caption?.trim() || defaultNote || 'Avance de obra';
+
+      if (navigator.onLine) {
+        const { error: uploadError } = await supabase.storage
+          .from('work-orders')
+          .upload(fileName, item.file, {
+            contentType: item.file.type || 'image/jpeg',
+            upsert: true,
+          });
+
+        if (uploadError) {
+          console.error('Error subiendo foto de avance:', uploadError);
+          continue;
+        }
+
+        const { data: { publicUrl } } = supabase.storage
+          .from('work-orders')
+          .getPublicUrl(fileName);
+
+        const payload = {
+          work_order_id: id,
+          visit_id: activeVisitId || null,
+          type: 'progress',
+          url: publicUrl,
+          photo_url: publicUrl,
+          caption: noteText,
+          notes: noteText,
+          created_by: currentUserId,
+        };
+
+        const { error: insertError } = await supabase.from('photos').insert(payload);
+        if (insertError) {
+          console.warn('Error insertando foto con visit_id/created_by, usando fallback:', insertError.message);
+          await supabase.from('photos').insert({
+            work_order_id: id,
+            type: 'progress',
+            url: publicUrl,
+            photo_url: publicUrl,
+            caption: noteText,
+          });
+        }
+      } else {
+        // Modo offline: almacenar localmente en Dexie
+        const base64 = await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result);
+          reader.readAsDataURL(item.file);
+        });
+
+        const tempId = `temp-progress-${Date.now()}-${i}-${Math.random().toString(36).substring(7)}`;
+
+        await db.photos.add({
+          id: tempId,
+          work_order_id: id,
+          type: 'progress',
+          url: base64,
+          photo_url: base64,
+          caption: noteText,
+          notes: noteText,
+          synced: false,
+        });
+
+        await db.pendingSync.add({
+          table: 'photos',
+          action: 'insert',
+          recordId: tempId,
+          data: {
+            work_order_id: id,
+            visit_id: activeVisitId || null,
+            type: 'progress',
+            photo_blob: base64.split(',')[1],
+            content_type: item.file.type || 'image/jpeg',
+            caption: noteText,
+            notes: noteText,
+            created_by: currentUserId,
+          },
+          created_at: new Date().toISOString(),
+        });
+      }
+    }
+  };
 
   useEffect(() => {
     fetchWorkOrder(id);
@@ -68,11 +248,44 @@ export default function WorkOrderPage() {
       alert('Por favor ingresá un breve resumen del avance realizado en la jornada.');
       return;
     }
+
+    const isObra = wo.type === 'obra' || wo.type === 'OBRA';
+    if (isObra && partialPhotos.length === 0) {
+      const confirmProceed = window.confirm(
+        'Atención: En órdenes de tipo Obra se solicita registrar fotos del avance del día para la bitácora cronológica.\n\n¿Deseas confirmar el avance sin fotos de todas formas?'
+      );
+      if (!confirmProceed) return;
+    }
+
     setIsSubmittingPartial(true);
     try {
+      // 1. Obtener ID de la visita activa
+      let activeVisitId = null;
+      try {
+        const { data: vData } = await supabase
+          .from('work_order_visits')
+          .select('id')
+          .eq('work_order_id', id)
+          .eq('outcome', 'in_progress')
+          .order('started_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        activeVisitId = vData?.id || null;
+      } catch (errV) {
+        console.warn('No se pudo recuperar visit_id activo:', errV);
+      }
+
+      // 2. Subir fotos de avance adjuntadas
+      if (partialPhotos.length > 0) {
+        await uploadProgressPhotos(partialPhotos, partialNotes.trim(), activeVisitId);
+      }
+
+      // 3. Registrar avance parcial en store
       await registerPartialAdvance(id, partialNotes.trim());
       setIsPartialModalOpen(false);
       setPartialNotes('');
+      setPartialPhotos([]);
+      toast.success('Avance y fotos registradas exitosamente');
       await fetchWorkOrder(id);
     } catch (err) {
       alert('Error registrando avance: ' + (err.message || 'Error desconocido'));
@@ -87,14 +300,46 @@ export default function WorkOrderPage() {
       alert('Por favor ingresá una explicación detallada del impedimento o motivo de la pausa.');
       return;
     }
+
+    const isObra = wo.type === 'obra' || wo.type === 'OBRA';
+    if (isObra && holdPhotos.length === 0) {
+      const confirmProceed = window.confirm(
+        'Atención: En órdenes de tipo Obra se recomienda adjuntar fotos del estado/avance antes de pausar.\n\n¿Deseas pausar sin fotos de todas formas?'
+      );
+      if (!confirmProceed) return;
+    }
+
     setIsSubmittingHold(true);
     try {
+      // 1. Obtener ID de la visita activa
+      let activeVisitId = null;
+      try {
+        const { data: vData } = await supabase
+          .from('work_order_visits')
+          .select('id')
+          .eq('work_order_id', id)
+          .eq('outcome', 'in_progress')
+          .order('started_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        activeVisitId = vData?.id || null;
+      } catch (errV) {
+        console.warn('No se pudo recuperar visit_id activo:', errV);
+      }
+
+      // 2. Subir fotos de pausa adjuntadas
+      if (holdPhotos.length > 0) {
+        await uploadProgressPhotos(holdPhotos, holdNotesInput.trim(), activeVisitId);
+      }
+
       await pauseWorkOrder(id, {
         holdReason: selectedHoldReason,
         holdNotes: holdNotesInput.trim(),
       });
       setIsHoldModalOpen(false);
       setHoldNotesInput('');
+      setHoldPhotos([]);
+      toast.success('Orden pausada correctamente');
       await fetchWorkOrder(id);
     } catch (err) {
       alert('Error al pausar la orden: ' + (err.message || 'Error desconocido'));
@@ -888,7 +1133,7 @@ export default function WorkOrderPage() {
       {/* MODAL: Registrar Avance Parcial (Fin de Jornada en Obras Largas) */}
       {isPartialModalOpen && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
-          <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl p-5 shadow-2xl border border-gray-100 dark:border-slate-800 space-y-4">
+          <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl p-5 shadow-2xl border border-gray-100 dark:border-slate-800 space-y-4 max-h-[92vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-slate-800">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-xl bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 flex items-center justify-center">
@@ -906,6 +1151,16 @@ export default function WorkOrderPage() {
               </button>
             </div>
 
+            {/* Aviso especial si es tipo Obra */}
+            {(wo.type === 'obra' || wo.type === 'OBRA') && (
+              <div className="p-3 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 flex items-start gap-2.5 text-xs text-indigo-950 dark:text-indigo-200">
+                <Camera size={16} className="text-indigo-600 dark:text-indigo-400 shrink-0 mt-0.5" />
+                <p>
+                  <strong>Orden de Obra:</strong> Es fundamental registrar fotos del avance del día para armar la bitácora fotográfica cronológica con el cliente.
+                </p>
+              </div>
+            )}
+
             <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">
               Utilizá esta opción al finalizar tu jornada o cuando debas retirarte de la obra sin cerrarla definitivamente. Tu avance quedará registrado en la bitácora para que vos u otro técnico continúen mañana.
             </p>
@@ -919,10 +1174,76 @@ export default function WorkOrderPage() {
                   value={partialNotes}
                   onChange={(e) => setPartialNotes(e.target.value)}
                   placeholder="Ej: Se instalaron 15 mts de cañería en piso 2, presurizado con nitrógeno en 250 PSI. Queda pendiente conexionado eléctrico..."
-                  rows={4}
+                  rows={3}
                   required
                   className="w-full rounded-2xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/60 p-3 text-xs text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-brand-500"
                 />
+              </div>
+
+              {/* Bloque de Registro Fotográfico de Avance */}
+              <div className="space-y-2 p-3 rounded-2xl bg-gray-50 dark:bg-slate-800/40 border border-gray-200 dark:border-slate-700">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-gray-800 dark:text-gray-200 uppercase tracking-wide flex items-center gap-1.5">
+                    <Camera size={14} className="text-blue-500" />
+                    Fotos del Avance ({partialPhotos.length})
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (Capacitor.isNativePlatform()) {
+                        handleNativeCamera(setPartialPhotos);
+                      } else {
+                        partialFileInputRef.current?.click();
+                      }
+                    }}
+                    className="px-2.5 py-1 rounded-xl text-xs font-bold bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 hover:bg-blue-100 flex items-center gap-1 transition-colors"
+                  >
+                    <Plus size={13} /> Tomar / Adjuntar
+                  </button>
+                  <input
+                    ref={partialFileInputRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => {
+                      const files = Array.from(e.target.files || []);
+                      if (files.length > 0) handleAddPhotos(files, setPartialPhotos);
+                      e.target.value = '';
+                    }}
+                  />
+                </div>
+
+                {partialPhotos.length > 0 ? (
+                  <div className="grid grid-cols-3 gap-2 pt-1 max-h-48 overflow-y-auto pr-1">
+                    {partialPhotos.map((photo) => (
+                      <div key={photo.id} className="relative rounded-xl overflow-hidden aspect-square border border-gray-200 dark:border-slate-700 bg-black group shadow-xs">
+                        <img src={photo.preview} alt="Avance" className="w-full h-full object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => setPartialPhotos((prev) => prev.filter((p) => p.id !== photo.id))}
+                          className="absolute top-1 right-1 w-6 h-6 rounded-full bg-rose-600 text-white flex items-center justify-center shadow-md hover:bg-rose-700"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                        <input
+                          type="text"
+                          placeholder="Nota (opc.)"
+                          value={photo.caption}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setPartialPhotos((prev) => prev.map((p) => p.id === photo.id ? { ...p, caption: val } : p));
+                          }}
+                          className="absolute bottom-0 inset-x-0 bg-black/75 text-[10px] text-white px-1.5 py-1 focus:outline-hidden placeholder-gray-400"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400 italic">
+                    Sin fotos adjuntas aún. Podés tomar fotos con la cámara o adjuntar desde la galería.
+                  </p>
+                )}
               </div>
 
               <div className="flex gap-2 pt-1">
@@ -950,7 +1271,7 @@ export default function WorkOrderPage() {
       {/* MODAL: Reportar Impedimento / Pausar Orden */}
       {isHoldModalOpen && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
-          <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl p-5 shadow-2xl border border-gray-100 dark:border-slate-800 space-y-4">
+          <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl p-5 shadow-2xl border border-gray-100 dark:border-slate-800 space-y-4 max-h-[92vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-slate-800">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-xl bg-orange-100 dark:bg-orange-900/40 text-orange-600 dark:text-orange-400 flex items-center justify-center">
@@ -967,6 +1288,16 @@ export default function WorkOrderPage() {
                 <X size={20} />
               </button>
             </div>
+
+            {/* Aviso especial si es tipo Obra */}
+            {(wo.type === 'obra' || wo.type === 'OBRA') && (
+              <div className="p-3 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 flex items-start gap-2.5 text-xs text-amber-950 dark:text-amber-200">
+                <Camera size={16} className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                <p>
+                  <strong>Atención Obra:</strong> Se recomienda registrar fotos de la situación o motivo de la pausa para que administración y el cliente vean el estado actual.
+                </p>
+              </div>
+            )}
 
             <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">
               Si no podés continuar por falta de repuestos, cliente ausente, fallo técnico u otro imprevisto, pausá la orden. Esto alertará de inmediato a Administración para gestionar una solución o relevo.
@@ -998,10 +1329,76 @@ export default function WorkOrderPage() {
                   value={holdNotesInput}
                   onChange={(e) => setHoldNotesInput(e.target.value)}
                   placeholder="Detallá claramente qué ocurrió (ej: Se requiere contactor de 24V y relay térmico que no estaban en inventario...)"
-                  rows={4}
+                  rows={3}
                   required
                   className="w-full rounded-2xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/60 p-3 text-xs text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-brand-500"
                 />
+              </div>
+
+              {/* Bloque de Registro Fotográfico en Pausa */}
+              <div className="space-y-2 p-3 rounded-2xl bg-gray-50 dark:bg-slate-800/40 border border-gray-200 dark:border-slate-700">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-gray-800 dark:text-gray-200 uppercase tracking-wide flex items-center gap-1.5">
+                    <Camera size={14} className="text-orange-500" />
+                    Fotos del Impedimento / Avance ({holdPhotos.length})
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (Capacitor.isNativePlatform()) {
+                        handleNativeCamera(setHoldPhotos);
+                      } else {
+                        holdFileInputRef.current?.click();
+                      }
+                    }}
+                    className="px-2.5 py-1 rounded-xl text-xs font-bold bg-orange-50 dark:bg-orange-950/40 text-orange-600 dark:text-orange-400 border border-orange-200 dark:border-orange-800 hover:bg-orange-100 flex items-center gap-1 transition-colors"
+                  >
+                    <Plus size={13} /> Tomar / Adjuntar
+                  </button>
+                  <input
+                    ref={holdFileInputRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => {
+                      const files = Array.from(e.target.files || []);
+                      if (files.length > 0) handleAddPhotos(files, setHoldPhotos);
+                      e.target.value = '';
+                    }}
+                  />
+                </div>
+
+                {holdPhotos.length > 0 ? (
+                  <div className="grid grid-cols-3 gap-2 pt-1 max-h-48 overflow-y-auto pr-1">
+                    {holdPhotos.map((photo) => (
+                      <div key={photo.id} className="relative rounded-xl overflow-hidden aspect-square border border-gray-200 dark:border-slate-700 bg-black group shadow-xs">
+                        <img src={photo.preview} alt="Impedimento" className="w-full h-full object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => setHoldPhotos((prev) => prev.filter((p) => p.id !== photo.id))}
+                          className="absolute top-1 right-1 w-6 h-6 rounded-full bg-rose-600 text-white flex items-center justify-center shadow-md hover:bg-rose-700"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                        <input
+                          type="text"
+                          placeholder="Nota (opc.)"
+                          value={photo.caption}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setHoldPhotos((prev) => prev.map((p) => p.id === photo.id ? { ...p, caption: val } : p));
+                          }}
+                          className="absolute bottom-0 inset-x-0 bg-black/75 text-[10px] text-white px-1.5 py-1 focus:outline-hidden placeholder-gray-400"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400 italic">
+                    Sin fotos adjuntas aún.
+                  </p>
+                )}
               </div>
 
               <div className="flex gap-2 pt-1">

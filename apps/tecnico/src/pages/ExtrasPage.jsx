@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, Package, Trash2, Zap } from 'lucide-react';
+import { ArrowLeft, Plus, Package, Trash2 } from 'lucide-react';
 import { useWorkOrderStore } from '../stores/workOrderStore';
 import { supabase } from '@4s-clima/shared/supabase';
 import { db } from '../services/offlineDb';
@@ -127,8 +127,8 @@ export default function ExtrasPage() {
         {/* Selector Rápido de Materiales Oficiales (Sin Precios para el Técnico) */}
         <div className="card p-4 space-y-3 bg-gradient-to-br from-slate-50 to-white dark:from-slate-900 dark:to-slate-800/80 border-slate-200 dark:border-slate-700">
           <div className="flex items-center justify-between">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-              <Zap size={14} className="text-amber-500" /> Materiales Rápidos de Instalación
+            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
+              Materiales Rápidos de Instalación
             </h2>
             <span className="text-[10px] text-gray-400 font-medium">Toque para autocompletar</span>
           </div>
