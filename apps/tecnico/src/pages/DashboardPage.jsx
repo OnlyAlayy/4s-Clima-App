@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ClipboardList, Clock, ChevronRight, MapPin, Wrench, AlertCircle, ChevronDown, Power } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { useAuthStore } from '../stores/authStore';
 import { useShiftStore } from '../stores/shiftStore';
 import { useWorkOrderStore } from '../stores/workOrderStore';
 import { formatDate, formatTime, getStatusLabel, getStatusColor } from '@4s-clima/shared/utils';
 import { WORK_ORDER_STATUS, WORK_ORDER_TYPE_LABELS } from '@4s-clima/shared/constants';
+import ConfirmModal from '../components/ConfirmModal';
 
 /**
  * Dashboard del técnico - vista principal.
@@ -18,24 +20,30 @@ export default function DashboardPage() {
   const { workOrders, isLoading, fetchWorkOrders } = useWorkOrderStore();
 
   const [page, setPage] = useState(1);
+  const [isEndShiftModalOpen, setIsEndShiftModalOpen] = useState(false);
   const itemsPerPage = 10;
 
   const handleStartShift = async () => {
     if (!profile?.id) return;
     try {
       await checkIn(profile.id);
+      toast.success('Jornada laboral iniciada');
     } catch (err) {
-      alert('Error iniciando jornada: ' + err.message);
+      toast.error('Error iniciando jornada: ' + err.message);
     }
   };
 
-  const handleEndShift = async () => {
-    if (window.confirm('¿Deseas finalizar tu jornada laboral ahora? Si tienes órdenes o visitas en curso, se registrarán automáticamente como avances parciales.')) {
-      try {
-        await checkOut();
-      } catch (err) {
-        alert('Error finalizando jornada: ' + err.message);
-      }
+  const handleEndShift = () => {
+    setIsEndShiftModalOpen(true);
+  };
+
+  const handleConfirmEndShift = async () => {
+    try {
+      await checkOut();
+      setIsEndShiftModalOpen(false);
+      toast.success('Jornada finalizada correctamente');
+    } catch (err) {
+      toast.error('Error finalizando jornada: ' + err.message);
     }
   };
 
@@ -286,6 +294,19 @@ export default function DashboardPage() {
           )}
         </section>
       )}
+
+      {/* Modal de Confirmación para Finalizar Jornada */}
+      <ConfirmModal
+        isOpen={isEndShiftModalOpen}
+        title="Finalizar Jornada Laboral"
+        message="¿Deseas finalizar tu jornada laboral ahora? Si tienes órdenes o visitas en curso, se registrarán automáticamente como avances parciales."
+        confirmText="Finalizar Jornada"
+        cancelText="Continuar Trabajando"
+        confirmVariant="danger"
+        isLoading={isActionLoading}
+        onConfirm={handleConfirmEndShift}
+        onCancel={() => setIsEndShiftModalOpen(false)}
+      />
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { CloudOff, RefreshCw, CheckCircle2, ChevronUp, ChevronDown } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { db } from '../services/offlineDb';
 import { useWorkOrderStore } from '../stores/workOrderStore';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
@@ -31,7 +32,7 @@ export default function SyncStatusUI() {
 
   const handleSync = async () => {
     if (!isOnline) {
-      alert("Necesitas conexión a internet para sincronizar.");
+      toast.error('Necesitás conexión a internet para sincronizar.');
       return;
     }
     await syncPendingData();

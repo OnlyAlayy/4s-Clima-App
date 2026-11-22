@@ -2,6 +2,7 @@ import { useRef, useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import SignatureCanvas from 'react-signature-canvas';
 import { ArrowLeft, RotateCcw, Check, PenTool } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { useWorkOrderStore } from '../stores/workOrderStore';
 import { supabase } from '@4s-clima/shared/supabase';
 import { db } from '../services/offlineDb';
@@ -141,7 +142,7 @@ export default function SignaturePage() {
       navigate('/', { replace: true });
     } catch (error) {
       console.error('Error guardando firma:', error);
-      alert('Error al guardar la firma. Se guardó localmente.');
+      toast.error('Error al guardar la firma en la nube. Se guardó localmente.');
       
       // Completar offline como fallback
       await completeWorkOrder(id);

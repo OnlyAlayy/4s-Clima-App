@@ -24,6 +24,7 @@ import { Capacitor } from '@capacitor/core';
 import imageCompression from 'browser-image-compression';
 import { db } from '../services/offlineDb';
 import toast from 'react-hot-toast';
+import ConfirmModal from '../components/ConfirmModal';
 import LocationViewerMap from '../components/geo/LocationViewerMap';
 import LiveTrackingSender from '../components/geo/LiveTrackingSender';
 import nativeLocationTracker from '../services/nativeLocationTracker';
@@ -67,6 +68,9 @@ export default function WorkOrderPage() {
 
   // Acordeón de tramos/visitas
   const [isVisitsExpanded, setIsVisitsExpanded] = useState(true);
+
+  // Modal de confirmación para avances/pausas sin foto en obras
+  const [obraConfirmModal, setObraConfirmModal] = useState(null); // null | 'partial' | 'hold'
 
   // Procesar fotos adjuntadas en Web
   const handleAddPhotos = async (files, setTargetPhotos) => {
@@ -243,20 +247,22 @@ export default function WorkOrderPage() {
   }, [id, fetchWorkOrder]);
 
   const handleRegisterPartialAdvance = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     if (!partialNotes.trim()) {
-      alert('Por favor ingresá un breve resumen del avance realizado en la jornada.');
+      toast.error('Por favor ingresá un breve resumen del avance realizado en la jornada.');
       return;
     }
 
     const isObra = wo.type === 'obra' || wo.type === 'OBRA';
     if (isObra && partialPhotos.length === 0) {
-      const confirmProceed = window.confirm(
-        'Atención: En órdenes de tipo Obra se solicita registrar fotos del avance del día para la bitácora cronológica.\n\n¿Deseas confirmar el avance sin fotos de todas formas?'
-      );
-      if (!confirmProceed) return;
+      setObraConfirmModal('partial');
+      return;
     }
 
+    await executeRegisterPartialAdvance();
+  };
+
+  const executeRegisterPartialAdvance = async () => {
     setIsSubmittingPartial(true);
     try {
       // 1. Obtener ID de la visita activa
@@ -288,27 +294,29 @@ export default function WorkOrderPage() {
       toast.success('Avance y fotos registradas exitosamente');
       await fetchWorkOrder(id);
     } catch (err) {
-      alert('Error registrando avance: ' + (err.message || 'Error desconocido'));
+      toast.error('Error registrando avance: ' + (err.message || 'Error desconocido'));
     } finally {
       setIsSubmittingPartial(false);
     }
   };
 
   const handlePauseWorkOrder = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     if (!holdNotesInput.trim()) {
-      alert('Por favor ingresá una explicación detallada del impedimento o motivo de la pausa.');
+      toast.error('Por favor ingresá una explicación detallada del impedimento o motivo de la pausa.');
       return;
     }
 
     const isObra = wo.type === 'obra' || wo.type === 'OBRA';
     if (isObra && holdPhotos.length === 0) {
-      const confirmProceed = window.confirm(
-        'Atención: En órdenes de tipo Obra se recomienda adjuntar fotos del estado/avance antes de pausar.\n\n¿Deseas pausar sin fotos de todas formas?'
-      );
-      if (!confirmProceed) return;
+      setObraConfirmModal('hold');
+      return;
     }
 
+    await executePauseWorkOrder();
+  };
+
+  const executePauseWorkOrder = async () => {
     setIsSubmittingHold(true);
     try {
       // 1. Obtener ID de la visita activa
@@ -342,7 +350,7 @@ export default function WorkOrderPage() {
       toast.success('Orden pausada correctamente');
       await fetchWorkOrder(id);
     } catch (err) {
-      alert('Error al pausar la orden: ' + (err.message || 'Error desconocido'));
+      toast.error('Error al pausar la orden: ' + (err.message || 'Error desconocido'));
     } finally {
       setIsSubmittingHold(false);
     }
@@ -1422,6 +1430,31 @@ export default function WorkOrderPage() {
           </div>
         </div>
       )}
+
+      {/* Modal de confirmación para avances/pausas sin fotos en Obras */}
+      <ConfirmModal
+        isOpen={!!obraConfirmModal}
+        title="Orden de Obra sin Fotos"
+        message={
+          obraConfirmModal === 'partial'
+            ? 'En obras se solicita registrar al menos 1 foto del avance del día para armar la bitácora cronológica con el cliente. ¿Deseas confirmar el avance sin fotos de todas formas?'
+            : 'En obras se recomienda adjuntar fotos del estado/avance antes de pausar la orden. ¿Deseas pausar sin fotos de todas formas?'
+        }
+        confirmText="Confirmar sin Fotos"
+        cancelText="Volver y Sacar Foto"
+        confirmVariant="warning"
+        isLoading={isSubmittingPartial || isSubmittingHold}
+        onConfirm={async () => {
+          const mode = obraConfirmModal;
+          setObraConfirmModal(null);
+          if (mode === 'partial') {
+            await executeRegisterPartialAdvance();
+          } else if (mode === 'hold') {
+            await executePauseWorkOrder();
+          }
+        }}
+        onCancel={() => setObraConfirmModal(null)}
+      />
     </div>
   );
 }

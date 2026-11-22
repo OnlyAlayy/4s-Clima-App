@@ -10,6 +10,7 @@ import { CHECKLIST_STATUS, TARGET_UNIT_LABELS } from '@4s-clima/shared/constants
 import { getChecklistByEquipmentType } from '@4s-clima/shared/constants/checklists';
 import { supabase } from '@4s-clima/shared/supabase';
 import { db } from '../services/offlineDb';
+import toast from 'react-hot-toast';
 
 /**
  * Clasifica automáticamente un ítem de checklist según mención a Unidad Interior o Exterior.
@@ -392,7 +393,7 @@ export default function ChecklistPage() {
       setTimeout(() => setDraftToast(false), 2500);
     } catch (error) {
       console.error('Error guardando borrador:', error);
-      alert('Hubo un error al guardar el borrador: ' + error.message);
+      toast.error('Hubo un error al guardar el borrador: ' + error.message);
     } finally {
       setIsSavingDraft(false);
     }
@@ -424,7 +425,7 @@ export default function ChecklistPage() {
           el.style.boxShadow = '';
         }, 2000);
       }
-      alert('Por favor, respondé todos los ítems antes de enviar el checklist final.');
+      toast.error('Por favor, respondé todos los ítems antes de enviar el checklist final.');
       return;
     }
 
@@ -528,7 +529,7 @@ export default function ChecklistPage() {
       navigate(`/orden/${id}/fotos-despues`);
     } catch (error) {
       console.error('Error enviando checklist final:', error);
-      alert('Error al enviar checklist: ' + error.message);
+      toast.error('Error al enviar checklist: ' + error.message);
     } finally {
       setIsSubmittingFinal(false);
     }

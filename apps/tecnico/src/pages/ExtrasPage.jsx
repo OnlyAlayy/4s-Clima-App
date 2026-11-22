@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Plus, Package, Trash2 } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { useWorkOrderStore } from '../stores/workOrderStore';
 import { supabase } from '@4s-clima/shared/supabase';
 import { db } from '../services/offlineDb';
 import { TECHNICAL_CAPACITY_OPTIONS, getTechnicalMaterialChips } from '@4s-clima/shared';
+import ConfirmModal from '../components/ConfirmModal';
 
 const UNIT_OPTIONS = [
   { value: 'unidad', label: 'Unidad' },
@@ -25,6 +27,7 @@ export default function ExtrasPage() {
   const [unit, setUnit] = useState('unidad');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedCapacity, setSelectedCapacity] = useState('3000');
+  const [deletingExtraId, setDeletingExtraId] = useState(null);
 
   useEffect(() => {
     if (currentOrder && currentOrder.extras) {
@@ -74,16 +77,23 @@ export default function ExtrasPage() {
       setQuantity('');
       setUnit('unidad');
       fetchWorkOrder(id);
+      toast.success('Material agregado');
     } catch (err) {
       console.error('Error adding extra:', err);
-      alert('Error al agregar el material. Intentá de nuevo.');
+      toast.error('Error al agregar el material. Intentá de nuevo.');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleDelete = async (extraId) => {
-    if (!window.confirm('¿Eliminar este material?')) return;
+  const handleDelete = (extraId) => {
+    setDeletingExtraId(extraId);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deletingExtraId) return;
+    const extraId = deletingExtraId;
+    setDeletingExtraId(null);
 
     try {
       if (navigator.onLine) {
@@ -93,8 +103,10 @@ export default function ExtrasPage() {
       }
       setExtras((prev) => prev.filter(e => e.id !== extraId));
       fetchWorkOrder(id);
+      toast.success('Material eliminado');
     } catch (err) {
       console.error('Error deleting extra:', err);
+      toast.error('Error al eliminar el material');
     }
   };
 
@@ -273,6 +285,18 @@ export default function ExtrasPage() {
           Volver a la orden
         </button>
       </div>
+
+      {/* Modal de confirmación para eliminar material */}
+      <ConfirmModal
+        isOpen={!!deletingExtraId}
+        title="Eliminar Material"
+        message="¿Confirmás que deseás eliminar este material o repuesto de la orden?"
+        confirmText="Eliminar"
+        cancelText="Conservar"
+        confirmVariant="danger"
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setDeletingExtraId(null)}
+      />
     </div>
   );
 }
