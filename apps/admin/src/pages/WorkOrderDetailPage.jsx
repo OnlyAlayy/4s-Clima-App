@@ -25,6 +25,7 @@ import {
 } from '@4s-clima/shared/constants';
 import LocationViewerMap from '../components/geo/LocationViewerMap';
 import LiveTrackingViewer from '../components/geo/LiveTrackingViewer';
+import Swal from 'sweetalert2';
 import { useAdminAuth } from '../App';
 
 /**
@@ -152,6 +153,176 @@ export default function WorkOrderDetailPage() {
       alert('Error de conexión al actualizar costo.');
     } finally {
       setSavingExtraCostId(null);
+    }
+  };
+
+  const handleOpenPricePrompt = async () => {
+    const currentPrice = order?.total_amount ? Number(order.total_amount) : '';
+    const { value: inputVal, isConfirmed } = await Swal.fire({
+      title: order?.total_amount && Number(order.total_amount) > 0 ? 'Modificar Precio a Cobrar' : 'Fijar Precio a Cobrar',
+      html: `
+        <div class="text-left text-xs text-gray-600 dark:text-gray-300 mb-3 space-y-1.5">
+          <p>Orden: <strong class="text-gray-900 dark:text-white font-mono">${order.order_number || ''}</strong></p>
+          <p>Costo directo acumulado (Mano de obra + Materiales): <strong class="text-gray-900 dark:text-white font-mono">${formatCurrency(totalDirectCosts)}</strong></p>
+          <p class="text-gray-400 text-[11px]">Ingresá el importe pactado con el cliente (sin centavos ni puntos de mil):</p>
+        </div>
+      `,
+      input: 'number',
+      inputValue: currentPrice || '',
+      inputPlaceholder: 'Ej: 85000',
+      showCancelButton: true,
+      confirmButtonText: 'Guardar Precio',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#0284c7',
+      inputValidator: (val) => {
+        if (!val || Number(val) <= 0) {
+          return 'Por favor ingresá un monto válido en pesos mayor a 0.';
+        }
+      },
+    });
+
+    if (isConfirmed && inputVal) {
+      await handleSavePrice(inputVal);
+    }
+  };
+
+  const handleSavePrice = async (priceValue) => {
+    const amount = parseFloat(priceValue) || 0;
+    try {
+      const payload = {
+        total_amount: amount,
+        is_subscription: false,
+        payment_status: order.payment_status === 'paid' ? 'paid' : (order.payment_status === 'abono' ? 'unbilled' : (order.payment_status || 'unbilled')),
+      };
+
+      const { error } = await supabase
+        .from('work_orders')
+        .update(payload)
+        .eq('id', id);
+
+      if (error) {
+        if (error.message?.includes('is_subscription')) {
+          const fallbackPayload = {
+            total_amount: amount,
+            payment_status: order.payment_status === 'paid' ? 'paid' : (order.payment_status === 'abono' ? 'unbilled' : (order.payment_status || 'unbilled')),
+          };
+          const { error: fErr } = await supabase.from('work_orders').update(fallbackPayload).eq('id', id);
+          if (fErr) throw fErr;
+        } else {
+          throw error;
+        }
+      }
+
+      setOrder((prev) => ({
+        ...prev,
+        total_amount: amount,
+        is_subscription: false,
+        payment_status: order.payment_status === 'paid' ? 'paid' : (order.payment_status === 'abono' ? 'unbilled' : (order.payment_status || 'unbilled')),
+      }));
+
+      Swal.fire({
+        icon: 'success',
+        title: 'Precio Guardado',
+        text: `Se fijó el precio a cobrar en ${formatCurrency(amount)}. El margen operativo ha sido recalculado.`,
+        timer: 2000,
+        showConfirmButton: false,
+      });
+    } catch (err) {
+      console.error('Error al guardar precio:', err);
+      Swal.fire('Error', 'No se pudo guardar el precio: ' + (err.message || 'Error desconocido'), 'error');
+    }
+  };
+
+  const handleMarkAsSubscription = async () => {
+    const confirm = await Swal.fire({
+      title: '¿Marcar como Cubierto por Abono?',
+      text: 'Esta orden se considerará parte del mantenimiento mensual contratado por el cliente, registrando el costo operativo absorbido sin exigir facturación individual.',
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonText: 'Sí, marcar como Abono',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#4f46e5',
+    });
+
+    if (!confirm.isConfirmed) return;
+
+    try {
+      const payload = {
+        total_amount: 0,
+        is_subscription: true,
+        payment_status: 'abono',
+      };
+      const { error } = await supabase
+        .from('work_orders')
+        .update(payload)
+        .eq('id', id);
+
+      if (error) {
+        if (error.message?.includes('is_subscription')) {
+          await supabase.from('work_orders').update({
+            total_amount: 0,
+            payment_status: 'abono',
+          }).eq('id', id);
+        } else {
+          throw error;
+        }
+      }
+
+      setOrder((prev) => ({
+        ...prev,
+        total_amount: 0,
+        is_subscription: true,
+        payment_status: 'abono',
+      }));
+
+      Swal.fire({
+        icon: 'success',
+        title: 'Orden en Abono',
+        text: 'La orden quedó registrada como parte del abono mensual.',
+        timer: 2000,
+        showConfirmButton: false,
+      });
+    } catch (err) {
+      console.error('Error al marcar como abono:', err);
+      Swal.fire('Error', 'No se pudo actualizar la orden: ' + (err.message || 'Error desconocido'), 'error');
+    }
+  };
+
+  const handleUnmarkSubscription = async () => {
+    try {
+      const payload = {
+        is_subscription: false,
+        payment_status: 'unbilled',
+      };
+      const { error } = await supabase
+        .from('work_orders')
+        .update(payload)
+        .eq('id', id);
+
+      if (error) {
+        if (error.message?.includes('is_subscription')) {
+          await supabase.from('work_orders').update({ payment_status: 'unbilled' }).eq('id', id);
+        } else {
+          throw error;
+        }
+      }
+
+      setOrder((prev) => ({
+        ...prev,
+        is_subscription: false,
+        payment_status: 'unbilled',
+      }));
+
+      Swal.fire({
+        icon: 'success',
+        title: 'Abono Desmarcado',
+        text: 'La orden volvió al estado estándar de facturación individual.',
+        timer: 2000,
+        showConfirmButton: false,
+      });
+    } catch (err) {
+      console.error('Error al desmarcar abono:', err);
+      Swal.fire('Error', 'No se pudo actualizar: ' + err.message, 'error');
     }
   };
 
@@ -461,17 +632,23 @@ export default function WorkOrderDetailPage() {
   }, 0);
 
   // Ingreso Facturado / Estimado: work_order.total_amount si está facturada o suma de extras
+  const isAbono = Boolean(order.is_subscription || order.payment_status === 'abono');
+  const hasFixedPrice = Number(order.total_amount) > 0;
   const isBilledOrPriced = Boolean(
     order.afip_voucher_number ||
     order.payment_status === 'pending' ||
     order.payment_status === 'paid' ||
-    (order.total_amount && Number(order.total_amount) > 0)
+    hasFixedPrice
   );
-  const revenue = isBilledOrPriced && Number(order.total_amount) > 0
+  const revenue = isAbono
+    ? 0
+    : hasFixedPrice
     ? Number(order.total_amount)
     : extrasTotal;
-  const revenueLabel = isBilledOrPriced && Number(order.total_amount) > 0
-    ? 'Ingreso Facturado'
+  const revenueLabel = isAbono
+    ? 'Modalidad'
+    : hasFixedPrice
+    ? 'Precio Acordado'
     : 'Ingreso Estimado';
 
   // Margen Neto ($) y Margen (%)
@@ -485,13 +662,32 @@ export default function WorkOrderDetailPage() {
     dot: 'bg-emerald-500',
     label: 'Saludable / Rentable (≥ 20%)',
     textColor: 'text-emerald-600 dark:text-emerald-400',
+    text: marginPercent >= 0 ? `+${marginPercent.toFixed(1)}%` : `${marginPercent.toFixed(1)}%`,
   };
-  if (netMargin < 0 || marginPercent < 0) {
+
+  if (isAbono) {
+    marginBadge = {
+      bg: 'bg-indigo-100 dark:bg-indigo-950/40 text-indigo-800 dark:text-indigo-300 border-indigo-300 dark:border-indigo-800',
+      dot: 'bg-indigo-500',
+      label: 'Cubierto por Abono Mensual',
+      textColor: 'text-indigo-600 dark:text-indigo-400',
+      text: 'Abono',
+    };
+  } else if (!hasFixedPrice && extrasTotal === 0) {
+    marginBadge = {
+      bg: 'bg-blue-100 dark:bg-blue-950/40 text-blue-800 dark:text-blue-300 border-blue-300 dark:border-blue-800',
+      dot: 'bg-blue-500',
+      label: 'Pendiente de facturación / cotización',
+      textColor: 'text-blue-600 dark:text-blue-400',
+      text: 'Costo Acumulado',
+    };
+  } else if (netMargin < 0 || marginPercent < 0) {
     marginBadge = {
       bg: 'bg-rose-100 dark:bg-rose-950/40 text-rose-800 dark:text-rose-300 border-rose-300 dark:border-rose-800',
       dot: 'bg-rose-500',
       label: 'Pérdida Operativa (< 0%)',
       textColor: 'text-rose-600 dark:text-rose-400',
+      text: `${marginPercent.toFixed(1)}%`,
     };
   } else if (marginPercent < 20) {
     marginBadge = {
@@ -499,6 +695,7 @@ export default function WorkOrderDetailPage() {
       dot: 'bg-amber-500',
       label: 'Margen Bajo (< 20%)',
       textColor: 'text-amber-600 dark:text-amber-400',
+      text: `+${marginPercent.toFixed(1)}%`,
     };
   }
 
@@ -698,7 +895,7 @@ export default function WorkOrderDetailPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Columna Izquierda: Info + Edición */}
         <div className="lg:col-span-1 space-y-6">
-          {/* Tarjeta de Rentabilidad de la Orden (Job Costing - Visible únicamente para rol admin / owner) */}
+          {/* Tarjeta de Rentabilidad y Costos de la Orden */}
           {isAdmin && (
             <div className="card p-5 border border-gray-200 dark:border-slate-800 shadow-sm transition-all">
               <div
@@ -710,21 +907,18 @@ export default function WorkOrderDetailPage() {
                     <TrendingUp size={18} />
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
-                      Rentabilidad
-                      <span className="text-[10px] normal-case font-semibold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
-                        Job Costing
-                      </span>
+                    <h3 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider">
+                      Costos y Rentabilidad
                     </h3>
                     <p className="text-xs text-gray-500 dark:text-gray-400">
-                      Margen neto y costos directos
+                      Costos directos y margen operativo
                     </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className={`text-xs font-bold px-2 py-0.5 rounded-full border flex items-center gap-1.5 ${marginBadge.bg}`}>
+                  <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full border flex items-center gap-1.5 ${marginBadge.bg}`}>
                     <span className={`w-1.5 h-1.5 rounded-full ${marginBadge.dot}`} />
-                    {marginPercent >= 0 ? `+${marginPercent.toFixed(1)}%` : `${marginPercent.toFixed(1)}%`}
+                    <span>{marginBadge.text}</span>
                   </span>
                   <button
                     type="button"
@@ -740,16 +934,16 @@ export default function WorkOrderDetailPage() {
                 <div className="mt-4 pt-4 border-t border-gray-100 dark:border-slate-800/80 space-y-4">
                   {/* Grilla de Métricas Financieras */}
                   <div className="grid grid-cols-2 gap-3">
-                    {/* Ingreso */}
+                    {/* Ingreso / Precio */}
                     <div className="p-3 bg-gray-50 dark:bg-slate-800/50 rounded-xl border border-gray-100 dark:border-slate-800">
                       <span className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider block">
-                        {revenueLabel}
+                        {isAbono ? 'Modalidad' : hasFixedPrice ? 'Precio Acordado' : 'Precio / Ingreso'}
                       </span>
                       <p className="text-base font-extrabold text-gray-900 dark:text-white mt-0.5 font-mono">
-                        {formatCurrency(revenue)}
+                        {isAbono ? 'Abono Mensual' : formatCurrency(revenue)}
                       </p>
-                      <span className="text-[10px] text-gray-400 block mt-0.5">
-                        {isBilledOrPriced ? 'Total facturado / acordado' : 'Suma de extras/repuestos'}
+                      <span className="text-[10px] text-gray-400 block mt-0.5 truncate" title={isAbono ? 'Cubierto por cuota mensual' : hasFixedPrice ? 'Total acordado con el cliente' : 'Pendiente de facturación / cotización'}>
+                        {isAbono ? 'Cubierto por cuota mensual' : hasFixedPrice ? 'Total acordado con el cliente' : 'Pendiente de facturación / cotización'}
                       </span>
                     </div>
 
@@ -779,13 +973,13 @@ export default function WorkOrderDetailPage() {
                       </span>
                     </div>
 
-                    {/* Margen Neto */}
+                    {/* Margen Neto / Costo Acumulado */}
                     <div className="p-3 bg-gray-50 dark:bg-slate-800/50 rounded-xl border border-gray-100 dark:border-slate-800">
                       <span className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider block">
-                        Margen Neto
+                        {isAbono ? 'Costo Absorbido' : (!hasFixedPrice && extrasTotal === 0) ? 'Costo Acumulado' : 'Margen Neto'}
                       </span>
                       <p className={`text-base font-extrabold mt-0.5 font-mono ${marginBadge.textColor}`}>
-                        {formatCurrency(netMargin)}
+                        {(!hasFixedPrice && extrasTotal === 0) || isAbono ? formatCurrency(totalDirectCosts) : formatCurrency(netMargin)}
                       </p>
                       <span className="text-[10px] text-gray-400 block mt-0.5 font-medium truncate" title={marginBadge.label}>
                         {marginBadge.label}
@@ -793,7 +987,7 @@ export default function WorkOrderDetailPage() {
                     </div>
                   </div>
 
-                  {/* Barra Visual de Distribución de Costos */}
+                  {/* Barra Visual de Distribución de Costos (Solo si hay ingreso cargado) */}
                   {revenue > 0 && (
                     <div className="space-y-1.5 pt-1">
                       <div className="flex justify-between text-[11px] text-gray-500 dark:text-gray-400 font-medium">
@@ -830,6 +1024,37 @@ export default function WorkOrderDetailPage() {
                       </div>
                     </div>
                   )}
+
+                  {/* Acciones Rápidas: Fijar Precio / Marcar como Abono */}
+                  <div className="pt-2 border-t border-gray-100 dark:border-slate-800/80 flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleOpenPricePrompt}
+                      className="px-3 py-1.5 rounded-lg bg-brand-50 hover:bg-brand-100 dark:bg-brand-950/40 dark:hover:bg-brand-900/60 text-brand-700 dark:text-brand-300 border border-brand-200 dark:border-brand-800 text-xs font-bold transition-colors inline-flex items-center gap-1.5 shadow-2xs active:scale-95"
+                    >
+                      <DollarSign size={13} />
+                      <span>{hasFixedPrice ? 'Modificar precio a cobrar' : 'Fijar precio a cobrar'}</span>
+                    </button>
+
+                    {!isAbono ? (
+                      <button
+                        type="button"
+                        onClick={handleMarkAsSubscription}
+                        className="px-3 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 text-xs font-semibold transition-colors inline-flex items-center gap-1.5 shadow-2xs active:scale-95"
+                      >
+                        <ShieldCheck size={13} />
+                        <span>Marcar como Abono</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={handleUnmarkSubscription}
+                        className="px-2.5 py-1.5 text-xs font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:underline transition-colors"
+                      >
+                        Desmarcar abono
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
