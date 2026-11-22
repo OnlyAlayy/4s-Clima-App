@@ -21,9 +21,11 @@ export default function WorkOrdersPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState(searchParams.get('search') || '');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState(searchParams.get('status') || 'all');
   const [typeFilter, setTypeFilter] = useState(searchParams.get('type') || 'all');
-  const [dateFilter, setDateFilter] = useState('all'); // 'all' | 'today' | 'this_week' | 'this_month'
+  const [dateFilter, setDateFilter] = useState(
+    searchParams.get('date') || (searchParams.get('filter') === 'overdue' ? 'overdue' : 'all')
+  );
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isTemplatesOpen, setIsTemplatesOpen] = useState(false);
   const [isDownloading, setIsDownloading] = useState(null); // Guarda el id de la orden descargando
@@ -99,8 +101,17 @@ export default function WorkOrdersPage() {
 
     if (dateFilter !== 'all') {
       const today = new Date();
-      if (dateFilter === 'today') {
-        const todayStr = getArgentinaDate(today);
+      const todayStr = getArgentinaDate(today);
+      if (dateFilter === 'overdue') {
+        query = query
+          .lt('scheduled_date', todayStr)
+          .in('status', [
+            WORK_ORDER_STATUS.PENDING,
+            WORK_ORDER_STATUS.TRAVELING,
+            WORK_ORDER_STATUS.IN_PROGRESS,
+            WORK_ORDER_STATUS.ON_HOLD,
+          ]);
+      } else if (dateFilter === 'today') {
         query = query.eq('scheduled_date', todayStr);
       } else if (dateFilter === 'this_week') {
         // Ultimos 7 dias y proximos 7 dias
@@ -299,11 +310,22 @@ export default function WorkOrdersPage() {
         
         <select
           value={dateFilter}
-          onChange={(e) => setDateFilter(e.target.value)}
+          onChange={(e) => {
+            setDateFilter(e.target.value);
+            const newParams = Object.fromEntries(searchParams.entries());
+            if (e.target.value !== 'all') {
+              newParams.date = e.target.value;
+            } else {
+              delete newParams.date;
+              delete newParams.filter;
+            }
+            setSearchParams(newParams);
+          }}
           className="select w-auto"
         >
           <option value="all">Todas las fechas</option>
           <option value="today">Hoy</option>
+          <option value="overdue">Atrasadas / Vencidas</option>
           <option value="this_week">Esta Semana</option>
           <option value="this_month">Este Mes</option>
         </select>
@@ -331,7 +353,16 @@ export default function WorkOrdersPage() {
 
         <select
           value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
+          onChange={(e) => {
+            setStatusFilter(e.target.value);
+            const newParams = Object.fromEntries(searchParams.entries());
+            if (e.target.value !== 'all') {
+              newParams.status = e.target.value;
+            } else {
+              delete newParams.status;
+            }
+            setSearchParams(newParams);
+          }}
           className="select w-auto"
         >
           <option value="all">Todos los estados</option>
