@@ -1,56 +1,25 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, ClipboardList, Building2, Users, DollarSign,
   LogOut, CalendarDays, Sun, Moon, Wallet, ChevronLeft, ChevronRight, Clock,
   MessageSquare, FileCheck
 } from 'lucide-react';
-import { supabase } from '@4s-clima/shared/supabase';
 import { useAdminAuth } from '../../App';
 import { useDarkMode } from '../../hooks/useDarkMode';
+import { useAdminBadges } from '../../hooks/useAdminBadges';
+import AdminNotificationToast from '../AdminNotificationToast';
 
 /**
  * Sidebar de navegación del panel administrativo.
  * Fijo a la izquierda con opción de colapsar / expandir mediante flecha.
+ * Integra contadores en tiempo real (badges) y notificaciones toast no invasivas.
  */
 export default function Sidebar({ isCollapsed = false, toggleSidebar }) {
   const { user, profile, logout } = useAdminAuth();
   const { isDark, toggleDarkMode } = useDarkMode();
   const [logoError, setLogoError] = useState(false);
-  const [unreadLeadsCount, setUnreadLeadsCount] = useState(0);
-
-  useEffect(() => {
-    async function loadUnreadCount() {
-      try {
-        const { count, error } = await supabase
-          .from('leads')
-          .select('*', { count: 'exact', head: true })
-          .in('estado', ['pendiente', 'nuevo', 'new']);
-        if (!error && count !== null) {
-          setUnreadLeadsCount(count);
-        }
-      } catch (e) {
-        console.warn('[Sidebar] Error al cargar contador de leads:', e);
-      }
-    }
-
-    loadUnreadCount();
-
-    const channel = supabase
-      .channel('sidebar_unread_leads')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'leads' },
-        () => {
-          loadUnreadCount();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
+  const { badges, toast, dismissToast } = useAdminBadges();
 
   const isOwner = profile?.role === 'owner';
   const displayName = profile?.name || profile?.full_name || user?.email || 'Usuario';
@@ -62,9 +31,9 @@ export default function Sidebar({ isCollapsed = false, toggleSidebar }) {
       label: 'OPERACIÓN',
       items: [
         { to: '/', icon: LayoutDashboard, label: 'Dashboard', end: true },
-        { to: '/leads', icon: MessageSquare, label: 'Consultas Web', badge: unreadLeadsCount },
+        { to: '/leads', icon: MessageSquare, label: 'Consultas Web', badge: badges.leads, badgeColor: 'amber' },
         { to: '/quotes', icon: FileCheck, label: 'Presupuestos' },
-        { to: '/ordenes', icon: ClipboardList, label: 'Órdenes de Trabajo' },
+        { to: '/ordenes', icon: ClipboardList, label: 'Órdenes de Trabajo', badge: badges.workOrders, badgeColor: 'amber' },
         { to: '/calendario', icon: CalendarDays, label: 'Calendario' },
       ]
     },
@@ -74,18 +43,19 @@ export default function Sidebar({ isCollapsed = false, toggleSidebar }) {
         { to: '/finanzas', icon: Wallet, label: 'Cobranzas' },
         { to: '/clientes', icon: Building2, label: 'Clientes' },
         { to: '/tecnicos', icon: Users, label: 'Técnicos' },
-        { to: '/asistencia', icon: Clock, label: 'Control Asistencia' },
+        { to: '/asistencia', icon: Clock, label: 'Control Asistencia', badge: badges.attendance, badgeColor: 'rose' },
         { to: '/extras', icon: DollarSign, label: 'Catálogo Extras' },
       ]
     }
   ];
 
   return (
-    <aside
-      className={`fixed left-0 top-0 bottom-0 ${
-        isCollapsed ? 'w-20' : 'w-64'
-      } bg-sidebar border-r border-white/10 flex flex-col z-40 transition-all duration-300 ease-in-out shadow-2xl select-none`}
-    >
+    <>
+      <aside
+        className={`fixed left-0 top-0 bottom-0 ${
+          isCollapsed ? 'w-20' : 'w-64'
+        } bg-sidebar border-r border-white/10 flex flex-col z-40 transition-all duration-300 ease-in-out shadow-2xl select-none`}
+      >
       {/* Header con Logo y botón de colapso integrado con el estilo corporativo */}
       <div
         className={`border-b border-white/10 transition-all duration-300 ${
@@ -171,36 +141,40 @@ export default function Sidebar({ isCollapsed = false, toggleSidebar }) {
               </p>
             )}
 
-            {group.items.map(({ to, icon: Icon, label, end, badge }) => (
-              <NavLink
-                key={to}
-                to={to}
-                end={end}
-                title={isCollapsed ? (badge > 0 ? `${label} (${badge} sin atender)` : label) : undefined}
-                className={({ isActive }) =>
-                  `sidebar-link ${isCollapsed ? 'justify-center px-0 py-2.5' : ''} ${
-                    isActive ? 'active' : ''
-                  }`
-                }
-              >
-                <div className="relative flex items-center justify-center">
-                  <Icon size={isCollapsed ? 18 : 18} />
-                  {isCollapsed && badge > 0 && (
-                    <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-amber-500 rounded-full ring-2 ring-blue-950 animate-pulse" />
-                  )}
-                </div>
-                {!isCollapsed && (
-                  <div className="flex items-center justify-between flex-1 min-w-0">
-                    <span className="truncate">{label}</span>
-                    {badge > 0 && (
-                      <span className="ml-2 px-1.5 py-0.5 text-[10px] font-extrabold rounded-full bg-amber-500 text-white shadow-xs">
-                        {badge}
-                      </span>
+            {group.items.map(({ to, icon: Icon, label, end, badge, badgeColor = 'amber' }) => {
+              const displayBadge = badge > 9 ? '9+' : String(badge);
+              const badgeBg = badgeColor === 'rose' ? 'bg-rose-500' : 'bg-amber-500';
+              return (
+                <NavLink
+                  key={to}
+                  to={to}
+                  end={end}
+                  title={isCollapsed ? (badge > 0 ? `${label} (${badge} pendientes)` : label) : undefined}
+                  className={({ isActive }) =>
+                    `sidebar-link ${isCollapsed ? 'justify-center px-0 py-2.5' : ''} ${
+                      isActive ? 'active' : ''
+                    }`
+                  }
+                >
+                  <div className="relative flex items-center justify-center">
+                    <Icon size={isCollapsed ? 18 : 18} />
+                    {isCollapsed && badge > 0 && (
+                      <span className={`absolute -top-1 -right-1 w-2.5 h-2.5 ${badgeBg} rounded-full ring-2 ring-sidebar animate-pulse`} />
                     )}
                   </div>
-                )}
-              </NavLink>
-            ))}
+                  {!isCollapsed && (
+                    <div className="flex items-center justify-between flex-1 min-w-0">
+                      <span className="truncate">{label}</span>
+                      {badge > 0 && (
+                        <span className={`ml-2 px-1.5 py-0.5 text-[10px] font-black rounded-full ${badgeBg} text-white shadow-xs`}>
+                          {displayBadge}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </NavLink>
+              );
+            })}
           </div>
         ))}
       </nav>
@@ -266,6 +240,10 @@ export default function Sidebar({ isCollapsed = false, toggleSidebar }) {
         </button>
       </div>
     </aside>
+
+    {/* Toast no invasivo en esquina superior derecha */}
+    <AdminNotificationToast toast={toast} onDismiss={dismissToast} />
+  </>
   );
 }
 
